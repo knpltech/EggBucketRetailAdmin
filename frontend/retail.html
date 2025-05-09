@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EggBucket - Retail Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.x.x/firebase-app.js';
+        import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.x.x/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.x.x/firebase-firestore.js';
+    </script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Vertical Sidebar -->
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <img src="logo.png" alt="EggBucket Logo">
+            </div>
+            <div id="sidebar-menu">
+                <button onclick="showSection('orders')">Orders</button>
+                <button onclick="showSection('deliveries')">Deliveries</button>
+                <button onclick="showSection('payments')">Payments</button>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div id="main-content">
+            <!-- Orders Section -->
+            <div id="orders" class="content-section">
+                <h2>Place New Order</h2>
+                <form id="order-form">
+                    <input type="number" id="quantity" required placeholder="Quantity">
+                    <input type="text" id="delivery-address" required placeholder="Delivery Address">
+                    <button type="submit">Place Order</button>
+                </form>
+                <div id="orders-list"></div>
+            </div>
+
+            <!-- Deliveries Section -->
+            <div id="deliveries" class="content-section" style="display: none;">
+                <h2>Delivery Status</h2>
+                <div id="deliveries-list"></div>
+            </div>
+
+            <!-- Payments Section -->
+            <div id="payments" class="content-section" style="display: none;">
+                <h2>Payment History</h2>
+                <div id="payments-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="retail.js"></script>
+    <script>
+        // Check login status
+        function checkLogin() {
+            const loggedIn = localStorage.getItem('loggedIn');
+            const userType = localStorage.getItem('userType');
+            
+            if (loggedIn !== 'true' || userType !== 'retail') {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Check login on page load
+        checkLogin();
+
+        // Show/Hide Sections
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.style.display = 'none';
+            });
+            const targetSection = document.getElementById(sectionId);
+            if (targetSection) {
+                targetSection.style.display = 'block';
+            }
+
+            // Update active button state
+            document.querySelectorAll('#sidebar-menu button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const activeButton = document.querySelector(`#sidebar-menu button[onclick="showSection('${sectionId}')"]`);
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('userType');
+            window.location.href = 'index.html';
+        }
+
+        // Initialize with Orders section visible
+        window.addEventListener('load', () => {
+            showSection('orders');
+        });
+    </script>
+</body>
+</html>

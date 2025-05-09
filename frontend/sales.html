@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EggBucket - Sales Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Vertical Sidebar -->
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <img src="logo.png" alt="EggBucket Logo">
+            </div>
+            
+            <div id="sidebar-menu">
+                <button onclick="window.location.href='admin.html#about'">About</button>
+                <button onclick="window.location.href='admin.html#customer-info'">Customer Information</button>
+                <button onclick="window.location.href='admin.html#add-delivery'">Add Delivery Partner</button>
+                <button onclick="window.location.href='admin.html#add-sales'">Add Sales Person</button>
+                <button onclick="window.location.href='admin.html#partners-list'">View Personnel</button>
+                <button class="active">Sales</button>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div id="main-content">
+            <div id="sales" class="content-section">
+                <h2>Sales Records</h2>
+                <!-- Date Range Filter -->
+                <form id="date-filter-form" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <div>
+                        <label for="start-date">From:</label>
+                        <input type="date" id="start-date" required>
+                    </div>
+                    <div>
+                        <label for="end-date">To:</label>
+                        <input type="date" id="end-date" required>
+                    </div>
+                    <button type="submit">Filter</button>
+                </form>
+
+                <!-- Sales Table -->
+                <div id="sales-list">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f8f9fa;">
+                                <th style="padding: 10px; border: 1px solid #ddd;">Date</th>
+                                <th style="padding: 10px; border: 1px solid #ddd;">Customer Shop</th>
+                                <th style="padding: 10px; border: 1px solid #ddd;">Delivery Person</th>
+                                <th style="padding: 10px; border: 1px solid #ddd;">Phone</th>
+                                <th style="padding: 10px; border: 1px solid #ddd;">Crates Sold</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check login status
+        function checkLogin() {
+            const loggedIn = localStorage.getItem('loggedIn');
+            const userType = localStorage.getItem('userType');
+            
+            if (loggedIn !== 'true' || userType !== 'admin') {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Check login on page load
+        checkLogin();
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('userType');
+            window.location.href = 'index.html';
+        }
+
+        // Sample sales data (stored in localStorage for demo purposes)
+        function initializeSalesData() {
+            const defaultSales = [
+                { date: '2025-05-01', shop: 'Sunny Mart', deliveryName: 'John Doe', phone: '123-456-7890', crates: 50 },
+                { date: '2025-05-02', shop: 'Green Grocer', deliveryName: 'Jane Smith', phone: '987-654-3210', crates: 30 },
+                { date: '2025-05-03', shop: 'City Store', deliveryName: 'John Doe', phone: '123-456-7890', crates: 40 },
+                { date: '2025-05-04', shop: 'Sunny Mart', deliveryName: 'Jane Smith', phone: '987-654-3210', crates: 25 }
+            ];
+            
+            if (!localStorage.getItem('salesData')) {
+                localStorage.setItem('salesData', JSON.stringify(defaultSales));
+            }
+        }
+
+        // Display sales data
+        function displaySales(startDate, endDate) {
+            const sales = JSON.parse(localStorage.getItem('salesData') || '[]');
+            const tableBody = document.getElementById('sales-table-body');
+            tableBody.innerHTML = '';
+
+            const filteredSales = sales.filter(sale => {
+                const saleDate = new Date(sale.date);
+                return (!startDate || saleDate >= new Date(startDate)) && 
+                       (!endDate || saleDate <= new Date(endDate));
+            });
+
+            filteredSales.forEach(sale => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td style="padding: 10px; border: 1px solid #ddd;">${sale.date}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${sale.shop}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${sale.deliveryName}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${sale.phone}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${sale.crates}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            if (filteredSales.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="padding: 10px; text-align: center;">No sales data found for the selected date range.</td></tr>';
+            }
+        }
+
+        // Handle date filter form submission
+        document.getElementById('date-filter-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('Start date cannot be after end date.');
+                return;
+            }
+
+            displaySales(startDate, endDate);
+        });
+
+        // Initialize page
+        window.addEventListener('load', () => {
+            initializeSalesData();
+            displaySales(); // Show all sales by default
+        });
+    </script>
+</body>
+</html>

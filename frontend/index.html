@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EggBucket - Login</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>Welcome to EggBucket</h1>
+            
+            <!-- Login Options -->
+            <div class="login-options">
+                <button class="btn btn-primary" id="admin-login-btn">Admin Login</button>
+                <button class="btn btn-secondary" id="retail-login-btn">Retail Login</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" style="display: none;">
+                <h2 id="login-title">Login</h2>
+                <div class="form-group">
+                    <input type="text" id="username" class="form-control" placeholder="Username" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="password" class="form-control" placeholder="Password" required>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <button type="button" id="back-btn" class="btn btn-secondary">Back</button>
+                </div>
+                <div id="error-message" class="error-message"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const adminLoginBtn = document.getElementById('admin-login-btn');
+        const retailLoginBtn = document.getElementById('retail-login-btn');
+        const loginForm = document.getElementById('login-form');
+        const loginTitle = document.getElementById('login-title');
+        const username = document.getElementById('username');
+        const password = document.getElementById('password');
+        const backBtn = document.getElementById('back-btn');
+        const errorMessage = document.getElementById('error-message');
+
+        // Login credentials
+        const CREDENTIALS = {
+            admin: {
+                username: 'admin',
+                password: 'admin123'
+            },
+            retail: {
+                username: 'retail',
+                password: 'retail123'
+            }
+        };
+
+        // Track current login type
+        let currentLoginType = null;
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+        }
+
+        // Clear error message
+        function clearError() {
+            errorMessage.textContent = '';
+            errorMessage.style.display = 'none';
+        }
+
+        // Show login form
+        function showLoginForm(type) {
+            currentLoginType = type;
+            document.querySelector('.login-options').style.display = 'none';
+            loginForm.style.display = 'block';
+            loginTitle.textContent = `${type.charAt(0).toUpperCase() + type.slice(1)} Login`;
+            username.value = '';
+            password.value = '';
+            username.focus();
+            clearError();
+        }
+
+        // Reset to login options
+        function resetToOptions() {
+            currentLoginType = null;
+            loginForm.style.display = 'none';
+            document.querySelector('.login-options').style.display = 'block';
+            loginForm.reset();
+            clearError();
+        }
+
+        // Event Listeners
+        adminLoginBtn.addEventListener('click', () => showLoginForm('admin'));
+        retailLoginBtn.addEventListener('click', () => showLoginForm('retail'));
+        backBtn.addEventListener('click', resetToOptions);
+
+        // Handle login form submission
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            clearError();
+
+            const inputUsername = username.value.trim();
+            const inputPassword = password.value;
+
+            // Check credentials
+            const validCredentials = CREDENTIALS[currentLoginType];
+            if (inputUsername === validCredentials.username && 
+                inputPassword === validCredentials.password) {
+                // Store login status
+                localStorage.setItem('loggedIn', 'true');
+                localStorage.setItem('userType', currentLoginType);
+                // Redirect to appropriate page
+                window.location.href = `${currentLoginType}.html`;
+            } else {
+                showError('Invalid username or password');
+            }
+        });
+
+        // Check if already logged in
+        window.addEventListener('load', () => {
+            const loggedIn = localStorage.getItem('loggedIn');
+            const userType = localStorage.getItem('userType');
+            if (loggedIn === 'true' && userType) {
+                window.location.href = `${userType}.html`;
+            }
+        });
+    </script>
+</body>
+</html>
