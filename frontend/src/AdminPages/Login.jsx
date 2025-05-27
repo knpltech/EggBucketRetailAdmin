@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BACK_PATH } from '../constant';
+import { ADMIN_PATH } from '../constant';
 
 
 function Login() {
@@ -15,7 +15,7 @@ function Login() {
     setError('');
 
     try {
-      const response = await fetch(`${BACK_PATH}/api/login`, {
+      const response = await fetch(`${ADMIN_PATH}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

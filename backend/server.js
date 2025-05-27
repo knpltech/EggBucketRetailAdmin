@@ -3,7 +3,8 @@ import admin from "firebase-admin";
 import dotenv from "dotenv";
 import cors from "cors";
 
-import myRouter from "./routes/myRouter.js"
+import adminRouter from "./Routes/AdminRoutes.js"
+import retailRouter from "./Routes/RetailRoutes.js"
 
 dotenv.config();
 
@@ -31,7 +32,8 @@ app.use(express.json());
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", myRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/retail", retailRouter);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

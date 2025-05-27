@@ -56,8 +56,49 @@ const userInfo = async (req, res) => {
     }
 };
 
+const addDeliveryPartner = async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    console.log("Add delivery: ", name, password);
+    if (!name || !password) {
+      return res.status(400).json({ message: 'Name and password are required.' });
+    }
+
+    const db = getFirestore();
+
+    const newPartnerRef = db.collection('DeliveryMan').doc();
+    await newPartnerRef.set({ name, password });
+
+    res.status(201).json({ message: 'Delivery partner added successfully.' });
+  } catch (err) {
+    console.error('Error adding delivery partner:', err);
+    res.status(500).json({ message: 'Server error while adding delivery partner.' });
+  }
+};
+
+
+const addSalesPerson = async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    if (!name || !password) {
+      return res.status(400).json({ message: 'Name and password are required.' });
+    }
+
+    const db = getFirestore();
+
+    const newPartnerRef = db.collection('Salesman').doc();
+    await newPartnerRef.set({ name, password });
+
+    res.status(201).json({ message: 'Delivery partner added successfully.' });
+  } catch (err) {
+    console.error('Error adding delivery partner:', err);
+    res.status(500).json({ message: 'Server error while adding delivery partner.' });
+  }
+};
 
 export {         
     login,
     userInfo,
+    addDeliveryPartner,
+    addSalesPerson
 };

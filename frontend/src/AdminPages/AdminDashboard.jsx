@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Outlet } from 'react-router-dom'; // ✅ Import Outlet
+import { Outlet } from 'react-router-dom';
 
 export default function AdminDashboard() {
   return (
