@@ -1,8 +1,9 @@
 import express from "express";
+
 const router = express.Router();
 
-router.route("/some").get(async (req, res) => {
-    res.send("This is from server");
-});
+import { login } from "../Controller/myController.js";
+
+router.route("/login").post(login);
 
 export default router;
