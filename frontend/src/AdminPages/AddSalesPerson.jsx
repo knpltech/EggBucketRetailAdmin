@@ -39,36 +39,36 @@ const AddDeliveryPartner = () => {
         onSubmit={handleSubmit}
         className="bg-white p-6 rounded-lg shadow-md w-full max-w-md"
       >
-        <h2 className="text-2xl font-bold mb-4 text-center">Add Sales Partner</h2>
+        <h2 className="text-xl font-bold mb-4 text-center">Add Sales Partner</h2>
 
-        <label className="block mb-2 font-medium">Name</label>
+        <label className="block mb-2 text-sm font-medium">Name</label>
         <input
           type="text"
           name="name"
           value={formData.name}
           onChange={handleChange}
-          className="w-full mb-4 px-3 py-2 border rounded-lg"
+          className="w-full mb-4 px-3 text-sm py-2 border rounded-lg"
           required
         />
 
-        <label className="block mb-2 font-medium">Phone Number</label>
+        <label className="block mb-2 text-sm font-medium">Phone Number</label>
         <input
           type="text"
           name="phone"
           value={formData.phone}
           onChange={handleChange}
-          className="w-full mb-4 px-3 py-2 border rounded-lg"
+          className="w-full mb-4 px-3 text-sm py-2 border rounded-lg"
           required
         />
 
-        <label className="block mb-2 font-medium">Password</label>
+        <label className="block mb-2 text-sm font-medium">Password</label>
         <div className="relative mb-4">
           <input
             type={showPassword ? 'text' : 'password'}
             name="password"
             value={formData.password}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg pr-10"
+            className="w-full px-3 py-2 text-sm border rounded-lg pr-10"
             required
           />
           <button
@@ -80,14 +80,14 @@ const AddDeliveryPartner = () => {
           </button>
         </div>
 
-        <label className="block mb-2 font-medium">Confirm Password</label>
+        <label className="block mb-2 text-sm font-medium">Confirm Password</label>
         <div className="relative mb-4">
           <input
             type={showConfirm ? 'text' : 'password'}
             name="confirmPassword"
             value={formData.confirmPassword}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg pr-10"
+            className="w-full px-3 py-2 text-sm border rounded-lg pr-10"
             required
           />
           <button

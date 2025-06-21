@@ -34,12 +34,12 @@ const PersonnelList = () => {
 
   return (
     <div className="min-h-screen p-6 bg-gradient-to-r from-blue-100 to-purple-200 flex flex-col items-center">
-      <h2 className="text-4xl font-bold mb-10 text-gray-800">Personnel List</h2>
+      <h2 className="text-3xl font-bold mb-10 text-gray-800">Personnel List</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-6xl">
         {/* Delivery Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-300">
-          <h3 className="text-3xl font-semibold mb-6 text-center text-blue-700">Delivery Partners</h3>
+          <h3 className="text-2xl font-bold mb-6 text-center text-blue-700">Delivery Partners</h3>
           {deliveryPartners.length === 0 ? (
             <p className="text-gray-500 text-center">No delivery partners found.</p>
           ) : (
@@ -49,8 +49,8 @@ const PersonnelList = () => {
                   key={partner.id}
                   className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
                 >
-                  <span className="font-medium text-gray-800">Name: {partner.name}</span>
-                  <span className="font-bold text-gray-600">Phone: {partner.phone}</span>
+                  <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span>
+                  <span className="font-bold text-sm text-gray-600">Phone: {partner.phone}</span>
                 </li>
               ))}
             </ul>
@@ -59,7 +59,7 @@ const PersonnelList = () => {
 
         {/* Sales Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-green-300">
-          <h3 className="text-3xl font-semibold mb-6 text-center text-green-700">Sales Partners</h3>
+          <h3 className="text-2xl font-bold mb-6 text-center text-green-700">Sales Partners</h3>
           {salesPartners.length === 0 ? (
             <p className="text-gray-500 text-center">No sales partners found.</p>
           ) : (
@@ -69,8 +69,8 @@ const PersonnelList = () => {
                   key={partner.id}
                   className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
                 >
-                  <span className="font-medium text-gray-800">Name: {partner.name}</span>
-                  <span className="font-bold text-gray-600">Phone: {partner.phone}</span>
+                  <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span>
+                  <span className="font-bold text-sm text-gray-600">Phone: {partner.phone}</span>
                 </li>
               ))}
             </ul>

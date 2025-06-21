@@ -64,11 +64,11 @@ const CustomerInfo = () => {
                     className="h-12 w-12 rounded-full object-cover"
                   />
                 </td>
-                <td className="py-2 px-4">{customer.name}</td>
-                <td className="py-2 px-4">{customer.business}</td>
-                <td className="py-2 px-4">{customer.phone}</td>
-                {/* <td className="py-2 px-4">{customer.location}</td> */}
-                <td className="py-2 px-4 text-sm text-gray-600">
+                <td className="py-2 px-4 text-xs">{customer.name}</td>
+                <td className="py-2 px-4 text-xs">{customer.business}</td>
+                <td className="py-2 px-4 text-xs">{customer.phone}</td>
+                {/* <td className="py-2 px-4 text-xs">{customer.location}</td> */}
+                <td className="py-2 px-4 text-xs text-gray-600">
                   {new Date(customer.createdAt).toLocaleString()}
                 </td>
               </tr>
