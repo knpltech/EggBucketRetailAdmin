@@ -36,7 +36,7 @@ export default function AdminDashboard() {
             to="/admin/add-sales"
             className="block px-4 py-2 rounded hover:bg-gray-700"
           >
-            Add Sales Person
+            Add Sales Partner
           </Link>
 
           <Link
@@ -44,13 +44,6 @@ export default function AdminDashboard() {
             className="block px-4 py-2 rounded hover:bg-gray-700"
           >
             View Personnel
-          </Link>
-
-          <Link
-            to="/admin/sales"
-            className="block px-4 py-2 rounded hover:bg-gray-700"
-          >
-            Sales
           </Link>
 
           <Link

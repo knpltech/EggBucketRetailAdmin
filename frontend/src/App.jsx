@@ -7,7 +7,6 @@ import CustomerInfo from './AdminPages/CustomerInfo';
 import AddDeliveryPartner from './AdminPages/AddDeliveryPartner';
 import AddSalesPerson from './AdminPages/AddSalesPerson';
 import PersonnelList from './AdminPages/PersonnelList';
-import Sales from './AdminPages/Sales';
 
 import RetailDashboard from './RetailPages/RetailDashboard';
 import Orders from './RetailPages/Orders';
@@ -34,7 +33,6 @@ function App() {
         <Route path="add-delivery" element={<AddDeliveryPartner />} />
         <Route path="add-sales" element={<AddSalesPerson />} />
         <Route path="personnel" element={<PersonnelList />} />
-        <Route path="sales" element={<Sales />} />
       </Route>
 
 

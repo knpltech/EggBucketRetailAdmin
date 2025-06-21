@@ -4,7 +4,7 @@ import { ADMIN_PATH } from '../constant';
 import { Eye, EyeOff } from 'lucide-react'; // using lucide-react for eye icons
 
 const AddDeliveryPartner = () => {
-  const [formData, setFormData] = useState({ name: '', password: '', confirmPassword: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
@@ -23,10 +23,10 @@ const AddDeliveryPartner = () => {
     }
 
     try {
-      const { name, password } = formData;
-      const res = await axios.post(`${ADMIN_PATH}/add-sales-person`, { name, password });
+      const { name, phone, password } = formData;
+      const res = await axios.post(`${ADMIN_PATH}/add-sales-person`, { name, phone, password });
       setMessage(res.data.message);
-      setFormData({ name: '', password: '', confirmPassword: '' });
+      setFormData({ name: '', phone: '', password: '', confirmPassword: '' });
     } catch (err) {
       console.error(err);
       setMessage('Failed to add delivery partner.');
@@ -39,13 +39,23 @@ const AddDeliveryPartner = () => {
         onSubmit={handleSubmit}
         className="bg-white p-6 rounded-lg shadow-md w-full max-w-md"
       >
-        <h2 className="text-2xl font-bold mb-4 text-center">Add Sales Person</h2>
+        <h2 className="text-2xl font-bold mb-4 text-center">Add Sales Partner</h2>
 
         <label className="block mb-2 font-medium">Name</label>
         <input
           type="text"
           name="name"
           value={formData.name}
+          onChange={handleChange}
+          className="w-full mb-4 px-3 py-2 border rounded-lg"
+          required
+        />
+
+        <label className="block mb-2 font-medium">Phone Number</label>
+        <input
+          type="text"
+          name="phone"
+          value={formData.phone}
           onChange={handleChange}
           className="w-full mb-4 px-3 py-2 border rounded-lg"
           required
@@ -93,7 +103,7 @@ const AddDeliveryPartner = () => {
           type="submit"
           className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
         >
-          Add Sales Person
+          Add Partner
         </button>
 
         {message && (

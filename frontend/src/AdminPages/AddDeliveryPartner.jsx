@@ -4,7 +4,7 @@ import { ADMIN_PATH } from '../constant';
 import { Eye, EyeOff } from 'lucide-react'; // using lucide-react for eye icons
 
 const AddDeliveryPartner = () => {
-  const [formData, setFormData] = useState({ name: '', password: '', confirmPassword: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
@@ -23,10 +23,10 @@ const AddDeliveryPartner = () => {
     }
 
     try {
-      const { name, password } = formData;
-      const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, { name, password });
+      const { name, phone, password } = formData;
+      const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, { name, phone, password });
       setMessage(res.data.message);
-      setFormData({ name: '', password: '', confirmPassword: '' });
+      setFormData({ name: '', phone: '', password: '', confirmPassword: '' });
     } catch (err) {
       console.error(err);
       setMessage('Failed to add delivery partner.');
@@ -46,6 +46,16 @@ const AddDeliveryPartner = () => {
           type="text"
           name="name"
           value={formData.name}
+          onChange={handleChange}
+          className="w-full mb-4 px-3 py-2 border rounded-lg"
+          required
+        />
+
+        <label className="block mb-2 font-medium">Phone Number</label>
+        <input
+          type="text"
+          name="phone"
+          value={formData.phone}
           onChange={handleChange}
           className="w-full mb-4 px-3 py-2 border rounded-lg"
           required
