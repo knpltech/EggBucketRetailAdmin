@@ -24,7 +24,7 @@ const AddDeliveryPartner = () => {
 
     try {
       const { name, phone, password } = formData;
-      const res = await axios.post(`${ADMIN_PATH}/add-sales-person`, { name, phone, password });
+      const res = await axios.post(`${ADMIN_PATH}/add-sales-partner`, { name, phone, password });
       setMessage(res.data.message);
       setFormData({ name: '', phone: '', password: '', confirmPassword: '' });
     } catch (err) {

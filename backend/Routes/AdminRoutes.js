@@ -5,17 +5,30 @@ const router = express.Router();
 import { 
     login, 
     userInfo,
+    deleteCustomer,
+    updateCustomer,
     addDeliveryPartner,
     addSalesPerson,
     getSalesPartners,
-    getDeliveryPartners
+    getDeliveryPartners,
+    updateDeliveryPartner,
+    updateSalesPartner, 
+    deleteDeliveryPartner,
+    deleteSalesPartner
 } from "../Controller/AdminController.js";
 
 router.route("/login").post(login);
 router.route("/user-info").get(userInfo);
-router.route("/add-del-partner").post(addDeliveryPartner);
-router.post("/add-sales-person", addSalesPerson);
-router.get('/get-sales-partner', getSalesPartners);
-router.get('/get-del-partner', getDeliveryPartners);
+router.delete("/customer/delete", deleteCustomer);
+router.put("/customer/update", updateCustomer);
 
+router.post("/add-del-partner", addDeliveryPartner);
+router.get('/get-del-partner', getDeliveryPartners);
+router.put('/delivery/update', updateDeliveryPartner);
+router.delete('/delivery/delete', deleteDeliveryPartner);
+
+router.post("/add-sales-partner", addSalesPerson);
+router.get('/get-sales-partner', getSalesPartners);
+router.put('/sales/update', updateSalesPartner);
+router.delete('/sales/delete', deleteSalesPartner)
 export default router;
