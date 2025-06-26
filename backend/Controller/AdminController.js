@@ -56,6 +56,25 @@ const userInfo = async (req, res) => {
     }
 };
 
+const specificUser = async (req, res) => {
+    try {
+        const db = getFirestore();
+        const userId = req.params.id;
+
+        const userDoc = await db.collection('customers').doc(userId).get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'Customer not found' });
+        }
+
+        res.status(200).json({ id: userDoc.id, ...userDoc.data() });
+    } catch (error) {
+        console.error('Error fetching customer:', error);
+        res.status(500).json({ error: 'Failed to fetch customer data' });
+    }
+};
+
+
 // Utility to delete a subcollection (since Firestore doesn't auto-delete subcollections)
 const deleteSubcollection = async (parentDocRef, subcollectionName) => {
     const subcollectionSnapshot = await parentDocRef.collection(subcollectionName).get();
@@ -265,6 +284,7 @@ const deleteSalesPartner = async (req, res) => {
 export {
     login,
     userInfo,
+    specificUser,
     deleteCustomer,
     updateCustomer,
     addDeliveryPartner,

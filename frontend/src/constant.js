@@ -2,3 +2,4 @@
 export const ADMIN_PATH = "https://eggbucketretail-backend.onrender.com/api/admin"
 // export const RETAIL_PATH = "http://localhost:3000/api/retail"
 export const RETAIL_PATH = "https://eggbucketretail-backend.onrender.com/api/retail"
+export const GOOGLE_MAP_KEY = "AIzaSyCbRbyJStuI_YFqidGJCBbWvdL6ud5CGCI"

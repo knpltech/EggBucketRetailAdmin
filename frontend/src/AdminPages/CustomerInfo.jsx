@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ADMIN_PATH } from '../constant';
 import { FaTrash, FaEdit } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 
 const CustomerInfo = () => {
   const [customers, setCustomers] = useState([]);
@@ -10,6 +11,8 @@ const CustomerInfo = () => {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   const [formData, setFormData] = useState({ name: '', business: '', phone: '' });
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchCustomers();
@@ -103,7 +106,11 @@ const CustomerInfo = () => {
           </thead>
           <tbody>
             {customers.map((customer) => (
-              <tr key={customer.id} className="border-t hover:bg-gray-50">
+              <tr
+                key={customer.id}
+                className="border-t hover:bg-gray-100 cursor-pointer"
+                onClick={() => navigate(`/admin/customer-info/${customer.id}`)}
+              >
                 <td className="py-2 px-4">
                   <img
                     src={customer.imageUrl}
@@ -117,11 +124,11 @@ const CustomerInfo = () => {
                 <td className="py-2 px-4 text-xs text-gray-600">
                   {new Date(customer.createdAt).toLocaleString()}
                 </td>
-                <td className="py-2 px-4 flex gap-2">
-                  <button onClick={() => handleEditClick(customer)}>
+                <td className="py-2 px-4 flex gap-5" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(customer); }}>
                     <FaEdit className="text-blue-500 hover:text-blue-700" />
                   </button>
-                  <button onClick={() => setDeleteConfirmation(customer)}>
+                  <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmation(customer); }}>
                     <FaTrash className="text-red-500 hover:text-red-700" />
                   </button>
                 </td>

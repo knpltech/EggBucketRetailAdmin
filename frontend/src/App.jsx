@@ -7,6 +7,7 @@ import CustomerInfo from './AdminPages/CustomerInfo';
 import AddDeliveryPartner from './AdminPages/AddDeliveryPartner';
 import AddSalesPerson from './AdminPages/AddSalesPerson';
 import PersonnelList from './AdminPages/PersonnelList';
+import Customer from './AdminPages/Customer';
 
 import RetailDashboard from './RetailPages/RetailDashboard';
 import Orders from './RetailPages/Orders';
@@ -33,6 +34,8 @@ function App() {
         <Route path="add-delivery" element={<AddDeliveryPartner />} />
         <Route path="add-sales" element={<AddSalesPerson />} />
         <Route path="personnel" element={<PersonnelList />} />
+        <Route path="customer-info/:id" element={<Customer />} />
+
       </Route>
 
 

@@ -5,6 +5,7 @@ const router = express.Router();
 import { 
     login, 
     userInfo,
+    specificUser,
     deleteCustomer,
     updateCustomer,
     addDeliveryPartner,
@@ -19,6 +20,7 @@ import {
 
 router.route("/login").post(login);
 router.route("/user-info").get(userInfo);
+router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);
 router.put("/customer/update", updateCustomer);
 
