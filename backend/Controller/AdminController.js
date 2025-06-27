@@ -144,19 +144,34 @@ const updateCustomer = async (req, res) => {
 const addDeliveryPartner = async (req, res) => {
     try {
         const { name, phone, password } = req.body;
-        console.log("Add delivery: ", name, phone, password);
         if (!name || !phone || !password) {
             return res.status(400).json({ message: 'Name, phone number, and password are required.' });
         }
 
         const db = getFirestore();
+        const email = `${phone}@eggbucketdelivery.in`;
 
-        const existingDoc = await db.collection('DeliveryMan').doc(phone).get();
-        if (existingDoc.exists) {
+        try {
+            await admin.auth().getUserByEmail(email);
             return res.status(400).json({ message: 'A delivery partner with this phone number already exists.' });
+        } catch (error) {
+            if (error.code !== 'auth/user-not-found') {
+                throw error;
+            }
         }
 
-        await db.collection('DeliveryMan').doc(phone).set({ name, phone, password });
+        const userRecord = await admin.auth().createUser({
+            email,
+            password,
+            displayName: name,
+        });
+
+        await db.collection('DeliveryMan').doc(phone).set({
+            uid: userRecord.uid,
+            name,
+            phone,
+            email,
+        });
 
         res.status(201).json({ message: 'Delivery partner added successfully.' });
     } catch (err) {
@@ -165,22 +180,39 @@ const addDeliveryPartner = async (req, res) => {
     }
 };
 
+
 const addSalesPerson = async (req, res) => {
     try {
         const { name, phone, password } = req.body;
-        console.log("Add sales: ", name, phone, password);
         if (!name || !phone || !password) {
             return res.status(400).json({ message: 'Name, phone number, and password are required.' });
         }
 
         const db = getFirestore();
 
-        const existingDoc = await db.collection('Salesman').doc(phone).get();
-        if (existingDoc.exists) {
+        const email = `${phone}@eggbucketsales.in`;
+
+        try {
+            await admin.auth().getUserByEmail(email);
             return res.status(400).json({ message: 'A salesperson with this phone number already exists.' });
+        } catch (error) {
+            if (error.code !== 'auth/user-not-found') {
+                throw error;
+            }
         }
 
-        await db.collection('Salesman').doc(phone).set({ name, phone, password });
+        const userRecord = await admin.auth().createUser({
+            email,
+            password,
+            displayName: name,
+        });
+
+        await db.collection('Salesman').doc(phone).set({
+            uid: userRecord.uid,
+            name,
+            phone,
+            email,
+        });
 
         res.status(201).json({ message: 'Salesperson added successfully.' });
     } catch (err) {
@@ -188,6 +220,7 @@ const addSalesPerson = async (req, res) => {
         res.status(500).json({ message: 'Server error while adding salesperson.' });
     }
 };
+
 
 const getDeliveryPartners = async (req, res) => {
     try {
@@ -224,59 +257,59 @@ const getSalesPartners = async (req, res) => {
 };
 
 const updateDeliveryPartner = async (req, res) => {
-  try {
-    const { id, name, phone } = req.body;
+    try {
+        const { id, name, phone } = req.body;
 
-    const db = getFirestore();
-    await db.collection('DeliveryMan').doc(id).update({ name, phone });
+        const db = getFirestore();
+        await db.collection('DeliveryMan').doc(id).update({ name, phone });
 
-    res.status(200).json({ message: 'Delivery partner updated successfully.' });
-  } catch (err) {
-    console.error('Error updating delivery partner:', err);
-    res.status(500).json({ message: 'Server error while updating delivery partner.' });
-  }
+        res.status(200).json({ message: 'Delivery partner updated successfully.' });
+    } catch (err) {
+        console.error('Error updating delivery partner:', err);
+        res.status(500).json({ message: 'Server error while updating delivery partner.' });
+    }
 };
 
 const deleteDeliveryPartner = async (req, res) => {
-  try {
-    const { id } = req.body;
+    try {
+        const { id } = req.body;
 
-    const db = getFirestore();
-    await db.collection('DeliveryMan').doc(id).delete();
+        const db = getFirestore();
+        await db.collection('DeliveryMan').doc(id).delete();
 
-    res.status(200).json({ message: 'Delivery partner deleted successfully.' });
-  } catch (err) {
-    console.error('Error deleting delivery partner:', err);
-    res.status(500).json({ message: 'Server error while deleting delivery partner.' });
-  }
+        res.status(200).json({ message: 'Delivery partner deleted successfully.' });
+    } catch (err) {
+        console.error('Error deleting delivery partner:', err);
+        res.status(500).json({ message: 'Server error while deleting delivery partner.' });
+    }
 };
 
 const updateSalesPartner = async (req, res) => {
-  try {
-    const { id, name, phone } = req.body;
+    try {
+        const { id, name, phone } = req.body;
 
-    const db = getFirestore();
-    await db.collection('Salesman').doc(id).update({ name, phone });
+        const db = getFirestore();
+        await db.collection('Salesman').doc(id).update({ name, phone });
 
-    res.status(200).json({ message: 'Sales partner updated successfully.' });
-  } catch (err) {
-    console.error('Error updating sales partner:', err);
-    res.status(500).json({ message: 'Server error while updating sales partner.' });
-  }
+        res.status(200).json({ message: 'Sales partner updated successfully.' });
+    } catch (err) {
+        console.error('Error updating sales partner:', err);
+        res.status(500).json({ message: 'Server error while updating sales partner.' });
+    }
 };
 
 const deleteSalesPartner = async (req, res) => {
-  try {
-    const { id } = req.body;
+    try {
+        const { id } = req.body;
 
-    const db = getFirestore();
-    await db.collection('Salesman').doc(id).delete();
+        const db = getFirestore();
+        await db.collection('Salesman').doc(id).delete();
 
-    res.status(200).json({ message: 'Sales partner deleted successfully.' });
-  } catch (err) {
-    console.error('Error deleting sales partner:', err);
-    res.status(500).json({ message: 'Server error while deleting sales partner.' });
-  }
+        res.status(200).json({ message: 'Sales partner deleted successfully.' });
+    } catch (err) {
+        console.error('Error deleting sales partner:', err);
+        res.status(500).json({ message: 'Server error while deleting sales partner.' });
+    }
 };
 
 
@@ -293,6 +326,6 @@ export {
     getSalesPartners,
     updateDeliveryPartner,
     updateSalesPartner,
-    deleteDeliveryPartner, 
+    deleteDeliveryPartner,
     deleteSalesPartner
 };

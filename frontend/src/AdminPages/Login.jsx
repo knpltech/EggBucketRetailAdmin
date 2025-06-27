@@ -76,7 +76,14 @@ function Login() {
               <FiLock className="absolute top-3 left-3 text-gray-400" />
               <input type="password" placeholder="Password" className="w-full pl-10 pr-4 py-2 border rounded focus:outline-none" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
-            <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition">Login</button>
+            {/* <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition">Login</button> */}
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 active:scale-95 transition transform"
+            >
+              Login
+            </button>
+
           </form>
         </div>
       </div>
