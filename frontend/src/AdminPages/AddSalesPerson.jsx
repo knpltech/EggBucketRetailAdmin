@@ -101,10 +101,11 @@ const AddDeliveryPartner = () => {
 
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-900 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-300 transition"
         >
           Add Partner
         </button>
+
 
         {message && (
           <p className="mt-4 text-center text-green-600">{message}</p>

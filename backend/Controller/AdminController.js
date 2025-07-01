@@ -165,7 +165,7 @@ const addDeliveryPartner = async (req, res) => {
             displayName: name,
         });
 
-        await db.collection('DeliveryMan').doc(phone).set({
+        await db.collection('DeliveryMan').doc(userRecord.uid).set({
             uid: userRecord.uid,
             name,
             phone,
@@ -212,7 +212,7 @@ const addSalesPerson = async (req, res) => {
             displayName: name,
         });
 
-        await db.collection('Salesman').doc(phone).set({
+        await db.collection('Salesman').doc(userRecord.uid).set({
             uid: userRecord.uid,
             name,
             phone,

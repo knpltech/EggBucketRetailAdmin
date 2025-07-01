@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { ADMIN_PATH } from '../constant';
-import { Eye, EyeOff } from 'lucide-react'; // using lucide-react for eye icons
+import { Eye, EyeOff } from 'lucide-react';
 
 const AddDeliveryPartner = () => {
   const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '' });
@@ -101,10 +101,11 @@ const AddDeliveryPartner = () => {
 
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-900 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-300 transition"
         >
-          Add Partner
+          Add Delivery Partner
         </button>
+
 
         {message && (
           <p className="mt-4 text-center text-green-600">{message}</p>
