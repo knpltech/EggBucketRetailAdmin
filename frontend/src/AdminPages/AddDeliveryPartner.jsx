@@ -66,6 +66,7 @@ const AddDeliveryPartner = () => {
           <input
             type={showPassword ? 'text' : 'password'}
             name="password"
+            placeholder="Atleast six character"
             value={formData.password}
             onChange={handleChange}
             className="w-full px-3 py-2 text-sm border rounded-lg pr-10"

@@ -16,9 +16,21 @@ const PersonnelList = () => {
   const [deletingPartner, setDeletingPartner] = useState(null);
   const [deleteType, setDeleteType] = useState('');
 
+  const [actionMessage, setActionMessage] = useState('');
+  const [messageType, setMessageType] = useState('');
+
   useEffect(() => {
     fetchPartners();
   }, []);
+
+  const showMessage = (msg, type = 'success') => {
+    setActionMessage(msg);
+    setMessageType(type);
+    setTimeout(() => {
+      setActionMessage('');
+      setMessageType('');
+    }, 3000);
+  };
 
   const fetchPartners = async () => {
     try {
@@ -55,38 +67,40 @@ const PersonnelList = () => {
     try {
       const endpoint = editType === 'delivery' ? 'delivery/update' : 'sales/update';
       await axios.put(`${ADMIN_PATH}/${endpoint}`, {
-        id: editingPartner.id,
+        uid: editingPartner.uid,
         ...formData,
       });
       if (editType === 'delivery') {
         setDeliveryPartners((prev) =>
-          prev.map((p) => (p.id === editingPartner.id ? { ...p, ...formData } : p))
+          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...formData } : p))
         );
       } else {
         setSalesPartners((prev) =>
-          prev.map((p) => (p.id === editingPartner.id ? { ...p, ...formData } : p))
+          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...formData } : p))
         );
       }
       setEditingPartner(null);
+      showMessage(`${editType} partner updated successfully.`, 'success');
     } catch (err) {
       console.error('Error updating partner:', err);
-      alert('Failed to update partner.');
+      showMessage('Failed to update partner.', 'error');
     }
   };
 
   const handleDelete = async () => {
     try {
       const endpoint = deleteType === 'delivery' ? 'delivery/delete' : 'sales/delete';
-      await axios.delete(`${ADMIN_PATH}/${endpoint}`, { data: { id: deletingPartner.id } });
+      await axios.delete(`${ADMIN_PATH}/${endpoint}`, { data: { id: deletingPartner.uid } });
       if (deleteType === 'delivery') {
-        setDeliveryPartners((prev) => prev.filter((p) => p.id !== deletingPartner.id));
+        setDeliveryPartners((prev) => prev.filter((p) => p.uid !== deletingPartner.uid));
       } else {
-        setSalesPartners((prev) => prev.filter((p) => p.id !== deletingPartner.id));
+        setSalesPartners((prev) => prev.filter((p) => p.uid !== deletingPartner.uid));
       }
       setDeletingPartner(null);
+      showMessage(`${deleteType} partner deleted successfully.`, 'success');
     } catch (err) {
       console.error('Error deleting partner:', err);
-      alert('Failed to delete partner.');
+      showMessage('Failed to delete partner.', 'error');
     }
   };
 
@@ -96,7 +110,7 @@ const PersonnelList = () => {
   const renderDeliveryPartners = () =>
     deliveryPartners.map((partner) => (
       <li
-        key={partner.id}
+        key={partner.uid}
         className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
       >
         <div>
@@ -117,7 +131,7 @@ const PersonnelList = () => {
   const renderSalesPartners = () =>
     salesPartners.map((partner) => (
       <li
-        key={partner.id}
+        key={partner.uid}
         className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
       >
         <div>
@@ -138,6 +152,19 @@ const PersonnelList = () => {
 
   return (
     <div className="min-h-screen p-6 bg-gradient-to-r from-blue-100 to-purple-200 flex flex-col items-center">
+      {/* Top Notification Message */}
+      {actionMessage && (
+        <div
+          className={`mb-6 px-6 py-3 rounded-xl text-center font-semibold w-full max-w-4xl ${
+            messageType === 'success'
+              ? 'bg-green-100 text-green-800 border border-green-300'
+              : 'bg-red-100 text-red-800 border border-red-300'
+          }`}
+        >
+          {actionMessage}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-6xl">
         {/* Delivery Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-300">
@@ -201,7 +228,7 @@ const PersonnelList = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       {deletingPartner && (
         <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-purple-200 p-8 rounded-2xl shadow-2xl w-11/12 max-w-sm">

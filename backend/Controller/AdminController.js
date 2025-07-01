@@ -74,7 +74,6 @@ const specificUser = async (req, res) => {
     }
 };
 
-
 // Utility to delete a subcollection (since Firestore doesn't auto-delete subcollections)
 const deleteSubcollection = async (parentDocRef, subcollectionName) => {
     const subcollectionSnapshot = await parentDocRef.collection(subcollectionName).get();
@@ -232,8 +231,6 @@ const addSalesPerson = async (req, res) => {
     }
 };
 
-
-
 const getDeliveryPartners = async (req, res) => {
     try {
         const db = getFirestore();
@@ -270,10 +267,22 @@ const getSalesPartners = async (req, res) => {
 
 const updateDeliveryPartner = async (req, res) => {
     try {
-        const { id, name, phone } = req.body;
+        const { uid, name, phone } = req.body;
+        if (!uid || !name || !phone) {
+            return res.status(400).json({ message: 'UID, name, and phone number are required.' });
+        }
+        const newEmail = `${phone}@eggbucketdelivery.in`;
+        await admin.auth().updateUser(uid, {
+            email: newEmail,
+            displayName: name,
+        });
 
         const db = getFirestore();
-        await db.collection('DeliveryMan').doc(id).update({ name, phone });
+        await db.collection('DeliveryMan').doc(uid).update({
+            name,
+            phone,
+            email: newEmail,
+        });
 
         res.status(200).json({ message: 'Delivery partner updated successfully.' });
     } catch (err) {
@@ -282,12 +291,48 @@ const updateDeliveryPartner = async (req, res) => {
     }
 };
 
+const updateSalesPartner = async (req, res) => {
+    try {
+        const { uid, name, phone } = req.body;
+        if (!uid || !name || !phone) {
+            return res.status(400).json({ message: 'UID, name, and phone number are required.' });
+        }
+        const newEmail = `${phone}@eggbucketsales.in`;
+        await admin.auth().updateUser(uid, {
+            email: newEmail,
+            displayName: name,
+        });
+
+        await getFirestore().collection('Salesman').doc(uid).update({
+            name,
+            phone,
+            email: newEmail,
+        });
+
+        res.status(200).json({ message: 'Salesperson updated successfully.' });
+    } catch (err) {
+        console.error('Error updating salesperson:', err);
+        res.status(500).json({ message: 'Server error while updating salesperson.' });
+    }
+};
+
 const deleteDeliveryPartner = async (req, res) => {
     try {
         const { id } = req.body;
-
         const db = getFirestore();
-        await db.collection('DeliveryMan').doc(id).delete();
+        const docRef = db.collection('DeliveryMan').doc(id);
+        const docSnap = await docRef.get();
+
+        if (!docSnap.exists) {
+            return res.status(404).json({ message: 'Delivery partner not found.' });
+        }
+
+        const { uid } = docSnap.data();
+        await docRef.delete();
+
+        if (uid) {
+            await admin.auth().deleteUser(uid);
+        }
 
         res.status(200).json({ message: 'Delivery partner deleted successfully.' });
     } catch (err) {
@@ -296,26 +341,20 @@ const deleteDeliveryPartner = async (req, res) => {
     }
 };
 
-const updateSalesPartner = async (req, res) => {
-    try {
-        const { id, name, phone } = req.body;
-
-        const db = getFirestore();
-        await db.collection('Salesman').doc(id).update({ name, phone });
-
-        res.status(200).json({ message: 'Sales partner updated successfully.' });
-    } catch (err) {
-        console.error('Error updating sales partner:', err);
-        res.status(500).json({ message: 'Server error while updating sales partner.' });
-    }
-};
-
 const deleteSalesPartner = async (req, res) => {
     try {
         const { id } = req.body;
-
         const db = getFirestore();
-        await db.collection('Salesman').doc(id).delete();
+        const docRef = db.collection('Salesman').doc(id);
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) {
+            return res.status(404).json({ message: 'Sales partner not found.' });
+        }
+        const { uid } = docSnap.data();
+        await docRef.delete();
+        if (uid) {
+            await admin.auth().deleteUser(uid);
+        }
 
         res.status(200).json({ message: 'Sales partner deleted successfully.' });
     } catch (err) {
