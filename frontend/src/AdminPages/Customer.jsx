@@ -79,7 +79,8 @@ const Customer = () => {
           <div>
             <h2 className="text-3xl font-bold text-gray-800 mb-1">{customer.name}</h2>
             <h2 className="text-xl font-semibold text-gray-800 mb-1">{customer.phone}</h2>
-            <p className="text-gray-500 mb-1">Business: {customer.business}</p>
+            <p className="font-semibold mb-1">Customer Id: {customer.custid}</p>
+            <p className="font-semibold text-gray-500 mb-1">Business: {customer.business}</p>
             <p className="text-gray-400 text-sm mb-2">
               Created At: {new Date(Number(customer.createdAt)).toLocaleString()}
             </p>

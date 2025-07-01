@@ -159,7 +159,6 @@ const addDeliveryPartner = async (req, res) => {
                 throw error;
             }
         }
-
         const userRecord = await admin.auth().createUser({
             email,
             password,
@@ -171,6 +170,7 @@ const addDeliveryPartner = async (req, res) => {
             name,
             phone,
             email,
+            password,
         });
 
         res.status(201).json({ message: 'Delivery partner added successfully.' });
@@ -180,18 +180,18 @@ const addDeliveryPartner = async (req, res) => {
     }
 };
 
-
 const addSalesPerson = async (req, res) => {
     try {
         const { name, phone, password } = req.body;
+
         if (!name || !phone || !password) {
             return res.status(400).json({ message: 'Name, phone number, and password are required.' });
         }
 
         const db = getFirestore();
-
         const email = `${phone}@eggbucketsales.in`;
 
+        // Check if user already exists
         try {
             await admin.auth().getUserByEmail(email);
             return res.status(400).json({ message: 'A salesperson with this phone number already exists.' });
@@ -201,6 +201,11 @@ const addSalesPerson = async (req, res) => {
             }
         }
 
+        const docSnap = await db.collection("globalcounter").doc("salescounter").get();
+        const counterData = docSnap.data();
+        const currentCount = counterData?.counter || 0;
+
+        // Create the user
         const userRecord = await admin.auth().createUser({
             email,
             password,
@@ -212,6 +217,12 @@ const addSalesPerson = async (req, res) => {
             name,
             phone,
             email,
+            password,
+            sales_id: `S${currentCount + 1}`,
+        });
+
+        await db.collection("globalcounter").doc("salescounter").update({
+            counter: currentCount + 1
         });
 
         res.status(201).json({ message: 'Salesperson added successfully.' });
@@ -220,6 +231,7 @@ const addSalesPerson = async (req, res) => {
         res.status(500).json({ message: 'Server error while adding salesperson.' });
     }
 };
+
 
 
 const getDeliveryPartners = async (req, res) => {

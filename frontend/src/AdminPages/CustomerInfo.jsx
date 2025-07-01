@@ -97,6 +97,7 @@ const CustomerInfo = () => {
           <thead className="bg-gray-200 text-gray-700">
             <tr>
               <th className="py-3 px-4 text-left">Image</th>
+              <th className="py-3 px-4 text-left">Cust Id</th>
               <th className="py-3 px-4 text-left">Name</th>
               <th className="py-3 px-4 text-left">Business</th>
               <th className="py-3 px-4 text-left">Phone</th>
@@ -118,6 +119,7 @@ const CustomerInfo = () => {
                     className="h-12 w-12 rounded-full object-cover"
                   />
                 </td>
+                <td className="py-2 px-4 text-xs">{customer.custid}</td>
                 <td className="py-2 px-4 text-xs">{customer.name}</td>
                 <td className="py-2 px-4 text-xs">{customer.business}</td>
                 <td className="py-2 px-4 text-xs">{customer.phone}</td>

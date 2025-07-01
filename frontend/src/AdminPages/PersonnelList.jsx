@@ -93,22 +93,43 @@ const PersonnelList = () => {
   if (loading) return <div className="text-center py-10 text-xl font-semibold">Loading...</div>;
   if (error) return <div className="text-center py-10 text-red-600 text-xl">{error}</div>;
 
-  const renderPartnerList = (partners, type) =>
-    partners.map((partner) => (
+  const renderDeliveryPartners = () =>
+    deliveryPartners.map((partner) => (
       <li
         key={partner.id}
         className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
       >
         <div>
-          <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span>
-          <br />
+          <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span><br />
           <span className="font-bold text-sm text-gray-600">Phone: {partner.phone}</span>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => handleEditClick(partner, type)}>
+          <button onClick={() => handleEditClick(partner, 'delivery')}>
             <FaEdit className="text-blue-500 hover:text-blue-700" />
           </button>
-          <button onClick={() => handleDeleteClick(partner, type)}>
+          <button onClick={() => handleDeleteClick(partner, 'delivery')}>
+            <FaTrash className="text-red-500 hover:text-red-700" />
+          </button>
+        </div>
+      </li>
+    ));
+
+  const renderSalesPartners = () =>
+    salesPartners.map((partner) => (
+      <li
+        key={partner.id}
+        className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
+      >
+        <div>
+          <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span><br />
+          <span className="font-bold text-sm text-gray-600">Phone: {partner.phone}</span><br />
+          <span className="font-bold text-sm text-gray-600">Sales ID: {partner.sales_id}</span>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => handleEditClick(partner, 'sales')}>
+            <FaEdit className="text-blue-500 hover:text-blue-700" />
+          </button>
+          <button onClick={() => handleDeleteClick(partner, 'sales')}>
             <FaTrash className="text-red-500 hover:text-red-700" />
           </button>
         </div>
@@ -117,30 +138,31 @@ const PersonnelList = () => {
 
   return (
     <div className="min-h-screen p-6 bg-gradient-to-r from-blue-100 to-purple-200 flex flex-col items-center">
-      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-6xl">
+        {/* Delivery Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-300">
           <h3 className="text-2xl font-bold mb-6 text-center text-blue-700">Delivery Partners</h3>
           {deliveryPartners.length === 0 ? (
             <p className="text-gray-500 text-center">No delivery partners found.</p>
           ) : (
-            <ul className="space-y-4">{renderPartnerList(deliveryPartners, 'delivery')}</ul>
+            <ul className="space-y-4">{renderDeliveryPartners()}</ul>
           )}
         </div>
 
+        {/* Sales Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-green-300">
           <h3 className="text-2xl font-bold mb-6 text-center text-green-700">Sales Partners</h3>
           {salesPartners.length === 0 ? (
             <p className="text-gray-500 text-center">No sales partners found.</p>
           ) : (
-            <ul className="space-y-4">{renderPartnerList(salesPartners, 'sales')}</ul>
+            <ul className="space-y-4">{renderSalesPartners()}</ul>
           )}
         </div>
       </div>
 
       {/* Edit Modal */}
       {editingPartner && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 ">
+        <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-gradient-to-r from-blue-100 to-purple-200 p-8 rounded-2xl shadow-2xl w-11/12 max-w-lg">
             <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Edit Partner</h2>
             <div className="flex flex-col gap-4">
