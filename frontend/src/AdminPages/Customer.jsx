@@ -7,25 +7,32 @@ import { FiArrowLeft } from 'react-icons/fi';
 const Customer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const [customer, setCustomer] = useState(null);
+  const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showFullImage, setShowFullImage] = useState(false);
 
   useEffect(() => {
-    const fetchCustomer = async () => {
+    const fetchCustomerData = async () => {
       try {
-        const res = await axios.get(`${ADMIN_PATH}/customer-info/${id}`);
-        setCustomer(res.data);
+        const [customerRes, deliveriesRes] = await Promise.all([
+          axios.get(`${ADMIN_PATH}/customer-info/${id}`),
+          axios.get(`${ADMIN_PATH}/customer/deliveries/${id}`),
+        ]);
+        // console.log("deliveries: ", deliveriesRes.data);
+        setCustomer(customerRes.data);
+        setDeliveries(deliveriesRes.data.deliveries || []);
       } catch (err) {
-        console.error('Error fetching customer:', err);
-        setError('Failed to load customer data.');
+        console.error('Error fetching customer or deliveries:', err);
+        setError('Failed to load customer or delivery data.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCustomer();
+    fetchCustomerData();
   }, [id]);
 
   const parseLatLng = (locationString) => {
@@ -72,9 +79,10 @@ const Customer = () => {
         className="self-start mb-4 text-gray-700 hover:text-blue-600 font-medium flex items-center"
       >
         <FiArrowLeft className="text-xl mr-2" />
+        Back
       </button>
 
-      <div className="bg-purple-50 shadow-xl rounded-xl p-6 w-full max-w-3xl">
+      <div className="bg-purple-100 shadow-xl rounded-xl p-6 w-full max-w-3xl">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-3xl font-bold text-gray-800 mb-1">{customer.name}</h2>
@@ -96,6 +104,7 @@ const Customer = () => {
           </div>
         </div>
 
+        {/* Location */}
         <div className="mt-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-2">Location</h3>
           <p className="text-gray-600 mb-6">{customer.location}</p>
@@ -111,6 +120,49 @@ const Customer = () => {
             </a>
           )}
         </div>
+
+        {/* Deliveries */}
+        {deliveries.length > 0 && (
+          <div className="mt-8">
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">Delivery History</h3>
+            <ul className="space-y-4">
+              {deliveries.map((delivery, index) => (
+                <li key={index} className="bg-white p-4 rounded-lg shadow border">
+                  <p className="text-sm mb-1">
+                    <span className="font-semibold">Date-Time:</span>{' '}
+                    {new Date(delivery.timestamp._seconds * 1000).toLocaleString()}
+                  </p>
+                  {delivery.deliveryMan ? (
+                    <>
+                      <p className="text-sm mb-1">
+                        <span className="font-semibold">Delivered By: </span> {delivery.deliveryMan.name}
+                      </p>
+                      <p className="text-sm mb-1">
+                        <span className="font-semibold">Phone: </span> {delivery.deliveryMan.phone}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-700 text-red-500">Delivery person info not available</p>
+                  )}
+                  <p className="text-sm mb-1 font-semibold">
+                    <span>Status:</span>
+                    <span
+                      className={`px-2 py-1 rounded ${delivery.type === 'delivered'
+                        ? 'text-green-700'
+                        : delivery.type === 'reached'
+                          ? 'text-orange-700'
+                          : 'text-gray-400'
+                        }`}
+                    >
+                      {delivery.type.charAt(0).toUpperCase() + delivery.type.slice(1)}
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+
+          </div>
+        )}
       </div>
 
       {/* Full Image Overlay */}
@@ -125,7 +177,6 @@ const Customer = () => {
           >
             &times;
           </button>
-
           <img
             src={customer.imageUrl}
             alt="Full Size"

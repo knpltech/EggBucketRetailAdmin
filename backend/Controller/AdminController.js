@@ -364,6 +364,57 @@ const deleteSalesPartner = async (req, res) => {
 };
 
 
+const getUserDeliveries = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const db = getFirestore();
+
+        const deliveriesSnapshot = await db
+            .collection('customers')
+            .doc(userId)
+            .collection('deliveries')
+            .get();
+
+        if (deliveriesSnapshot.empty) {
+            return res.status(404).json({ error: 'No deliveries found for this customer.' });
+        }
+
+        const deliveries = [];
+
+        for (const doc of deliveriesSnapshot.docs) {
+            const data = doc.data();
+            const deliveredByUID = data.deliveredBy;
+
+            let deliveryMan = null;
+
+            if (deliveredByUID) {
+                const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
+                if (deliveryManDoc.exists) {
+                    const manData = deliveryManDoc.data();
+                    deliveryMan = {
+                        name: manData.name || '',
+                        phone: manData.phone || '',
+                    };
+                }
+            }
+
+            deliveries.push({
+                id: doc.id,
+                deliveredBy: deliveredByUID,
+                timestamp: data.timestamp,
+                type: data.type,
+                deliveryMan,
+            });
+        }
+
+        res.status(200).json({ deliveries });
+    } catch (error) {
+        console.error('Error fetching customer deliveries:', error);
+        res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
+    }
+};
+
+
 
 export {
     login,
@@ -378,5 +429,6 @@ export {
     updateDeliveryPartner,
     updateSalesPartner,
     deleteDeliveryPartner,
-    deleteSalesPartner
+    deleteSalesPartner,
+    getUserDeliveries
 };
