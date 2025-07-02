@@ -47,6 +47,13 @@ export default function AdminDashboard() {
           </Link>
 
           <Link
+            to="/admin/report"
+            className="block px-4 py-2 rounded hover:bg-gray-700"
+          >
+            Report
+          </Link>
+
+          <Link
             to="/"
             className="mt-auto block px-4 py-2 rounded bg-red-500 hover:bg-red-600 text-white text-center"
           >

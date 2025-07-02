@@ -8,6 +8,7 @@ import AddDeliveryPartner from './AdminPages/AddDeliveryPartner';
 import AddSalesPerson from './AdminPages/AddSalesPerson';
 import PersonnelList from './AdminPages/PersonnelList';
 import Customer from './AdminPages/Customer';
+import Report from './AdminPages/Report';
 
 import RetailDashboard from './RetailPages/RetailDashboard';
 import Orders from './RetailPages/Orders';
@@ -35,6 +36,7 @@ function App() {
         <Route path="add-sales" element={<AddSalesPerson />} />
         <Route path="personnel" element={<PersonnelList />} />
         <Route path="customer-info/:id" element={<Customer />} />
+        <Route path="report" element={<Report />} />
 
       </Route>
 

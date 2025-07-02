@@ -16,7 +16,8 @@ import {
     updateSalesPartner, 
     deleteDeliveryPartner,
     deleteSalesPartner,
-    getUserDeliveries
+    getUserDeliveries,
+    getAllCustomerDeliveries
 } from "../Controller/AdminController.js";
 
 router.route("/login").post(login);
@@ -25,6 +26,8 @@ router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);
 router.put("/customer/update", updateCustomer);
 router.get("/customer/deliveries/:id", getUserDeliveries);
+router.get("/all-deliveries", getAllCustomerDeliveries);
+
 
 router.post("/add-del-partner", addDeliveryPartner);
 router.get('/get-del-partner', getDeliveryPartners);

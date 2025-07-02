@@ -397,7 +397,6 @@ const getUserDeliveries = async (req, res) => {
                     };
                 }
             }
-
             deliveries.push({
                 id: doc.id,
                 deliveredBy: deliveredByUID,
@@ -406,10 +405,71 @@ const getUserDeliveries = async (req, res) => {
                 deliveryMan,
             });
         }
-
         res.status(200).json({ deliveries });
     } catch (error) {
         console.error('Error fetching customer deliveries:', error);
+        res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
+    }
+};
+
+const getAllCustomerDeliveries = async (req, res) => {
+    try {
+        const db = getFirestore();
+        const customersSnapshot = await db.collection('customers').get();
+
+        if (customersSnapshot.empty) {
+            return res.status(404).json({ error: 'No customers found.' });
+        }
+
+        const customersWithDeliveries = [];
+
+        for (const customerDoc of customersSnapshot.docs) {
+            const customerData = customerDoc.data();
+            const customerId = customerDoc.id;
+
+            const deliveriesSnapshot = await db
+                .collection('customers')
+                .doc(customerId)
+                .collection('deliveries')
+                .get();
+
+            const deliveries = [];
+
+            for (const deliveryDoc of deliveriesSnapshot.docs) {
+                const deliveryData = deliveryDoc.data();
+                const deliveredByUID = deliveryData.deliveredBy;
+
+                let deliveryMan = null;
+
+                // If deliveryMan UID exists, fetch his data
+                if (deliveredByUID) {
+                    const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
+                    if (deliveryManDoc.exists) {
+                        const manData = deliveryManDoc.data();
+                        deliveryMan = {
+                            name: manData.name || '',
+                            phone: manData.phone || '',
+                        };
+                    }
+                }
+
+                deliveries.push({
+                    id: deliveryDoc.id,
+                    ...deliveryData,
+                    deliveryMan,
+                });
+            }
+
+            customersWithDeliveries.push({
+                id: customerId,
+                ...customerData,
+                deliveries,
+            });
+        }
+
+        res.status(200).json({ customers: customersWithDeliveries });
+    } catch (error) {
+        console.error('Error fetching customers with deliveries:', error);
         res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
     }
 };
@@ -430,5 +490,6 @@ export {
     updateSalesPartner,
     deleteDeliveryPartner,
     deleteSalesPartner,
-    getUserDeliveries
+    getUserDeliveries,
+    getAllCustomerDeliveries
 };
