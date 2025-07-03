@@ -1,7 +1,14 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Outlet } from 'react-router-dom';
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const handleLogout = () => {
+    localStorage.removeItem('loggedIn');
+    localStorage.removeItem('userType');
+    navigate('/');
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
@@ -53,12 +60,13 @@ export default function AdminDashboard() {
             Report
           </Link>
 
-          <Link
-            to="/"
+          <button
+            onClick={handleLogout}
             className="mt-auto block px-4 py-2 rounded bg-red-500 hover:bg-red-600 text-white text-center"
           >
             Logout
-          </Link>
+          </button>
+
         </nav>
       </aside>
 

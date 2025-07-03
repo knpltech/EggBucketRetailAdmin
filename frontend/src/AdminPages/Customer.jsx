@@ -21,7 +21,6 @@ const Customer = () => {
           axios.get(`${ADMIN_PATH}/customer-info/${id}`),
           axios.get(`${ADMIN_PATH}/customer/deliveries/${id}`),
         ]);
-        // console.log("deliveries: ", deliveriesRes.data);
         setCustomer(customerRes.data);
         setDeliveries(deliveriesRes.data.deliveries || []);
       } catch (err) {
@@ -34,6 +33,41 @@ const Customer = () => {
 
     fetchCustomerData();
   }, [id]);
+
+  const handleDownloadCSV = () => {
+    if (!deliveries.length) return;
+
+    const rows = deliveries.map(delivery => {
+      const dateObj = new Date(delivery.timestamp._seconds * 1000);
+      const date = dateObj.toLocaleDateString();
+      const time = dateObj.toLocaleTimeString();
+
+      return {
+        Date: date,
+        Time: time,
+        'Delivered By': delivery.deliveryMan?.name || 'N/A',
+        Phone: delivery.deliveryMan?.phone || 'N/A',
+        Status: delivery.type?.toUpperCase() || 'UNKNOWN'
+      };
+    });
+
+    const headers = Object.keys(rows[0]).join(',');
+    const csv = [
+      headers,
+      ...rows.map(row => Object.values(row).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `delivery_history_${customer.name || 'customer'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
 
   const parseLatLng = (locationString) => {
     const match = locationString.match(/Lat:\s*([\d.-]+),\s*Lng:\s*([\d.-]+)/);
@@ -89,7 +123,7 @@ const Customer = () => {
             <h2 className="text-xl font-semibold text-gray-800 mb-1">{customer.phone}</h2>
             <p className="font-semibold mb-1">Customer Id: {customer.custid}</p>
             <p className="font-semibold text-gray-500 mb-1">Business: {customer.business}</p>
-            <p className="text-gray-400 text-sm mb-2">
+            <p className="text-gray-500 text-sm mb-2">
               Created At: {new Date(Number(customer.createdAt)).toLocaleString()}
             </p>
           </div>
@@ -124,13 +158,29 @@ const Customer = () => {
         {/* Deliveries */}
         {deliveries.length > 0 && (
           <div className="mt-8">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">Delivery History</h3>
+            <div className='flex sm:flex-row sm:items-en gap-4 mb-8'>
+              <h3 className="text-lg font-bold text-gray-700 mb-4">Delivery History</h3>
+              {deliveries.length > 0 && (
+                <button
+                  onClick={handleDownloadCSV}
+                  className="mb-4 px-4 py-2 bg-green-600 text-sm text-white rounded hover:bg-green-700"
+                >
+                  ⬇️ Download
+                </button>
+              )}
+
+
+            </div>
             <ul className="space-y-4">
               {deliveries.map((delivery, index) => (
                 <li key={index} className="bg-white p-4 rounded-lg shadow border">
                   <p className="text-sm mb-1">
-                    <span className="font-semibold">Date-Time:</span>{' '}
-                    {new Date(delivery.timestamp._seconds * 1000).toLocaleString()}
+                    <span className="font-semibold">Date:</span>{' '}
+                    {new Date(delivery.timestamp._seconds * 1000).toLocaleDateString()}
+                  </p>
+                  <p className="text-sm mb-1">
+                    <span className="font-semibold">Time:</span>{' '}
+                    {new Date(delivery.timestamp._seconds * 1000).toLocaleTimeString()}
                   </p>
                   {delivery.deliveryMan ? (
                     <>
@@ -150,11 +200,11 @@ const Customer = () => {
                       className={`px-2 py-1 rounded ${delivery.type === 'delivered'
                         ? 'text-green-700'
                         : delivery.type === 'reached'
-                          ? 'text-orange-700'
+                          ? 'text-orange-500'
                           : 'text-gray-400'
                         }`}
                     >
-                      {delivery.type.charAt(0).toUpperCase() + delivery.type.slice(1)}
+                      {delivery.type.toUpperCase()}
                     </span>
                   </p>
                 </li>

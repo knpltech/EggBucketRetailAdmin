@@ -441,7 +441,6 @@ const getAllCustomerDeliveries = async (req, res) => {
 
                 let deliveryMan = null;
 
-                // If deliveryMan UID exists, fetch his data
                 if (deliveredByUID) {
                     const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
                     if (deliveryManDoc.exists) {

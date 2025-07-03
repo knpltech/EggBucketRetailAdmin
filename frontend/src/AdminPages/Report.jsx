@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ADMIN_PATH } from '../constant';
 
 const Report = () => {
-    const [data, setData] = useState([]); // All customers
-    const [filteredDeliveries, setFilteredDeliveries] = useState([]); // Deliveries for selected date
+    const [data, setData] = useState([]);
+    const [filteredDeliveries, setFilteredDeliveries] = useState([]);
     const [selectedDate, setSelectedDate] = useState(() => {
         const today = new Date();
         return today.toISOString().split('T')[0];
@@ -15,12 +15,10 @@ const Report = () => {
                 const res = await fetch(`${ADMIN_PATH}/all-deliveries`);
                 const json = await res.json();
                 setData(json.customers);
-                console.log("data: ", data);
             } catch (err) {
                 console.error('Error fetching deliveries:', err);
             }
         };
-
         fetchData();
     }, []);
 
@@ -51,7 +49,6 @@ const Report = () => {
         document.body.removeChild(link);
     };
 
-
     useEffect(() => {
         filterByDate(selectedDate);
     }, [data, selectedDate]);
@@ -66,7 +63,6 @@ const Report = () => {
                 status: delivery?.type || 'not delivered',
             };
         });
-
         setFilteredDeliveries(result);
     };
 
@@ -83,11 +79,11 @@ const Report = () => {
     };
 
     return (
-        <div className="p-6 max-w-4xl mx-auto">
-            <h1 className="text-2xl font-bold mb-4">Delivery Report</h1>
+        <div className="p-6 sm:p-10 max-w-6xl mx-auto">
+            <h1 className="text-3xl font-bold text-gray-800 mb-6">📦 Delivery Report</h1>
 
-            <div className='flex items-center justify-between'>
-                <div className="mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+                <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                         Select Date
                     </label>
@@ -95,44 +91,43 @@ const Report = () => {
                         type="date"
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
-                        className="border p-2 rounded-md"
+                        className="border border-gray-300 p-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                 </div>
 
                 {filteredDeliveries.length > 0 && (
-                    <div className="text-center">
-                        <button
-                            onClick={() => downloadCSV(filteredDeliveries, selectedDate)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                        >
-                            Download CSV
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => downloadCSV(filteredDeliveries, selectedDate)}
+                        className="inline-block px-5 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 transition-all duration-200"
+                    >
+                        ⬇️ Download CSV
+                    </button>
                 )}
             </div>
 
-
-
-            <div className="overflow-x-auto">
-                <table className="w-full table-auto border border-gray-300">
-                    <thead className="bg-gray-100">
+            <div className="overflow-x-auto bg-white rounded-xl shadow border">
+                <table className="min-w-full text-sm text-left">
+                    <thead className="bg-gray-100 text-xs uppercase font-bold border-b">
                         <tr>
-                            <th className="p-2 border">Customer ID</th>
-                            <th className="p-2 border">Name</th>
-                            <th className="p-2 border">Delivery By</th>
-                            <th className="p-2 border">Phone</th>
-                            <th className="p-2 border">Status</th>
+                            <th className="px-4 py-3">Customer ID</th>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3">Delivery By</th>
+                            <th className="px-4 py-3">Phone</th>
+                            <th className="px-4 py-3">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredDeliveries.map((row, idx) => (
-                            <tr key={idx} className="text-center">
-                                <td className="p-2 border">{row.custid}</td>
-                                <td className="p-2 border">{row.name}</td>
-                                <td className="p-2 border">{row.deliveryMan?.name || '-'}</td>
-                                <td className="p-2 border">{row.deliveryMan?.phone || '-'}</td>
-                                <td className={`p-2 border ${getStatusColor(row.status)}`}>
-                                    {row.status}
+                            <tr
+                                key={idx}
+                                className="border-b hover:bg-gray-50 transition"
+                            >
+                                <td className="px-4 py-3">{row.custid}</td>
+                                <td className="px-4 py-3">{row.name}</td>
+                                <td className="px-4 py-3">{row.deliveryMan?.name || '-'}</td>
+                                <td className="px-4 py-3">{row.deliveryMan?.phone || '-'}</td>
+                                <td className={`px-4 py-3 ${getStatusColor(row.status)}`}>
+                                    {row.status.toUpperCase()}
                                 </td>
                             </tr>
                         ))}
@@ -140,7 +135,9 @@ const Report = () => {
                 </table>
 
                 {filteredDeliveries.length === 0 && (
-                    <p className="mt-4 text-center text-gray-500">No data for this date.</p>
+                    <p className="text-center p-6 text-gray-500">
+                        No data available for the selected date.
+                    </p>
                 )}
             </div>
         </div>
