@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ADMIN_PATH } from '../constant';
-import { FaTrash, FaEdit } from 'react-icons/fa';
+import { FaTrash, FaEdit } from 'react-icons/fa'
+import { FaToggleOff, FaToggleOn } from 'react-icons/fa6';
 
 const PersonnelList = () => {
   const [deliveryPartners, setDeliveryPartners] = useState([]);
@@ -18,6 +19,11 @@ const PersonnelList = () => {
 
   const [actionMessage, setActionMessage] = useState('');
   const [messageType, setMessageType] = useState('');
+
+  const [deliverySearch, setDeliverySearch] = useState('');
+  const [salesSearch, setSalesSearch] = useState('');
+
+
 
   useEffect(() => {
     fetchPartners();
@@ -87,79 +93,143 @@ const PersonnelList = () => {
     }
   };
 
-  const handleDelete = async () => {
+  // const handleDelete = async () => {
+  //   try {
+  //     const endpoint = deleteType === 'delivery' ? 'delivery/delete' : 'sales/delete';
+  //     await axios.delete(`${ADMIN_PATH}/${endpoint}`, { data: { id: deletingPartner.uid } });
+  //     if (deleteType === 'delivery') {
+  //       setDeliveryPartners((prev) => prev.filter((p) => p.uid !== deletingPartner.uid));
+  //     } else {
+  //       setSalesPartners((prev) => prev.filter((p) => p.uid !== deletingPartner.uid));
+  //     }
+  //     setDeletingPartner(null);
+  //     showMessage(`${deleteType} partner deleted successfully.`, 'success');
+  //   } catch (err) {
+  //     console.error('Error deleting partner:', err);
+  //     showMessage('Failed to delete partner.', 'error');
+  //   }
+  // };
+
+  const handleToggleDeliveryStatus = async (partner) => {
     try {
-      const endpoint = deleteType === 'delivery' ? 'delivery/delete' : 'sales/delete';
-      await axios.delete(`${ADMIN_PATH}/${endpoint}`, { data: { id: deletingPartner.uid } });
-      if (deleteType === 'delivery') {
-        setDeliveryPartners((prev) => prev.filter((p) => p.uid !== deletingPartner.uid));
-      } else {
-        setSalesPartners((prev) => prev.filter((p) => p.uid !== deletingPartner.uid));
-      }
-      setDeletingPartner(null);
-      showMessage(`${deleteType} partner deleted successfully.`, 'success');
+      const res = await axios.put(`${ADMIN_PATH}/delivery/toggle/${partner.uid}`);
+      const updatedStatus = res.data.active;
+
+      setDeliveryPartners((prev) =>
+        prev.map((p) =>
+          p.uid === partner.uid ? { ...p, active: updatedStatus } : p
+        )
+      );
+      showMessage(`Delivery partner is now ${updatedStatus ? 'enabled' : 'disabled'}.`, 'success');
     } catch (err) {
-      console.error('Error deleting partner:', err);
-      showMessage('Failed to delete partner.', 'error');
+      console.error('Error toggling delivery status:', err);
+      showMessage('Failed to toggle delivery status.', 'error');
     }
   };
+
+  const handleToggleSalesStatus = async (partner) => {
+    try {
+      const res = await axios.put(`${ADMIN_PATH}/sales/toggle/${partner.uid}`);
+      const updatedStatus = res.data.active;
+
+      setSalesPartners((prev) =>
+        prev.map((p) =>
+          p.uid === partner.uid ? { ...p, active: updatedStatus } : p
+        )
+      );
+      showMessage(`Sales partner is now ${updatedStatus ? 'enabled' : 'disabled'}.`, 'success');
+    } catch (err) {
+      console.error('Error toggling sales status:', err);
+      showMessage('Failed to toggle sales status.', 'error');
+    }
+  };
+
 
   if (loading) return <div className="text-center py-10 text-xl font-semibold">Loading...</div>;
   if (error) return <div className="text-center py-10 text-red-600 text-xl">{error}</div>;
 
   const renderDeliveryPartners = () =>
-    deliveryPartners.map((partner) => (
-      <li
-        key={partner.uid}
-        className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
-      >
-        <div>
-          <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span><br />
-          <span className="font-bold text-sm text-gray-600">Phone: {partner.phone}</span>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => handleEditClick(partner, 'delivery')}>
-            <FaEdit className="text-blue-500 hover:text-blue-700" />
-          </button>
-          <button onClick={() => handleDeleteClick(partner, 'delivery')}>
-            <FaTrash className="text-red-500 hover:text-red-700" />
-          </button>
-        </div>
-      </li>
-    ));
+    deliveryPartners
+      .filter((partner) => {
+        const q = deliverySearch.trim();
+        return (
+          !q ||
+          partner.name.toLowerCase().includes(q) ||
+          partner.phone.includes(q)
+        );
+      })
+      .map((partner) => (
+        <li
+          key={partner.uid}
+          className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
+        >
+          <div>
+            <span className="font-bold text-sm">Name: {partner.name}</span><br />
+            <span className="font-bold text-sm text-gray-700">Phone: {partner.phone}</span><br />
+            <span className="font-bold text-sm text-gray-700">Password: {partner.password}</span>
+          </div>
+          <div className="flex flex-col gap-4">
+            <button onClick={() => handleEditClick(partner, 'delivery')}>
+              <FaEdit className="text-blue-500 hover:text-blue-700" />
+            </button>
+            <button onClick={() => handleToggleDeliveryStatus(partner)}>
+              {partner.active ? (
+                <FaToggleOn className="text-green-500 hover:text-green-700 text-2xl" title="Deactivate" />
+              ) : (
+                <FaToggleOff className="text-red-500 hover:text-red-700 text-2xl" title="Activate" />
+              )}
+            </button>
+          </div>
+        </li>
+      ));
+
 
   const renderSalesPartners = () =>
-    salesPartners.map((partner) => (
-      <li
-        key={partner.uid}
-        className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
-      >
-        <div>
-          <span className="font-medium text-sm text-gray-800">Name: {partner.name}</span><br />
-          <span className="font-bold text-sm text-gray-600">Phone: {partner.phone}</span><br />
-          <span className="font-bold text-sm text-gray-600">Sales ID: {partner.sales_id}</span>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => handleEditClick(partner, 'sales')}>
-            <FaEdit className="text-blue-500 hover:text-blue-700" />
-          </button>
-          <button onClick={() => handleDeleteClick(partner, 'sales')}>
-            <FaTrash className="text-red-500 hover:text-red-700" />
-          </button>
-        </div>
-      </li>
-    ));
+    salesPartners
+      .filter((partner) => {
+        const q = salesSearch.trim();
+        return (
+          !q ||
+          partner.name.toLowerCase().includes(q) ||
+          partner.phone.includes(q) ||
+          (partner.sales_id && partner.sales_id.toLowerCase().includes(q))
+        );
+      })
+      .map((partner) => (
+        <li
+          key={partner.uid}
+          className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
+        >
+          <div>
+            <span className="font-bold text-sm">Name: {partner.name}</span><br />
+            <span className="font-bold text-sm text-gray-700">Phone: {partner.phone}</span><br />
+            <span className="font-bold text-sm text-gray-700">Sales ID: {partner.sales_id}</span><br />
+            <span className="font-bold text-sm text-gray-700">Password: {partner.password}</span>
+          </div>
+          <div className="flex flex-col gap-4">
+            <button onClick={() => handleEditClick(partner, 'sales')}>
+              <FaEdit className="text-blue-500 hover:text-blue-700" />
+            </button>
+            <button onClick={() => handleToggleSalesStatus(partner)}>
+              {partner.active ? (
+                <FaToggleOn className="text-green-500 hover:text-green-700 text-2xl" title="Deactivate" />
+              ) : (
+                <FaToggleOff className="text-red-500 hover:text-red-700 text-2xl" title="Activate" />
+              )}
+            </button>
+          </div>
+        </li>
+      ));
 
   return (
     <div className="min-h-screen p-6 bg-gradient-to-r from-blue-100 to-purple-200 flex flex-col items-center">
       {/* Top Notification Message */}
       {actionMessage && (
         <div
-          className={`mb-6 px-6 py-3 rounded-xl text-center font-semibold w-full max-w-4xl ${
-            messageType === 'success'
-              ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-red-100 text-red-800 border border-red-300'
-          }`}
+          className={`mb-6 px-6 py-3 rounded-xl text-center font-semibold w-full max-w-4xl ${messageType === 'success'
+            ? 'bg-green-100 text-green-800 border border-green-300'
+            : 'bg-red-100 text-red-800 border border-red-300'
+            }`}
         >
           {actionMessage}
         </div>
@@ -168,7 +238,16 @@ const PersonnelList = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-6xl">
         {/* Delivery Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-300">
-          <h3 className="text-2xl font-bold mb-6 text-center text-blue-700">Delivery Partners</h3>
+          <h3 className="text-2xl font-bold text-center mb-3 text-blue-700">Delivery Partners</h3>
+          <div className="max-w-2xl text-center mb-5">
+            <input
+              type="text"
+              placeholder="Search by name, phone"
+              className="p-1 rounded-lg border border-gray-600 shadow focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={deliverySearch}
+              onChange={(e) => setDeliverySearch(e.target.value.toLowerCase())}
+            />
+          </div>
           {deliveryPartners.length === 0 ? (
             <p className="text-gray-500 text-center">No delivery partners found.</p>
           ) : (
@@ -178,7 +257,17 @@ const PersonnelList = () => {
 
         {/* Sales Partners */}
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-green-300">
-          <h3 className="text-2xl font-bold mb-6 text-center text-green-700">Sales Partners</h3>
+          <h3 className="text-2xl font-bold text-center mb-3 text-green-700">Sales Partners</h3>
+          <div className="max-w-4xl text-center mb-5">
+            <input
+              type="text"
+              placeholder="Search by name, phone"
+              className="p-1 rounded-lg border border-gray-600 shadow focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={salesSearch}
+              onChange={(e) => setSalesSearch(e.target.value.toLowerCase())}
+            />
+          </div>
+
           {salesPartners.length === 0 ? (
             <p className="text-gray-500 text-center">No sales partners found.</p>
           ) : (

@@ -170,6 +170,7 @@ const addDeliveryPartner = async (req, res) => {
             phone,
             email,
             password,
+            active: true,
         });
 
         res.status(201).json({ message: 'Delivery partner added successfully.' });
@@ -218,6 +219,7 @@ const addSalesPerson = async (req, res) => {
             email,
             password,
             sales_id: `S${currentCount + 1}`,
+            active: true,
         });
 
         await db.collection("globalcounter").doc("salescounter").update({
@@ -363,6 +365,55 @@ const deleteSalesPartner = async (req, res) => {
     }
 };
 
+const toggleDeliveryPerson = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const db = getFirestore();
+
+        const deliveryRef = db.collection('DeliveryMan').doc(id);
+        const docSnap = await deliveryRef.get();
+
+        if (!docSnap.exists) {
+            return res.status(404).json({ message: 'Delivery person not found.' });
+        }
+
+        const currentStatus = docSnap.data().active;
+        await deliveryRef.update({ active: !currentStatus });
+
+        res.status(200).json({
+            message: `Delivery person status updated to ${!currentStatus ? 'active' : 'inactive'}.`,
+            active: !currentStatus,
+        });
+    } catch (err) {
+        console.error('Error toggling delivery person status:', err);
+        res.status(500).json({ message: 'Server error while toggling delivery person status.' });
+    }
+};
+
+const toggleSalesPerson = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const db = getFirestore();
+
+        const salesRef = db.collection('Salesman').doc(id);
+        const docSnap = await salesRef.get();
+
+        if (!docSnap.exists) {
+            return res.status(404).json({ message: 'Salesperson not found.' });
+        }
+
+        const currentStatus = docSnap.data().active;
+        await salesRef.update({ active: !currentStatus });
+
+        res.status(200).json({
+            message: `Salesperson status updated to ${!currentStatus ? 'active' : 'inactive'}.`,
+            active: !currentStatus,
+        });
+    } catch (err) {
+        console.error('Error toggling salesperson status:', err);
+        res.status(500).json({ message: 'Server error while toggling salesperson status.' });
+    }
+};
 
 const getUserDeliveries = async (req, res) => {
     try {
@@ -490,5 +541,7 @@ export {
     deleteDeliveryPartner,
     deleteSalesPartner,
     getUserDeliveries,
-    getAllCustomerDeliveries
+    getAllCustomerDeliveries,
+    toggleDeliveryPerson,
+    toggleSalesPerson
 };

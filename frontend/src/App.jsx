@@ -48,7 +48,6 @@ function App() {
         <Route path="deliveries" element={<Deliveries />} />
         <Route path="payments" element={<Payments />} />
       </Route>
-
     </Routes>
   );
 }
