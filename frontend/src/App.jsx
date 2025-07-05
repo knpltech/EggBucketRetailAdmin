@@ -6,6 +6,7 @@ import AdminDashboard from './AdminPages/AdminDashboard';
 import CustomerInfo from './AdminPages/CustomerInfo';
 import AddDeliveryPartner from './AdminPages/AddDeliveryPartner';
 import AddSalesPerson from './AdminPages/AddSalesPerson';
+import AddCustomer from './AdminPages/AddCustomer';
 import PersonnelList from './AdminPages/PersonnelList';
 import Customer from './AdminPages/Customer';
 import Report from './AdminPages/Report';
@@ -34,6 +35,7 @@ function App() {
         <Route path="customers" element={<CustomerInfo />} />
         <Route path="add-delivery" element={<AddDeliveryPartner />} />
         <Route path="add-sales" element={<AddSalesPerson />} />
+        <Route path="add-customer" element={<AddCustomer />} />
         <Route path="personnel" element={<PersonnelList />} />
         <Route path="customer-info/:id" element={<Customer />} />
         <Route path="report" element={<Report />} />

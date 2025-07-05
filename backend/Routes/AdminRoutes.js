@@ -1,6 +1,8 @@
 import express from "express";
+import multer from "multer";
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 import { 
     login, 
@@ -19,7 +21,8 @@ import {
     getUserDeliveries,
     getAllCustomerDeliveries,
     toggleDeliveryPerson,
-    toggleSalesPerson
+    toggleSalesPerson,
+    addCustomer
 } from "../Controller/AdminController.js";
 
 router.route("/login").post(login);
@@ -29,7 +32,7 @@ router.delete("/customer/delete", deleteCustomer);
 router.put("/customer/update", updateCustomer);
 router.get("/customer/deliveries/:id", getUserDeliveries);
 router.get("/all-deliveries", getAllCustomerDeliveries);
-
+router.post("/add-customer", upload.single('image'), addCustomer);
 
 router.post("/add-del-partner", addDeliveryPartner);
 router.get('/get-del-partner', getDeliveryPartners);

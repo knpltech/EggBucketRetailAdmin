@@ -1,5 +1,9 @@
 import admin from 'firebase-admin';
 import { getFirestore } from "firebase-admin/firestore"
+import axios from 'axios';
+import { getStorage } from 'firebase-admin/storage';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 
 const login = async (req, res) => {
     const { username, password, role } = req.body;
@@ -427,7 +431,7 @@ const getUserDeliveries = async (req, res) => {
             .get();
 
         if (deliveriesSnapshot.empty) {
-            return res.status(404).json({ error: 'No deliveries found for this customer.' });
+            return res.status(200).json({ deliveries: [] });
         }
 
         const deliveries = [];
@@ -524,7 +528,74 @@ const getAllCustomerDeliveries = async (req, res) => {
     }
 };
 
+const addCustomer = async (req, res) => {
+    try {
+        const {
+            name,
+            phone,
+            business,
+            createdby,
+            sales_id,
+            address
+        } = req.body;
+        const db = getFirestore();
+        const bucket = getStorage().bucket();
+        const GOOGLE_API_KEY = process.env.GOOGLE_MAP_KEY;
+        const geoRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json?address=${address}&key=${GOOGLE_API_KEY}`);
 
+        if (!geoRes.data.results.length) {
+            console.log("Invalid address for geocoding")
+            return res.status(400).json({ error: 'Invalid address for geocoding' });
+        }
+
+        const { lat, lng } = geoRes.data.results[0].geometry.location;
+        const location = `Lat: ${lat}, Lng: ${lng}`;
+
+        // Global counter
+        const counterRef = db.collection('globalcounter').doc('customercounter');
+        const counterDoc = await counterRef.get();
+        const current = counterDoc.exists ? counterDoc.data().counter : 0;
+        const custid = `${sales_id}C${current+1}`;
+
+        // Handle image
+        const imageFile = req.file;
+        if (!imageFile) {
+            return res.status(400).json({ error: 'Image file missing' });
+        }
+
+        const imageName = `Customer/${uuidv4()}${path.extname(imageFile.originalname)}`;
+        const file = bucket.file(imageName);
+
+        await file.save(imageFile.buffer, {
+            metadata: {
+                contentType: imageFile.mimetype,
+            },
+        });
+
+        const [imageUrl] = await file.getSignedUrl({
+            action: 'read',
+            expires: '03-01-2500',
+        });
+
+        const newDocRef = db.collection('customers').doc();
+
+        await newDocRef.set({
+            name,
+            phone,
+            business,
+            imageUrl,
+            createdAt: Date.now(),
+            createdby,
+            custid,
+            location
+        });
+        await counterRef.set({ counter: current + 1 });
+        res.status(200).json({ message: 'Customer added successfully' });
+    } catch (error) {
+        console.error('Error in addCustomer:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
 export {
     login,
@@ -543,5 +614,6 @@ export {
     getUserDeliveries,
     getAllCustomerDeliveries,
     toggleDeliveryPerson,
-    toggleSalesPerson
+    toggleSalesPerson,
+    addCustomer
 };

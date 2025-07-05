@@ -22,6 +22,7 @@ admin.initializeApp({
     client_x509_cert_url: process.env.CLIENT_X509_CERT_URL,
     universe_domain: "googleapis.com",
   }),
+  storageBucket: process.env.STORAGE_BUCKET,
 });
 
 

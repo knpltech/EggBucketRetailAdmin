@@ -9,11 +9,14 @@
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.13.4",
+    "axios": "^1.10.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
-    "google-gax": "^4.6.1"
+    "google-gax": "^4.6.1",
+    "multer": "^2.0.1",
+    "uuid": "^11.1.0"
   }
 }

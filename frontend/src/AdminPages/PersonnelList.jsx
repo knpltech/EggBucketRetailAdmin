@@ -161,28 +161,50 @@ const PersonnelList = () => {
       .map((partner) => (
         <li
           key={partner.uid}
-          className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
+          className={`flex justify-between items-center p-4 rounded-lg border ${partner.active ? 'border-blue-100 bg-blue-50' : 'border-gray-200 bg-gray-50'
+            } transition-all hover:shadow-sm`}
         >
-          <div>
-            <span className="font-bold text-sm">Name: {partner.name}</span><br />
-            <span className="font-bold text-sm text-gray-700">Phone: {partner.phone}</span><br />
-            <span className="font-bold text-sm text-gray-700">Password: {partner.password}</span>
+          <div className="flex-1">
+            <div className="flex items-center space-x-2 mb-1">
+              <span className="font-medium text-gray-800">{partner.name}</span>
+              <span className={`text-xs px-2 py-1 rounded-full ${partner.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                }`}>
+                {partner.active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Phone:</span>
+                <span>{partner.phone}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Password:</span>
+                <span>{partner.password}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col gap-4">
-            <button onClick={() => handleEditClick(partner, 'delivery')}>
-              <FaEdit className="text-blue-500 hover:text-blue-700" />
+          <div className="flex space-x-3 ml-4">
+            <button
+              onClick={() => handleEditClick(partner, 'delivery')}
+              className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-full transition"
+              title="Edit"
+            >
+              <FaEdit size={16} />
             </button>
-            <button onClick={() => handleToggleDeliveryStatus(partner)}>
+            <button
+              onClick={() => handleToggleDeliveryStatus(partner)}
+              className="p-2 rounded-full transition"
+              title={partner.active ? 'Deactivate' : 'Activate'}
+            >
               {partner.active ? (
-                <FaToggleOn className="text-green-500 hover:text-green-700 text-2xl" title="Deactivate" />
+                <FaToggleOn size={25} className="text-green-500 hover:text-green-700" />
               ) : (
-                <FaToggleOff className="text-red-500 hover:text-red-700 text-2xl" title="Activate" />
+                <FaToggleOff size={25} className="text-gray-400 hover:text-gray-600" />
               )}
             </button>
           </div>
         </li>
       ));
-
 
   const renderSalesPartners = () =>
     salesPartners
@@ -198,23 +220,49 @@ const PersonnelList = () => {
       .map((partner) => (
         <li
           key={partner.uid}
-          className="flex justify-between items-center p-4 border rounded-xl hover:shadow-md transition-transform hover:scale-[1.02]"
+          className={`flex justify-between items-center p-4 rounded-lg border ${partner.active ? 'border-purple-100 bg-purple-50' : 'border-gray-200 bg-gray-50'
+            } transition-all hover:shadow-sm`}
         >
-          <div>
-            <span className="font-bold text-sm">Name: {partner.name}</span><br />
-            <span className="font-bold text-sm text-gray-700">Phone: {partner.phone}</span><br />
-            <span className="font-bold text-sm text-gray-700">Sales ID: {partner.sales_id}</span><br />
-            <span className="font-bold text-sm text-gray-700">Password: {partner.password}</span>
+          <div className="flex-1">
+            <div className="flex items-center space-x-2 mb-1">
+              <span className="font-medium text-gray-800">{partner.name}</span>
+              <span className={`text-xs px-2 py-1 rounded-full ${partner.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                }`}>
+                {partner.active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Phone:</span>
+                <span>{partner.phone}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Sales ID:</span>
+                <span>{partner.sales_id}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Password:</span>
+                <span>{partner.password}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col gap-4">
-            <button onClick={() => handleEditClick(partner, 'sales')}>
-              <FaEdit className="text-blue-500 hover:text-blue-700" />
+          <div className="flex space-x-3 ml-4">
+            <button
+              onClick={() => handleEditClick(partner, 'sales')}
+              className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-full transition"
+              title="Edit"
+            >
+              <FaEdit size={16} />
             </button>
-            <button onClick={() => handleToggleSalesStatus(partner)}>
+            <button
+              onClick={() => handleToggleSalesStatus(partner)}
+              className="p-2 rounded-full transition"
+              title={partner.active ? 'Deactivate' : 'Activate'}
+            >
               {partner.active ? (
-                <FaToggleOn className="text-green-500 hover:text-green-700 text-2xl" title="Deactivate" />
+                <FaToggleOn size={25} className="text-green-500 hover:text-green-700" />
               ) : (
-                <FaToggleOff className="text-red-500 hover:text-red-700 text-2xl" title="Activate" />
+                <FaToggleOff size={25} className="text-gray-400 hover:text-gray-600" />
               )}
             </button>
           </div>
@@ -347,3 +395,8 @@ const PersonnelList = () => {
 };
 
 export default PersonnelList;
+
+
+
+
+
