@@ -34,10 +34,8 @@ const allowedOrigins = [
 
 const app = express();
 
-app.use(express.json());
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like curl or mobile apps)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -46,6 +44,8 @@ app.use(cors({
   },
   credentials: true
 }));
+
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/admin", adminRouter);
