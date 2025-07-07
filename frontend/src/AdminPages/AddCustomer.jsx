@@ -12,11 +12,8 @@ const AddCustomer = () => {
     phone: '',
     business: '',
     createdby: '',
-    address: {
-      area: '',
-      city: '',
-      pincode: ''
-    }
+    lng: '',
+    lat: ''
   });
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -34,22 +31,10 @@ const AddCustomer = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    if (name.startsWith("address.")) {
-      const key = name.split(".")[1];
-      setFormData((prev) => ({
-        ...prev,
-        address: {
-          ...prev.address,
-          [key]: value,
-        }
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value
-      }));
-    }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleSalesChange = (e) => {
@@ -82,11 +67,8 @@ const AddCustomer = () => {
       phone: '',
       business: '',
       createdby: '',
-      address: {
-        area: '',
-        city: '',
-        pincode: ''
-      }
+      lng: '',
+      lat: '',
     });
     setImageFile(null);
     setPreviewUrl('');
@@ -113,21 +95,14 @@ const AddCustomer = () => {
       data.append("image", imageFile);
       data.append("sales_id", sales_id);
 
-      const flatAddress = `${formData.address.area}, ${formData.address.city} - ${formData.address.pincode}`;
-      const formToSend = { ...formData, address: flatAddress };
-
-      Object.entries(formToSend).forEach(([key, val]) => {
-        if (typeof val === 'object') {
-          data.append(key, flatAddress);
-        } else {
-          data.append(key, val);
-        }
+      Object.entries(formData).forEach(([key, val]) => {
+        data.append(key, val);
       });
 
       await axios.post(`${ADMIN_PATH}/add-customer`, data, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
+
       alert("Customer added successfully!");
       resetForm();
     } catch (error) {
@@ -138,6 +113,7 @@ const AddCustomer = () => {
     }
   };
 
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-2xl bg-white rounded-xl shadow-lg overflow-hidden">
@@ -145,7 +121,7 @@ const AddCustomer = () => {
           <h2 className="text-2xl font-bold">Add New Customer</h2>
           <p className="text-purple-100">Fill in the details below to register a new customer</p>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Name */}
           <div className="space-y-2">
@@ -203,34 +179,23 @@ const AddCustomer = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <input
-                  name="address.area"
+                  name="lat"
                   type="text"
-                  value={formData.address.area}
+                  value={formData.lat}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Area"
+                  placeholder="Lattitude"
                   required
                 />
               </div>
               <div>
                 <input
-                  name="address.city"
+                  name="lng"
                   type="text"
-                  value={formData.address.city}
+                  value={formData.lng}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="City"
-                  required
-                />
-              </div>
-              <div>
-                <input
-                  name="address.pincode"
-                  type="text"
-                  value={formData.address.pincode}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Pincode"
+                  placeholder="Longitude"
                   required
                 />
               </div>
@@ -306,11 +271,10 @@ const AddCustomer = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`w-full py-3.5 text-lg font-semibold text-white rounded-lg shadow-md transition duration-200 ${
-                isSubmitting 
-                  ? 'bg-gray-400 cursor-not-allowed' 
+              className={`w-full py-3.5 text-lg font-semibold text-white rounded-lg shadow-md transition duration-200 ${isSubmitting
+                  ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700'
-              }`}
+                }`}
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center">

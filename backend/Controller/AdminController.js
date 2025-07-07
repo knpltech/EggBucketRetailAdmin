@@ -536,19 +536,11 @@ const addCustomer = async (req, res) => {
             business,
             createdby,
             sales_id,
-            address
+            lat,
+            lng,
         } = req.body;
         const db = getFirestore();
         const bucket = getStorage().bucket();
-        const GOOGLE_API_KEY = process.env.GOOGLE_MAP_KEY;
-        const geoRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json?address=${address}&key=${GOOGLE_API_KEY}`);
-
-        if (!geoRes.data.results.length) {
-            console.log("Invalid address for geocoding")
-            return res.status(400).json({ error: 'Invalid address for geocoding' });
-        }
-
-        const { lat, lng } = geoRes.data.results[0].geometry.location;
         const location = `Lat: ${lat}, Lng: ${lng}`;
 
         // Global counter
