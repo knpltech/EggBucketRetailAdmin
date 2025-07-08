@@ -1,13 +1,15 @@
-import express, { urlencoded } from "express";
+import express from "express";
 import admin from "firebase-admin";
 import dotenv from "dotenv";
 import cors from "cors";
 
-import adminRouter from "./Routes/AdminRoutes.js"
-import retailRouter from "./Routes/RetailRoutes.js"
+import adminRouter from "./Routes/AdminRoutes.js";
+import retailRouter from "./Routes/RetailRoutes.js";
 
+// Load environment variables
 dotenv.config();
 
+// ✅ Initialize Firebase Admin SDK
 admin.initializeApp({
   credential: admin.credential.cert({
     type: process.env.TYPE,
@@ -27,9 +29,31 @@ admin.initializeApp({
 
 const app = express();
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://egg-bucket-retail-admin.vercel.app"
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS not allowed for this origin"));
+    }
+  },
+  credentials: false
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 app.use(express.json());
-app.use(cors());
 app.use(express.urlencoded({ extended: true }));
+
+app.get("/", (req, res) => {
+  res.send("API is live");
+});
 
 app.use("/api/admin", adminRouter);
 app.use("/api/retail", retailRouter);
