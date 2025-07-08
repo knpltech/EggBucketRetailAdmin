@@ -29,25 +29,8 @@ admin.initializeApp({
 
 const app = express();
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://egg-bucket-retail-admin.vercel.app"
-];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("CORS not allowed for this origin"));
-    }
-  },
-  credentials: false
-};
-
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
-
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
