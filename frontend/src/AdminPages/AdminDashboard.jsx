@@ -13,7 +13,7 @@ export default function AdminDashboard() {
 
   const navItems = [
     { label: 'About', path: '/admin' },
-    { label: 'Customer Information', path: '/admin/customers' },
+    { label: 'Customer Info', path: '/admin/customers' },
     { label: 'Add Delivery Partner', path: '/admin/add-delivery' },
     { label: 'Add Sales Partner', path: '/admin/add-sales' },
     { label: 'Add Customer', path: '/admin/add-customer' },
