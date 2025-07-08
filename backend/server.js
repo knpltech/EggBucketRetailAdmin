@@ -25,13 +25,6 @@ admin.initializeApp({
   storageBucket: process.env.STORAGE_BUCKET,
 });
 
-
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://egg-bucket-retail.vercel.app"
-];
-
-
 const app = express();
 app.use(cors({
   origin: true,
