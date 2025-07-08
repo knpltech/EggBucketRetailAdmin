@@ -26,16 +26,17 @@ admin.initializeApp({
 });
 
 const app = express();
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
 
 app.use(express.json());
+app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/admin", adminRouter);
 app.use("/api/retail", retailRouter);
+
+app.all("*", (req, res, next) => {
+  throw new NotFound("Invalid route");
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
