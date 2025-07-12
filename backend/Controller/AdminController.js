@@ -31,12 +31,12 @@ const login = async (req, res) => {
 };
 
 const userInfo = async (req, res) => {
-  const cacheKey = 'userInfo';
-  const cached = cache.get(cacheKey);
+//   const cacheKey = 'userInfo';
+//   const cached = cache.get(cacheKey);
 
-  if (cached) {
-    return res.status(200).json(cached);
-  }
+//   if (cached) {
+//     return res.status(200).json(cached);
+//   }
 
   try {
     const db = getFirestore();
@@ -52,7 +52,7 @@ const userInfo = async (req, res) => {
       });
     }
 
-    cache.set(cacheKey, customers);
+    // cache.set(cacheKey, customers);
     res.status(200).json(customers);
   } catch (error) {
     console.error('Error fetching customers:', error);
