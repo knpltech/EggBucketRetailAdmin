@@ -17,6 +17,7 @@
     "firebase-admin": "^13.4.0",
     "google-gax": "^4.6.1",
     "multer": "^2.0.1",
+    "node-cache": "^5.1.2",
     "uuid": "^11.1.0"
   }
 }

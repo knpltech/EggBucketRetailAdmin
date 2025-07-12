@@ -4,6 +4,8 @@ import axios from 'axios';
 import { getStorage } from 'firebase-admin/storage';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import cache from './cache.js';
+
 
 const login = async (req, res) => {
     const { username, password, role } = req.body;
@@ -29,36 +31,35 @@ const login = async (req, res) => {
 };
 
 const userInfo = async (req, res) => {
-    try {
-        const db = getFirestore();
-        const customersSnapshot = await db.collection('customers').get();
-        const customers = [];
+  const cacheKey = 'userInfo';
+  const cached = cache.get(cacheKey);
 
-        for (const doc of customersSnapshot.docs) {
-            const customerData = doc.data();
-            const deliveriesSnapshot = await db
-                .collection('customer')
-                .doc(doc.id)
-                .collection('deliveries')
-                .get();
+  if (cached) {
+    return res.status(200).json(cached);
+  }
 
-            const deliveries = deliveriesSnapshot.docs.map(deliveryDoc => ({
-                id: deliveryDoc.id,
-                ...deliveryDoc.data()
-            }));
+  try {
+    const db = getFirestore();
+    const customersSnapshot = await db.collection('customers').get();
+    const customers = [];
 
-            customers.push({
-                id: doc.id,
-                ...customerData,
-                deliveries
-            });
-        }
-        res.status(200).json(customers);
-    } catch (error) {
-        console.error('Error fetching customers:', error);
-        res.status(500).json({ error: 'Failed to fetch customer data' });
+    for (const doc of customersSnapshot.docs) {
+      const customerData = doc.data();
+
+      customers.push({
+        id: doc.id,
+        ...customerData
+      });
     }
+
+    cache.set(cacheKey, customers);
+    res.status(200).json(customers);
+  } catch (error) {
+    console.error('Error fetching customers:', error);
+    res.status(500).json({ error: 'Failed to fetch customer data' });
+  }
 };
+
 
 const specificUser = async (req, res) => {
     try {
@@ -420,113 +421,131 @@ const toggleSalesPerson = async (req, res) => {
 };
 
 const getUserDeliveries = async (req, res) => {
-    try {
-        const userId = req.params.id;
-        const db = getFirestore();
+  const userId = req.params.id;
+  const cacheKey = `userDeliveries:${userId}`;
+  const cached = cache.get(cacheKey);
 
-        const deliveriesSnapshot = await db
-            .collection('customers')
-            .doc(userId)
-            .collection('deliveries')
-            .get();
+  if (cached) {
+    return res.status(200).json({ deliveries: cached });
+  }
 
-        if (deliveriesSnapshot.empty) {
-            return res.status(200).json({ deliveries: [] });
-        }
+  try {
+    const db = getFirestore();
+    const deliveriesSnapshot = await db
+      .collection('customers')
+      .doc(userId)
+      .collection('deliveries')
+      .get();
 
-        const deliveries = [];
-
-        for (const doc of deliveriesSnapshot.docs) {
-            const data = doc.data();
-            const deliveredByUID = data.deliveredBy;
-
-            let deliveryMan = null;
-
-            if (deliveredByUID) {
-                const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
-                if (deliveryManDoc.exists) {
-                    const manData = deliveryManDoc.data();
-                    deliveryMan = {
-                        name: manData.name || '',
-                        phone: manData.phone || '',
-                    };
-                }
-            }
-            deliveries.push({
-                id: doc.id,
-                deliveredBy: deliveredByUID,
-                timestamp: data.timestamp,
-                type: data.type,
-                deliveryMan,
-            });
-        }
-        res.status(200).json({ deliveries });
-    } catch (error) {
-        console.error('Error fetching customer deliveries:', error);
-        res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
+    if (deliveriesSnapshot.empty) {
+      return res.status(200).json({ deliveries: [] });
     }
+
+    const deliveries = [];
+
+    for (const doc of deliveriesSnapshot.docs) {
+      const data = doc.data();
+      const deliveredByUID = data.deliveredBy;
+
+      let deliveryMan = null;
+
+      if (deliveredByUID) {
+        const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
+        if (deliveryManDoc.exists) {
+          const manData = deliveryManDoc.data();
+          deliveryMan = {
+            name: manData.name || '',
+            phone: manData.phone || '',
+          };
+        }
+      }
+
+      deliveries.push({
+        id: doc.id,
+        deliveredBy: deliveredByUID,
+        timestamp: data.timestamp,
+        type: data.type,
+        deliveryMan,
+      });
+    }
+
+    cache.set(cacheKey, deliveries); // ✅ cache it
+    res.status(200).json({ deliveries });
+  } catch (error) {
+    console.error('Error fetching customer deliveries:', error);
+    res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
+  }
 };
 
 const getAllCustomerDeliveries = async (req, res) => {
-    try {
-        const db = getFirestore();
-        const customersSnapshot = await db.collection('customers').get();
+  const cacheKey = 'allCustomerDeliveries';
+  const cached = cache.get(cacheKey);
 
-        if (customersSnapshot.empty) {
-            return res.status(404).json({ error: 'No customers found.' });
-        }
+  if (cached) {
+    return res.status(200).json({ customers: cached });
+  }
 
-        const customersWithDeliveries = [];
+  try {
+    const db = getFirestore();
+    const customersSnapshot = await db.collection('customers').get();
 
-        for (const customerDoc of customersSnapshot.docs) {
-            const customerData = customerDoc.data();
-            const customerId = customerDoc.id;
-
-            const deliveriesSnapshot = await db
-                .collection('customers')
-                .doc(customerId)
-                .collection('deliveries')
-                .get();
-
-            const deliveries = [];
-
-            for (const deliveryDoc of deliveriesSnapshot.docs) {
-                const deliveryData = deliveryDoc.data();
-                const deliveredByUID = deliveryData.deliveredBy;
-
-                let deliveryMan = null;
-
-                if (deliveredByUID) {
-                    const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
-                    if (deliveryManDoc.exists) {
-                        const manData = deliveryManDoc.data();
-                        deliveryMan = {
-                            name: manData.name || '',
-                            phone: manData.phone || '',
-                        };
-                    }
-                }
-
-                deliveries.push({
-                    id: deliveryDoc.id,
-                    ...deliveryData,
-                    deliveryMan,
-                });
-            }
-
-            customersWithDeliveries.push({
-                id: customerId,
-                ...customerData,
-                deliveries,
-            });
-        }
-
-        res.status(200).json({ customers: customersWithDeliveries });
-    } catch (error) {
-        console.error('Error fetching customers with deliveries:', error);
-        res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
+    if (customersSnapshot.empty) {
+      return res.status(404).json({ error: 'No customers found.' });
     }
+
+    const customersWithDeliveries = [];
+
+    for (const customerDoc of customersSnapshot.docs) {
+      const customerData = customerDoc.data();
+      const customerId = customerDoc.id;
+
+      const deliveriesSnapshot = await db
+        .collection('customers')
+        .doc(customerId)
+        .collection('deliveries')
+        .get();
+
+      const deliveries = [];
+
+      for (const deliveryDoc of deliveriesSnapshot.docs) {
+        const deliveryData = deliveryDoc.data();
+        const deliveredByUID = deliveryData.deliveredBy;
+
+        let deliveryMan = null;
+
+        if (deliveredByUID) {
+          const deliveryManDoc = await db.collection('DeliveryMan').doc(deliveredByUID).get();
+          if (deliveryManDoc.exists) {
+            const manData = deliveryManDoc.data();
+            deliveryMan = {
+              name: manData.name || '',
+              phone: manData.phone || '',
+            };
+          }
+        }
+
+        deliveries.push({
+          id: deliveryDoc.id,
+          ...deliveryData,
+          deliveryMan,
+        });
+      }
+
+      customersWithDeliveries.push({
+        id: customerId,
+        ...customerData,
+        deliveries,
+      });
+    }
+
+    cache.set(cacheKey, customersWithDeliveries); // ✅ cache it
+    res.status(200).json({ customers: customersWithDeliveries });
+  } catch (error) {
+    console.error('Error fetching customers with deliveries:', error);
+    res.status(500).json({ message: 'Server error while fetching customer deliveries.' });
+  }
 };
+
 
 const addCustomer = async (req, res) => {
     try {
