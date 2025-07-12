@@ -11,6 +11,8 @@ const CustomerInfo = () => {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   const [formData, setFormData] = useState({ name: '', business: '', phone: '' });
+  const [sortOption, setSortOption] = useState('name');
+
 
   const navigate = useNavigate();
 
@@ -54,6 +56,20 @@ const CustomerInfo = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleSortChange = (e) => {
+    setSortOption(e.target.value);
+  };
+
+  const sortedCustomers = [...customers].sort((a, b) => {
+    if (sortOption === 'name') {
+      return a.name.localeCompare(b.name);
+    } else if (sortOption === 'createdAt') {
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    }
+    return 0;
+  });
+
+
   const handleUpdate = async () => {
     try {
       await axios.put(`${ADMIN_PATH}/customer/update`, {
@@ -91,6 +107,17 @@ const CustomerInfo = () => {
   return (
     <div className="p-6 bg-gray-100 min-h-screen relative">
       <h1 className="text-3xl font-bold mb-6 text-center">Customer Details</h1>
+      <div className="flex justify-end mb-4">
+        <label className="mr-2 text-sm font-medium">Sort by:</label>
+        <select
+          value={sortOption}
+          onChange={handleSortChange}
+          className="border border-gray-300 bg-gray-200 rounded px-2 py-1 text-sm focus:outline-none"
+        >
+          <option value="name">Customer Name</option>
+          <option value="createdAt">Created Date </option>
+        </select>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="min-w-full bg-white rounded-lg shadow">
@@ -106,7 +133,7 @@ const CustomerInfo = () => {
             </tr>
           </thead>
           <tbody>
-            {customers.map((customer) => (
+            {sortedCustomers.map((customer) => (
               <tr
                 key={customer.id}
                 className="border-t hover:bg-gray-100 cursor-pointer"
