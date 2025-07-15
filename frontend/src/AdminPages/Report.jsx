@@ -4,10 +4,12 @@ import { ADMIN_PATH } from '../constant';
 const Report = () => {
     const [data, setData] = useState([]);
     const [filteredDeliveries, setFilteredDeliveries] = useState([]);
+    const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
     const [selectedDate, setSelectedDate] = useState(() => {
         const today = new Date();
         return today.toISOString().split('T')[0];
     });
+    const [statusFilter, setStatusFilter] = useState('all');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -22,7 +24,7 @@ const Report = () => {
         fetchData();
     }, []);
 
-    const downloadCSV = (data, dateStr) => {
+    const downloadCSV = (data, dateStr, statusFilter) => {
         if (!data || data.length === 0) return;
 
         const headers = ['Customer ID', 'Name', 'Delivery By', 'Phone', 'Status'];
@@ -43,7 +45,11 @@ const Report = () => {
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement('a');
         link.setAttribute('href', encodedUri);
-        link.setAttribute('download', `delivery_report_${dateStr}.csv`);
+        
+        // Include filter info in filename
+        const filterSuffix = statusFilter !== 'all' ? `_${statusFilter}` : '';
+        link.setAttribute('download', `delivery_report_${dateStr}${filterSuffix}.csv`);
+        
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -52,6 +58,10 @@ const Report = () => {
     useEffect(() => {
         filterByDate(selectedDate);
     }, [data, selectedDate]);
+
+    useEffect(() => {
+        filterByStatus(statusFilter);
+    }, [filteredDeliveries, statusFilter]);
 
     const filterByDate = (dateStr) => {
         const result = data.map((customer) => {
@@ -63,7 +73,20 @@ const Report = () => {
                 status: delivery?.type || 'not delivered',
             };
         });
-        setFilteredDeliveries(result);
+        
+        // Sort by name by default
+        const sortedResult = result.sort((a, b) => a.name.localeCompare(b.name));
+        setFilteredDeliveries(sortedResult);
+    };
+
+    const filterByStatus = (status) => {
+        let result = [...filteredDeliveries];
+        
+        if (status !== 'all') {
+            result = filteredDeliveries.filter(delivery => delivery.status === status);
+        }
+        
+        setDisplayedDeliveries(result);
     };
 
     const getStatusColor = (status) => {
@@ -78,6 +101,17 @@ const Report = () => {
         }
     };
 
+    const getStatusCounts = () => {
+        const counts = {
+            all: filteredDeliveries.length,
+            delivered: filteredDeliveries.filter(d => d.status === 'delivered').length,
+            reached: filteredDeliveries.filter(d => d.status === 'reached').length,
+            'not delivered': filteredDeliveries.filter(d => d.status === 'not delivered').length,
+        };
+        return counts;
+    };
+
+    const statusCounts = getStatusCounts();
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -95,9 +129,9 @@ const Report = () => {
                                 <h1 className="text-2xl font-bold text-white">Delivery Report Dashboard</h1>
                             </div>
                             <div className="mt-4 sm:mt-0">
-                                {filteredDeliveries.length > 0 && (
+                                {displayedDeliveries.length > 0 && (
                                     <button
-                                        onClick={() => downloadCSV(filteredDeliveries, selectedDate)}
+                                        onClick={() => downloadCSV(displayedDeliveries, selectedDate, statusFilter)}
                                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
                                     >
                                         <svg className="-ml-1 mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
@@ -110,7 +144,36 @@ const Report = () => {
                         </div>
                     </div>
 
-                    {/* Filters Section */}
+                    {/* Status Filter Section */}
+                    <div className="px-6 py-4 sm:px-8 border-b border-gray-200">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                            <label className="text-sm font-medium text-gray-700">
+                                Filter by Status:
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { value: 'all', label: 'All', color: 'bg-gray-100 text-gray-800' },
+                                    { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800' },
+                                    { value: 'reached', label: 'Reached', color: 'bg-yellow-100 text-yellow-800' },
+                                    { value: 'not delivered', label: 'Not Delivered', color: 'bg-red-100 text-red-800' }
+                                ].map((status) => (
+                                    <button
+                                        key={status.value}
+                                        onClick={() => setStatusFilter(status.value)}
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                                            statusFilter === status.value
+                                                ? `${status.color} ring-2 ring-offset-1 ring-blue-500`
+                                                : `${status.color} hover:shadow-md`
+                                        }`}
+                                    >
+                                        {status.label} ({statusCounts[status.value]})
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Date Filter Section */}
                     <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-gray-200">
                         <div className="flex flex-col sm:flex-row sm:items-end gap-6">
                             <div className="flex-1">
@@ -136,7 +199,7 @@ const Report = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
                                 <span className="text-sm font-medium text-blue-700">
-                                    {filteredDeliveries.length} records found
+                                    {displayedDeliveries.length} records displayed
                                 </span>
                             </div>
                         </div>
@@ -165,8 +228,8 @@ const Report = () => {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredDeliveries.length > 0 ? (
-                                    filteredDeliveries.map((row, idx) => (
+                                {displayedDeliveries.length > 0 ? (
+                                    displayedDeliveries.map((row, idx) => (
                                         <tr key={idx} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                                 {row.custid}
@@ -196,7 +259,9 @@ const Report = () => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                             </svg>
                                             <h3 className="mt-2 text-sm font-medium text-gray-900">No deliveries found</h3>
-                                            <p className="mt-1 text-sm text-gray-500">Try selecting a different date.</p>
+                                            <p className="mt-1 text-sm text-gray-500">
+                                                {statusFilter === 'all' ? 'Try selecting a different date.' : 'Try selecting a different status filter or date.'}
+                                            </p>
                                         </td>
                                     </tr>
                                 )}
