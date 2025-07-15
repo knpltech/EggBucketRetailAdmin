@@ -9,7 +9,7 @@ import retailRouter from "./Routes/RetailRoutes.js";
 // Load environment variables
 dotenv.config();
 
-// ✅ Initialize Firebase Admin SDK
+// Initialize Firebase Admin SDK
 admin.initializeApp({
   credential: admin.credential.cert({
     type: process.env.TYPE,
@@ -38,7 +38,10 @@ app.get("/", (req, res) => {
   res.send("API is live");
 });
 
+// Routes related to admin
 app.use("/api/admin", adminRouter);
+
+// Routes related to retail
 app.use("/api/retail", retailRouter);
 
 const port = process.env.PORT || 3000;

@@ -3,11 +3,12 @@ import axios from 'axios';
 import { ADMIN_PATH } from '../constant';
 import { useNavigate } from 'react-router-dom';
 
+// Component for adding a new customer with form inputs and image upload
 const AddCustomer = () => {
   const navigate = useNavigate();
-  const [salesPartners, setSalesPartners] = useState([]);
-  const [sales_id, setSales_id] = useState('');
-  const [formData, setFormData] = useState({
+  const [salesPartners, setSalesPartners] = useState([]); // Stores list of sales partners
+  const [sales_id, setSales_id] = useState(''); // Selected sales ID
+  const [formData, setFormData] = useState({ // Form state
     name: '',
     phone: '',
     business: '',
@@ -15,10 +16,11 @@ const AddCustomer = () => {
     lng: '',
     lat: ''
   });
-  const [imageFile, setImageFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState(null); // Stores uploaded image file
+  const [previewUrl, setPreviewUrl] = useState(''); // URL for image preview
+  const [isSubmitting, setIsSubmitting] = useState(false); // Form submission state
 
+  // Fetch sales partners on component mount
   useEffect(() => {
     axios.get(`${ADMIN_PATH}/get-sales-partner`)
       .then((res) => {
@@ -29,6 +31,7 @@ const AddCustomer = () => {
       });
   }, []);
 
+  // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -37,6 +40,7 @@ const AddCustomer = () => {
     }));
   };
 
+  // Handle sales partner selection change
   const handleSalesChange = (e) => {
     const selectedId = e.target.value;
     const selectedPartner = salesPartners.find(sp => sp.id === selectedId);
@@ -51,6 +55,7 @@ const AddCustomer = () => {
     }
   };
 
+  // Handle image file selection and preview
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     setImageFile(file);
@@ -61,6 +66,7 @@ const AddCustomer = () => {
     }
   };
 
+  // Reset form to initial state
   const resetForm = () => {
     setFormData({
       name: '',
@@ -75,6 +81,7 @@ const AddCustomer = () => {
     setSales_id('');
   };
 
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -91,14 +98,17 @@ const AddCustomer = () => {
     }
 
     try {
+      // Prepare form data for submission
       const data = new FormData();
       data.append("image", imageFile);
       data.append("sales_id", sales_id);
 
+      // Append all form fields
       Object.entries(formData).forEach(([key, val]) => {
         data.append(key, val);
       });
 
+      // Submit to backend
       await axios.post(`${ADMIN_PATH}/add-customer`, data, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });

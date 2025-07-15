@@ -4,6 +4,7 @@ import { ADMIN_PATH } from '../constant';
 import { FaTrash, FaEdit } from 'react-icons/fa'
 import { FaToggleOff, FaToggleOn } from 'react-icons/fa6';
 
+// Component to display details of delivery partners and sales partners
 const PersonnelList = () => {
   const [deliveryPartners, setDeliveryPartners] = useState([]);
   const [salesPartners, setSalesPartners] = useState([]);
@@ -29,6 +30,7 @@ const PersonnelList = () => {
     fetchPartners();
   }, []);
 
+  // Display message on top
   const showMessage = (msg, type = 'success') => {
     setActionMessage(msg);
     setMessageType(type);
@@ -38,6 +40,7 @@ const PersonnelList = () => {
     }, 3000);
   };
 
+  // Fetch both delivery partners and sales partners
   const fetchPartners = async () => {
     try {
       const [deliveryRes, salesRes] = await Promise.all([
@@ -54,6 +57,7 @@ const PersonnelList = () => {
     }
   };
 
+  // Setting the editing partner 
   const handleEditClick = (partner, type) => {
     setEditingPartner(partner);
     setEditType(type);
@@ -69,6 +73,7 @@ const PersonnelList = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Update either delivery partner or sales partner
   const handleUpdate = async () => {
     try {
       const endpoint = editType === 'delivery' ? 'delivery/update' : 'sales/update';
@@ -110,6 +115,7 @@ const PersonnelList = () => {
   //   }
   // };
 
+  // Changing or toggling the status of delivery partner 
   const handleToggleDeliveryStatus = async (partner) => {
     try {
       const res = await axios.put(`${ADMIN_PATH}/delivery/toggle/${partner.uid}`);
@@ -127,6 +133,7 @@ const PersonnelList = () => {
     }
   };
 
+  // Changing or toggling the status of sales partner 
   const handleToggleSalesStatus = async (partner) => {
     try {
       const res = await axios.put(`${ADMIN_PATH}/sales/toggle/${partner.uid}`);
@@ -148,6 +155,7 @@ const PersonnelList = () => {
   if (loading) return <div className="text-center py-10 text-xl font-semibold">Loading...</div>;
   if (error) return <div className="text-center py-10 text-red-600 text-xl">{error}</div>;
 
+  // Left bar to dispaly delivery partners
   const renderDeliveryPartners = () =>
     deliveryPartners
       .filter((partner) => {
@@ -206,6 +214,8 @@ const PersonnelList = () => {
         </li>
       ));
 
+
+  // right side bar to display sales partners
   const renderSalesPartners = () =>
     salesPartners
       .filter((partner) => {

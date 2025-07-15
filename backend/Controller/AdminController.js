@@ -7,6 +7,7 @@ import path from 'path';
 import cache from './cache.js';
 
 
+// Handles user login with username, password, and role
 const login = async (req, res) => {
     const { username, password, role } = req.body;
     try {
@@ -30,6 +31,7 @@ const login = async (req, res) => {
     }
 };
 
+// Fetches all customer information
 const userInfo = async (req, res) => {
 //   const cacheKey = 'userInfo';
 //   const cached = cache.get(cacheKey);
@@ -60,7 +62,7 @@ const userInfo = async (req, res) => {
   }
 };
 
-
+// Gets details for a specific customer by ID
 const specificUser = async (req, res) => {
     try {
         const db = getFirestore();
@@ -91,6 +93,7 @@ const deleteSubcollection = async (parentDocRef, subcollectionName) => {
     await batch.commit();
 };
 
+// Deletes a customer document by ID
 const deleteCustomer = async (req, res) => {
     const { id } = req.body;
 
@@ -120,6 +123,7 @@ const deleteCustomer = async (req, res) => {
     }
 };
 
+// Updates customer information (name, business, phone)
 const updateCustomer = async (req, res) => {
     const { id, name, business, phone } = req.body;
     if (!id || !name || !business || !phone) {
@@ -145,6 +149,7 @@ const updateCustomer = async (req, res) => {
     }
 };
 
+// Controller to add a new delivery partner
 const addDeliveryPartner = async (req, res) => {
     try {
         const { name, phone, password } = req.body;
@@ -185,6 +190,7 @@ const addDeliveryPartner = async (req, res) => {
     }
 };
 
+// Controller to add a new salesperson
 const addSalesPerson = async (req, res) => {
     try {
         const { name, phone, password } = req.body;
@@ -238,6 +244,7 @@ const addSalesPerson = async (req, res) => {
     }
 };
 
+// Controller to fetch all delivery partners
 const getDeliveryPartners = async (req, res) => {
     try {
         const db = getFirestore();
@@ -255,6 +262,7 @@ const getDeliveryPartners = async (req, res) => {
     }
 };
 
+// Controller to fetch all sales partners
 const getSalesPartners = async (req, res) => {
     try {
         const db = getFirestore();
@@ -272,6 +280,7 @@ const getSalesPartners = async (req, res) => {
     }
 };
 
+// Controller to update a delivery partner's details
 const updateDeliveryPartner = async (req, res) => {
     try {
         const { uid, name, phone } = req.body;
@@ -298,6 +307,7 @@ const updateDeliveryPartner = async (req, res) => {
     }
 };
 
+// Controller to update a salesperson's details
 const updateSalesPartner = async (req, res) => {
     try {
         const { uid, name, phone } = req.body;
@@ -323,6 +333,7 @@ const updateSalesPartner = async (req, res) => {
     }
 };
 
+// Controller to delete a delivery partner
 const deleteDeliveryPartner = async (req, res) => {
     try {
         const { id } = req.body;
@@ -348,6 +359,7 @@ const deleteDeliveryPartner = async (req, res) => {
     }
 };
 
+// Controller to delete a sales partner
 const deleteSalesPartner = async (req, res) => {
     try {
         const { id } = req.body;
@@ -370,6 +382,7 @@ const deleteSalesPartner = async (req, res) => {
     }
 };
 
+// Controller to toggle delivery partner active/inactive status
 const toggleDeliveryPerson = async (req, res) => {
     try {
         const { id } = req.params;
@@ -395,6 +408,7 @@ const toggleDeliveryPerson = async (req, res) => {
     }
 };
 
+// Controller to toggle salesperson active/inactive status
 const toggleSalesPerson = async (req, res) => {
     try {
         const { id } = req.params;
@@ -420,6 +434,7 @@ const toggleSalesPerson = async (req, res) => {
     }
 };
 
+// Controller to get all deliveries for a specific user
 const getUserDeliveries = async (req, res) => {
   const userId = req.params.id;
   const cacheKey = `userDeliveries:${userId}`;
@@ -477,6 +492,7 @@ const getUserDeliveries = async (req, res) => {
   }
 };
 
+// Controller to get all customers along with their deliveries
 const getAllCustomerDeliveries = async (req, res) => {
   const cacheKey = 'allCustomerDeliveries';
   const cached = cache.get(cacheKey);
@@ -546,7 +562,7 @@ const getAllCustomerDeliveries = async (req, res) => {
   }
 };
 
-
+// Controller to add a new customer with location and image
 const addCustomer = async (req, res) => {
     try {
         const {

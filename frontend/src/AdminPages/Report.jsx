@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { ADMIN_PATH } from '../constant';
 
+// Generates reports of deliveries
 const Report = () => {
     const [data, setData] = useState([]);
-    const [filteredDeliveries, setFilteredDeliveries] = useState([]);
+    const [filteredDeliveries, setFilteredDeliveries] = useState([]);  // filterred deliveries
     const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
     const [selectedDate, setSelectedDate] = useState(() => {
         const today = new Date();
         return today.toISOString().split('T')[0];
     });
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');  // Filter by all, delivered, reached, not delivered
 
+    // Getting all the deliveries in the beginning
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -24,6 +26,7 @@ const Report = () => {
         fetchData();
     }, []);
 
+    // Download csv option to delived the data and can also download filtered data
     const downloadCSV = (data, dateStr, statusFilter) => {
         if (!data || data.length === 0) return;
 
@@ -45,11 +48,11 @@ const Report = () => {
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement('a');
         link.setAttribute('href', encodedUri);
-        
+
         // Include filter info in filename
         const filterSuffix = statusFilter !== 'all' ? `_${statusFilter}` : '';
         link.setAttribute('download', `delivery_report_${dateStr}${filterSuffix}.csv`);
-        
+
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -73,22 +76,24 @@ const Report = () => {
                 status: delivery?.type || 'not delivered',
             };
         });
-        
+
         // Sort by name by default
         const sortedResult = result.sort((a, b) => a.name.localeCompare(b.name));
         setFilteredDeliveries(sortedResult);
     };
 
+    // Filter by stauts
     const filterByStatus = (status) => {
         let result = [...filteredDeliveries];
-        
+
         if (status !== 'all') {
             result = filteredDeliveries.filter(delivery => delivery.status === status);
         }
-        
+
         setDisplayedDeliveries(result);
     };
 
+    // Give different background color based on the status
     const getStatusColor = (status) => {
         switch (status) {
             case 'delivered':
@@ -101,6 +106,7 @@ const Report = () => {
         }
     };
 
+    // Number of counts in each status, delivered, reached or not delivered
     const getStatusCounts = () => {
         const counts = {
             all: filteredDeliveries.length,
@@ -160,11 +166,10 @@ const Report = () => {
                                     <button
                                         key={status.value}
                                         onClick={() => setStatusFilter(status.value)}
-                                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
-                                            statusFilter === status.value
+                                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${statusFilter === status.value
                                                 ? `${status.color} ring-2 ring-offset-1 ring-blue-500`
                                                 : `${status.color} hover:shadow-md`
-                                        }`}
+                                            }`}
                                     >
                                         {status.label} ({statusCounts[status.value]})
                                     </button>

@@ -3,22 +3,27 @@ import axios from 'axios';
 import { ADMIN_PATH } from '../constant';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
+// Component to add a new delivery partner
 const AddDeliveryPartner = () => {
+  // States for form data, UI toggles, messages and loading
   const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Handle input changes
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
     setIsProcessing(true);
 
+    // Validate password match
     if (formData.password !== formData.confirmPassword) {
       setMessage('Passwords do not match.');
       setIsProcessing(false);
@@ -27,6 +32,7 @@ const AddDeliveryPartner = () => {
 
     try {
       const { name, phone, password } = formData;
+      // API call to backend to add delivery partner
       const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, { name, phone, password });
       setMessage(res.data.message);
       setFormData({ name: '', phone: '', password: '', confirmPassword: '' });

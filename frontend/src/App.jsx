@@ -22,7 +22,7 @@ function App() {
       <Route path="/" element={<Login />} />
 
       {/*Admin Routes*/}
-      <Route path="/admin" element={<AdminDashboard />}>
+      <Route path="/admin" element={<AdminDashboard />}>    {/*Admin dashboard for navigation */}
         <Route index element={
           <div>
             <h2 className="text-2xl font-semibold">About EggBucket</h2>

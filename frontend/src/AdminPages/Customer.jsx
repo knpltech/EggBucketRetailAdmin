@@ -5,7 +5,9 @@ import { ADMIN_PATH } from '../constant';
 import { FiArrowLeft, FiDownload, FiMapPin, FiCalendar, FiClock, FiTruck, FiPhone } from 'react-icons/fi';
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
 
+// Component to display information of particular customer
 const Customer = () => {
+  // Obtain customer id from parameters
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -15,9 +17,11 @@ const Customer = () => {
   const [error, setError] = useState('');
   const [showFullImage, setShowFullImage] = useState(false);
 
+  // Fetch details of customer and deliveries using customer id
   useEffect(() => {
     const fetchCustomerData = async () => {
       try {
+        // Both customer details and customer deliveries
         const [customerRes, deliveriesRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/customer-info/${id}`),
           axios.get(`${ADMIN_PATH}/customer/deliveries/${id}`),
@@ -35,6 +39,7 @@ const Customer = () => {
     fetchCustomerData();
   }, [id]);
 
+  // Download csv file of customer deliveries
   const handleDownloadCSV = () => {
     if (!deliveries.length) return;
 
@@ -69,7 +74,9 @@ const Customer = () => {
     document.body.removeChild(a);
   };
 
+  // Function to parse latitude and longitude from a location string like "Lat: XX, Lng: YY"
   const parseLatLng = (locationString) => {
+    // Regex to capture numeric latitude and longitude values from the string
     const match = locationString.match(/Lat:\s*([\d.-]+),\s*Lng:\s*([\d.-]+)/);
     if (match) {
       return {
@@ -77,9 +84,11 @@ const Customer = () => {
         lng: match[2],
       };
     }
+    // Return null if parsing fails
     return null;
   };
 
+  // Display a loading UI while the data is being fetched
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -91,6 +100,7 @@ const Customer = () => {
     );
   }
 
+  // Display an error message if there is an error or the customer data is not found
   if (error || !customer) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -111,11 +121,16 @@ const Customer = () => {
     );
   }
 
+
+  // Parse latitude and longitude from customer's location string
   const latLng = parseLatLng(customer.location);
+
+  // Generate a static map image URL from Google Maps Static API if coordinates are available
   const mapUrl = latLng
     ? `https://maps.googleapis.com/maps/api/staticmap?center=${latLng.lat},${latLng.lng}&zoom=15&size=600x300&markers=color:red%7C${latLng.lat},${latLng.lng}&key=${GOOGLE_MAP_KEY}`
     : null;
 
+  // Generate a Google Maps search link for the parsed coordinates
   const mapsLink = latLng
     ? `https://www.google.com/maps/search/?api=1&query=${latLng.lat},${latLng.lng}`
     : null;

@@ -4,6 +4,7 @@ import { ADMIN_PATH } from '../constant';
 import { FaTrash, FaEdit } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 
+// Component to display overview of all customers
 const CustomerInfo = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,10 +17,12 @@ const CustomerInfo = () => {
 
   const navigate = useNavigate();
 
+  // Fetch customer data when the component mounts
   useEffect(() => {
     fetchCustomers();
   }, []);
 
+  // Fetch customer data from the backend
   const fetchCustomers = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/user-info`);
@@ -32,9 +35,11 @@ const CustomerInfo = () => {
     }
   };
 
+  // Delete customer by ID and update UI
   const handleDelete = async (id) => {
     try {
       await axios.delete(`${ADMIN_PATH}/customer/delete`, { data: { id } });
+      // Remove the deleted customer from the state
       setCustomers(customers.filter((customer) => customer.id !== id));
       setDeleteConfirmation(null);
     } catch (err) {
@@ -43,6 +48,7 @@ const CustomerInfo = () => {
     }
   };
 
+  // When the edit button is clicked, set the customer to be edited and prefill the form
   const handleEditClick = (customer) => {
     setEditingCustomer(customer);
     setFormData({
@@ -52,14 +58,17 @@ const CustomerInfo = () => {
     });
   };
 
+  // Handle form input changes while editing
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Change sorting option based on user selection
   const handleSortChange = (e) => {
     setSortOption(e.target.value);
   };
 
+  // Sort customers based on the selected sort option
   const sortedCustomers = [...customers].sort((a, b) => {
     if (sortOption === 'name') {
       return a.name.localeCompare(b.name);
@@ -70,12 +79,14 @@ const CustomerInfo = () => {
   });
 
 
+  // Update customer data in the backend and update UI
   const handleUpdate = async () => {
     try {
       await axios.put(`${ADMIN_PATH}/customer/update`, {
         id: editingCustomer.id,
         ...formData,
       });
+      // Update local state with new customer data
       setCustomers(
         customers.map((customer) =>
           customer.id === editingCustomer.id ? { ...customer, ...formData } : customer
@@ -88,6 +99,7 @@ const CustomerInfo = () => {
     }
   };
 
+  // Loading UI while fetching data
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -96,6 +108,7 @@ const CustomerInfo = () => {
     );
   }
 
+  // Error UI if fetch failed
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
