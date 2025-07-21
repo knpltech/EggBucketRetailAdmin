@@ -11,10 +11,7 @@ import PersonnelList from './AdminPages/PersonnelList';
 import Customer from './AdminPages/Customer';
 import Report from './AdminPages/Report';
 
-import RetailDashboard from './RetailPages/RetailDashboard';
-import Orders from './RetailPages/Orders';
-import Deliveries from './RetailPages/Deliveries';
-import Payments from './RetailPages/Payments';
+import CustomerDetails from './CustomerPages/CustomerDetails';
 
 function App() {
   return (
@@ -43,13 +40,8 @@ function App() {
       </Route>
 
 
-      {/*Retail Routes*/}
-      <Route path="/retail" element={<RetailDashboard />}>
-        <Route index element={<Orders />} />
-        <Route path="orders" element={<Orders />} />
-        <Route path="deliveries" element={<Deliveries />} />
-        <Route path="payments" element={<Payments />} />
-      </Route>
+      {/*Customer Routes*/}
+      <Route path="/supervisor" element={<CustomerDetails />}></Route>
     </Routes>
   );
 }

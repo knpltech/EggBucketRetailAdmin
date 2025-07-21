@@ -64,8 +64,8 @@ function Login() {
               Admin
             </label>
             <label className="text-gray-700 font-medium">
-              <input type="radio" value="retail" checked={loginType === 'retail'} onChange={() => setLoginType('retail')} className="mr-2" />
-              Retail
+              <input type="radio" value="supervisor" checked={loginType === 'supervisor'} onChange={() => setLoginType('supervisor')} className="mr-2" />
+              Supervisor
             </label>
           </div>
 

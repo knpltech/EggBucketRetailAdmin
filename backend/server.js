@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import cors from "cors";
 
 import adminRouter from "./Routes/AdminRoutes.js";
-import retailRouter from "./Routes/RetailRoutes.js";
 
 // Load environment variables
 dotenv.config();
@@ -40,9 +39,6 @@ app.get("/", (req, res) => {
 
 // Routes related to admin
 app.use("/api/admin", adminRouter);
-
-// Routes related to retail
-app.use("/api/retail", retailRouter);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
