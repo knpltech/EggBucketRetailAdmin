@@ -31,6 +31,8 @@ const originsEnv = process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN |
 const allowedOrigins = originsEnv.split(',').map(s => s.trim()).filter(Boolean);
 console.log('Allowed CORS origins:', allowedOrigins);
 
+// CORS handling removed per request. If you need cross-origin access from browsers,
+// a CORS policy is required on the server or use a proxy from the frontend.
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
