@@ -1,7 +1,7 @@
 import express from "express";
 import admin from "firebase-admin";
 import dotenv from "dotenv";
-import cors from "cors";
+// import cors from "cors";
 
 import adminRouter from "./Routes/AdminRoutes.js";
 
@@ -27,14 +27,9 @@ admin.initializeApp({
 });
 
 const app = express();
-// Enable CORS - allow frontend dev server by default, override with FRONTEND_ORIGIN env var
-const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
-app.use(cors({
-  origin: frontendOrigin,
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-  credentials: true,
-}));
+
+
+// app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
