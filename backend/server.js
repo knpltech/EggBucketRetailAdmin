@@ -1,7 +1,7 @@
 import express from "express";
 import admin from "firebase-admin";
 import dotenv from "dotenv";
-import cors from "cors";
+// import cors from "cors";
 
 import adminRouter from "./Routes/AdminRoutes.js";
 
@@ -29,7 +29,7 @@ admin.initializeApp({
 const app = express();
 
 
-app.use(cors());
+// app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
