@@ -28,7 +28,7 @@ admin.initializeApp({
 
 const app = express();
 // Enable CORS - allow frontend dev server by default, override with FRONTEND_ORIGIN env var
-const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://egg-bucket-retail-admin.vercel.app';
+const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 app.use(cors({
   origin: frontendOrigin,
   methods: ['GET','POST','PUT','DELETE','OPTIONS'],
