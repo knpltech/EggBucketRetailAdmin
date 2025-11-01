@@ -599,10 +599,11 @@ const addCustomer = async (req, res) => {
             },
         });
 
-        const [imageUrl] = await file.getSignedUrl({
-            action: 'read',
-            expires: '03-01-2500',
-        });
+        // Make the file publicly accessible
+        await file.makePublic();
+
+        // Use public URL
+        const imageUrl = `https://storage.googleapis.com/${bucket.name}/${imageName}`;
 
         const newDocRef = db.collection('customers').doc();
 
