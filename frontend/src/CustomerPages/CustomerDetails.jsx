@@ -175,6 +175,10 @@ const CustomerInfo = () => {
                                         src={customer.imageUrl}
                                         alt={customer.name}
                                         className="h-12 w-12 rounded-full object-cover"
+                                        onError={(e) => {
+                                            e.target.onerror = null;
+                                            e.target.src = 'https://via.placeholder.com/48?text=N/A';
+                                        }}
                                     />
                                 </td>
                                 <td className="py-2 px-4 text-xs">{customer.custid}</td>

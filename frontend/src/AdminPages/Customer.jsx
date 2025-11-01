@@ -161,6 +161,10 @@ const Customer = () => {
                   alt={customer.name}
                   className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-full border-4 border-white shadow-md cursor-pointer hover:scale-105 transition-transform"
                   onClick={() => setShowFullImage(true)}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = 'https://via.placeholder.com/80?text=No+Image';
+                  }}
                 />
               </div>
             </div>
