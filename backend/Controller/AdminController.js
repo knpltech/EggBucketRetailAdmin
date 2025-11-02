@@ -44,9 +44,26 @@ const userInfo = async (req, res) => {
     const db = getFirestore();
     const customersSnapshot = await db.collection('customers').get();
     const customers = [];
+    const storage = getStorage();
+    const bucket = storage.bucket();
 
     for (const doc of customersSnapshot.docs) {
       const customerData = doc.data();
+      
+      // If imageUrl exists and it's a storage path, get a signed URL
+      if (customerData.imageUrl && customerData.imageUrl.startsWith('Customer/')) {
+        try {
+          const file = bucket.file(customerData.imageUrl);
+          const [signedUrl] = await file.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+          });
+          customerData.imageUrl = signedUrl;
+        } catch (error) {
+          console.error(`Error getting signed URL for customer ${doc.id}:`, error);
+          customerData.imageUrl = null;
+        }
+      }
 
       customers.push({
         id: doc.id,

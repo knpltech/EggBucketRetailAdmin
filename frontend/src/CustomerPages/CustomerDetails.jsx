@@ -26,6 +26,7 @@ const CustomerInfo = () => {
     const fetchCustomers = async () => {
         try {
             const res = await axios.get(`${ADMIN_PATH}/user-info`);
+            console.log('Customer data received:', res.data);
             setCustomers(res.data);
         } catch (err) {
             console.error('Failed to fetch customer data:', err);
@@ -148,6 +149,14 @@ const CustomerInfo = () => {
                         <option value="name">Customer Name</option>
                         <option value="createdAt">Created Date </option>
                     </select>
+                    <div className="mt-2">
+                        <button
+                            onClick={() => navigate('/add-customer')}
+                            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition ml-4"
+                        >
+                            Add Customer
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -171,15 +180,23 @@ const CustomerInfo = () => {
                                 className="border-t hover:bg-gray-100"
                             >
                                 <td className="py-2 px-4">
-                                    <img
-                                        src={customer.imageUrl}
-                                        alt={customer.name}
-                                        className="h-12 w-12 rounded-full object-cover"
-                                        onError={(e) => {
-                                            e.target.onerror = null;
-                                            e.target.src = 'https://via.placeholder.com/48?text=N/A';
-                                        }}
-                                    />
+                                    {customer.imageUrl ? (
+                                        <img
+                                            src={customer.imageUrl}
+                                            alt={customer.name}
+                                            className="h-12 w-12 rounded-full object-cover"
+                                            onError={(e) => {
+                                                console.error(`Failed to load image for customer ${customer.name}:`, e);
+                                                e.target.onerror = null;
+                                                e.target.src = 'https://via.placeholder.com/48?text=N/A';
+                                            }}
+                                            onLoad={() => console.log(`Image loaded successfully for customer ${customer.name}`)}
+                                        />
+                                    ) : (
+                                        <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
+                                            <span className="text-gray-500 text-xs">No Image</span>
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="py-2 px-4 text-xs">{customer.custid}</td>
                                 <td className="py-2 px-4 text-xs">{customer.name}</td>
