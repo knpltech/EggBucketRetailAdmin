@@ -28,24 +28,22 @@ admin.initializeApp({
 
 const app = express();
 // Enable CORS - support multiple origins via FRONTEND_ORIGINS (comma-separated)
-const allowedOrigins = [
-  'http://localhost:5173',  // Vite default development port
-  'http://127.0.0.1:5173',
-  'https://egg-bucket-retail-admin.vercel.app'
-];
-
-console.log('Allowed CORS origins:', allowedOrigins);
+const originsEnv = process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || 'https://egg-bucket-retail-admin.vercel.app';
+const allowedOrigins = originsEnv.split(',').map(s => s.trim()).filter(Boolean);
+// normalize origins (strip trailing slash and lowercase) for robust matching
+const normalize = (u) => (u || '').toString().trim().replace(/\/$/, '').toLowerCase();
+const normalizedAllowed = allowedOrigins.map(normalize);
+console.log('Allowed CORS origins:', normalizedAllowed);
 
 app.use(cors({
   origin: function(origin, callback) {
     // allow requests with no origin (server-to-server, curl, mobile apps)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost')) {
-      callback(null, true);
-    } else {
-      console.warn('CORS: rejecting origin', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
+    const normOrigin = normalize(origin);
+    if (normalizedAllowed.indexOf(normOrigin) !== -1) return callback(null, true);
+    console.warn('CORS: rejecting origin', origin);
+    // don't throw error (which becomes 500); just deny CORS so browser will block the request
+    return callback(null, false);
   },
   methods: ['GET','POST','PUT','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept'],
