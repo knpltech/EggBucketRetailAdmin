@@ -1,24 +1,25 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Outlet } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleLogout = () => {
-    localStorage.removeItem('loggedIn');
-    localStorage.removeItem('userType');
-    navigate('/');
+    localStorage.removeItem("loggedIn");
+    localStorage.removeItem("userType");
+    navigate("/");
   };
 
   const navItems = [
-    { label: 'About', path: '/admin' },
-    { label: 'Customer Info', path: '/admin/customers' },
-    { label: 'Add Delivery Partner', path: '/admin/add-delivery' },
-    { label: 'Add Sales Partner', path: '/admin/add-sales' },
-    { label: 'Add Customer', path: '/admin/add-customer' },
-    { label: 'View Personnel', path: '/admin/personnel' },
-    { label: 'Report', path: '/admin/report' },
+    { label: "About", path: "/admin" },
+    { label: "Customer Info", path: "/admin/customers" },
+    { label: "Add Delivery Partner", path: "/admin/add-delivery" },
+    { label: "Add Sales Partner", path: "/admin/add-sales" },
+    { label: "Add Customer", path: "/admin/add-customer" },
+    { label: "View Personnel", path: "/admin/personnel" },
+    { label: "Report", path: "/admin/report" },
+    { label: "Analytics", path: "/admin/analytics" },
   ];
 
   return (
@@ -39,8 +40,8 @@ export default function AdminDashboard() {
               to={item.path}
               className={`px-4 py-3 rounded-lg transition-all duration-200 flex items-center space-x-3 ${
                 location.pathname === item.path
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white font-medium shadow-md'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white font-medium shadow-md"
+                  : "text-gray-300 hover:bg-gray-700 hover:text-white"
               }`}
             >
               <span className="flex-1">{item.label}</span>
@@ -55,8 +56,19 @@ export default function AdminDashboard() {
               onClick={handleLogout}
               className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium shadow-md transition-all duration-200 flex items-center justify-center space-x-2"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
               </svg>
               <span>Logout</span>
             </button>
@@ -67,7 +79,7 @@ export default function AdminDashboard() {
       {/* Main Content */}
       <main className="flex-grow p-8 overflow-auto bg-white rounded-tl-3xl rounded-bl-3xl shadow-lg">
         <div className="max-w-7xl bg-white mx-auto">
-            <Outlet />
+          <Outlet />
         </div>
       </main>
     </div>
