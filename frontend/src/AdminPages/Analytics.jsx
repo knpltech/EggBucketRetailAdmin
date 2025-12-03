@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
@@ -10,12 +9,16 @@ const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [sortOption, setSortOption] = useState("name");
 
+  // Date range for CSV download
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   // Fetch data ONCE
   useEffect(() => {
     loadAnalyticsOnce();
   }, []);
 
-  // Apply sorting instantly on existing data
+  // Apply sorting on already loaded data
   useEffect(() => {
     applySorting(sortOption);
   }, [sortOption, allCustomers]);
@@ -25,7 +28,6 @@ const Analytics = () => {
       const res = await axios.get(`${ADMIN_PATH}/user-info`);
       let all = res.data || [];
 
-      // Fetch deliveries only one time
       const full = await Promise.all(
         all.map(async (c) => {
           try {
@@ -35,10 +37,15 @@ const Analytics = () => {
 
             return {
               ...c,
+              deliveries: dres.data.deliveries || [],
               last7: computeLast7Days(dres.data.deliveries || []),
             };
           } catch {
-            return { ...c, last7: computeLast7Days([]) };
+            return {
+              ...c,
+              deliveries: [],
+              last7: computeLast7Days([]),
+            };
           }
         })
       );
@@ -65,7 +72,7 @@ const Analytics = () => {
     setCustomers(sorted);
   };
 
-  // Compute last 7 days
+  // Compute last 7 days for UI
   const computeLast7Days = (deliveries) => {
     const result = [];
     const today = new Date();
@@ -90,7 +97,7 @@ const Analytics = () => {
     return result;
   };
 
-  // Clean, small pill UI — white text always
+  // Pill Renderer
   const getStatusPill = (type) => {
     let bg = "";
     let text = "";
@@ -121,7 +128,57 @@ const Analytics = () => {
     );
   };
 
-  // Skeleton rows
+  // CSV Export Based on Date Range
+  const downloadFilteredCSV = () => {
+    if (!startDate || !endDate) {
+      alert("Select both start and end dates.");
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    let rows = [];
+
+    customers.forEach((c) => {
+      c.deliveries.forEach((d) => {
+        const t = new Date(d.timestamp._seconds * 1000);
+
+        if (t >= start && t <= end) {
+          rows.push({
+            CustomerID: c.custid,
+            Name: c.name,
+            Business: c.business,
+            Phone: c.phone,
+            Date: t.toLocaleDateString(),
+            Time: t.toLocaleTimeString(),
+            Status: d.type?.toUpperCase(),
+            DeliveredBy: d.deliveryMan?.name || "N/A",
+          });
+        }
+      });
+    });
+
+    if (rows.length === 0) {
+      alert("No deliveries found between these dates.");
+      return;
+    }
+
+    const headers = Object.keys(rows[0]).join(",");
+    const csv = [headers, ...rows.map((r) => Object.values(r).join(","))].join(
+      "\n"
+    );
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `deliveries_${startDate}_to_${endDate}.csv`;
+    a.click();
+  };
+
   const skeletonRows = Array.from({ length: 8 });
 
   const last7DaysHeader = Array.from({ length: 7 }).map((_, idx) => {
@@ -145,14 +202,12 @@ const Analytics = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Analytics (Last 7 Days)</h1>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           <label className="font-medium text-gray-700">Sort by:</label>
-
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value)}
@@ -161,6 +216,28 @@ const Analytics = () => {
             <option value="name">Customer Name</option>
             <option value="createdAt">Created Date</option>
           </select>
+
+          {/* Date Range + CSV */}
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border px-3 py-2 rounded-lg shadow"
+          />
+
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border px-3 py-2 rounded-lg shadow"
+          />
+
+          <button
+            onClick={downloadFilteredCSV}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-700"
+          >
+            Download CSV
+          </button>
         </div>
       </div>
 
@@ -251,7 +328,8 @@ const Analytics = () => {
                     <td className="p-3">
                       <div className="w-32 h-4 bg-gray-300 rounded animate-pulse"></div>
                     </td>
-                    {Array.from({ length: 7 }).map((__, i) => (
+
+                    {[...Array(7)].map((_, i) => (
                       <td key={i} className="p-3 text-center">
                         <div className="w-20 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                       </td>
