@@ -1,282 +1,334 @@
-import React, { useEffect, useState } from 'react';
-import { ADMIN_PATH } from '../constant';
+import React, { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
+import { ADMIN_PATH } from "../constant";
 
-// Generates reports of deliveries
 const Report = () => {
-    const [data, setData] = useState([]);
-    const [filteredDeliveries, setFilteredDeliveries] = useState([]);  // filterred deliveries
-    const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
-    const [selectedDate, setSelectedDate] = useState(() => {
-        const today = new Date();
-        return today.toISOString().split('T')[0];
+  const [data, setData] = useState([]);
+  const [filteredDeliveries, setFilteredDeliveries] = useState([]);
+  const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
+
+  const [selectedDate, setSelectedDate] = useState(() =>
+    new Date().toISOString().split("T")[0]
+  );
+
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const [startRange, setStartRange] = useState("");
+  const [endRange, setEndRange] = useState("");
+
+  // LOAD DATA
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`${ADMIN_PATH}/all-deliveries`);
+        const json = await res.json();
+        setData(json.customers || []);
+      } catch (err) {
+        console.error("Error fetching deliveries:", err);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // FILTER BY DATE
+  useEffect(() => {
+    filterByDate(selectedDate);
+  }, [data, selectedDate]);
+
+  const filterByDate = (dateStr) => {
+    const result = data.map((customer) => {
+      const delivery = customer.deliveries.find((d) => d.id === dateStr);
+
+      return {
+        custid: customer.custid,
+        name: customer.name,
+        deliveryMan: delivery?.deliveryMan || null,
+        status: delivery?.type || "not delivered",
+      };
     });
-    const [statusFilter, setStatusFilter] = useState('all');  // Filter by all, delivered, reached, not delivered
 
-    // Getting all the deliveries in the beginning
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const res = await fetch(`${ADMIN_PATH}/all-deliveries`);
-                const json = await res.json();
-                setData(json.customers);
-            } catch (err) {
-                console.error('Error fetching deliveries:', err);
-            }
-        };
-        fetchData();
-    }, []);
+    setFilteredDeliveries(result.sort((a, b) => a.name.localeCompare(b.name)));
+  };
 
-    // Download csv option to delived the data and can also download filtered data
-    const downloadCSV = (data, dateStr, statusFilter) => {
-        if (!data || data.length === 0) return;
+  // FILTER BY STATUS
+  useEffect(() => {
+    if (statusFilter === "all") {
+      setDisplayedDeliveries(filteredDeliveries);
+    } else {
+      setDisplayedDeliveries(
+        filteredDeliveries.filter((d) => d.status === statusFilter)
+      );
+    }
+  }, [filteredDeliveries, statusFilter]);
 
-        const headers = ['Customer ID', 'Name', 'Delivery By', 'Phone', 'Status'];
-        const rows = data.map(row => [
-            row.custid,
-            row.name,
-            row.deliveryMan?.name || '',
-            row.deliveryMan?.phone || '',
-            row.status
-        ]);
+  // COLORS
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "delivered":
+        return "bg-green-100 text-green-800 border border-green-300";
+      case "reached":
+        return "bg-yellow-100 text-yellow-800 border border-yellow-300";
+      default:
+        return "bg-red-100 text-red-800 border border-red-300";
+    }
+  };
 
-        let csvContent =
-            'data:text/csv;charset=utf-8,' +
-            headers.join(',') +
-            '\n' +
-            rows.map(e => e.join(',')).join('\n');
+  // COUNT
+  const getStatusCounts = () => ({
+    all: filteredDeliveries.length,
+    delivered: filteredDeliveries.filter((d) => d.status === "delivered")
+      .length,
+    reached: filteredDeliveries.filter((d) => d.status === "reached").length,
+    "not delivered": filteredDeliveries.filter(
+      (d) => d.status === "not delivered"
+    ).length,
+  });
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement('a');
-        link.setAttribute('href', encodedUri);
+  const statusCounts = getStatusCounts();
 
-        // Include filter info in filename
-        const filterSuffix = statusFilter !== 'all' ? `_${statusFilter}` : '';
-        link.setAttribute('download', `delivery_report_${dateStr}${filterSuffix}.csv`);
+  // EXCEL EXPORT
+  const downloadSummaryExcel = () => {
+    if (!startRange || !endRange) {
+      alert("Select Start & End Date");
+      return;
+    }
 
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
+    const start = new Date(startRange);
+    const end = new Date(endRange);
 
-    useEffect(() => {
-        filterByDate(selectedDate);
-    }, [data, selectedDate]);
+    if (start > end) {
+      alert("Start date cannot be after End date");
+      return;
+    }
 
-    useEffect(() => {
-        filterByStatus(statusFilter);
-    }, [filteredDeliveries, statusFilter]);
+    const TOTAL_CUSTOMERS = data.length;
+    const dates = [];
+    let d = new Date(start);
 
-    const filterByDate = (dateStr) => {
-        const result = data.map((customer) => {
-            const delivery = customer.deliveries.find((d) => d.id === dateStr);
-            return {
-                custid: customer.custid,
-                name: customer.name,
-                deliveryMan: delivery?.deliveryMan || null,
-                status: delivery?.type || 'not delivered',
-            };
-        });
+    while (d <= end) {
+      dates.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
 
-        // Sort by name by default
-        const sortedResult = result.sort((a, b) => a.name.localeCompare(b.name));
-        setFilteredDeliveries(sortedResult);
-    };
+    const sheetData = [
+      ["DATE", "ALL", "DELIVERED", "REACHED", "NOT DELIVERED"],
+    ];
 
-    // Filter by stauts
-    const filterByStatus = (status) => {
-        let result = [...filteredDeliveries];
+    dates.forEach((day) => {
+      const dateId = day.toISOString().split("T")[0];
 
-        if (status !== 'all') {
-            result = filteredDeliveries.filter(delivery => delivery.status === status);
+      let delivered = 0,
+        reached = 0,
+        notDelivered = 0;
+
+      data.forEach((customer) => {
+        const entry = customer.deliveries.find((x) => x.id === dateId);
+
+        if (!entry) {
+          notDelivered++;
+          return;
         }
 
-        setDisplayedDeliveries(result);
-    };
+        if (entry.type === "delivered") delivered++;
+        else if (entry.type === "reached") reached++;
+        else notDelivered++;
+      });
 
-    // Give different background color based on the status
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'delivered':
-                return 'bg-green-100 text-green-800';
-            case 'reached':
-                return 'bg-yellow-100 text-yellow-800';
-            case 'not delivered':
-            default:
-                return 'bg-red-100 text-red-800';
-        }
-    };
+      sheetData.push([
+        day.toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+        }),
+        TOTAL_CUSTOMERS,
+        delivered,
+        reached,
+        notDelivered,
+      ]);
+    });
 
-    // Number of counts in each status, delivered, reached or not delivered
-    const getStatusCounts = () => {
-        const counts = {
-            all: filteredDeliveries.length,
-            delivered: filteredDeliveries.filter(d => d.status === 'delivered').length,
-            reached: filteredDeliveries.filter(d => d.status === 'reached').length,
-            'not delivered': filteredDeliveries.filter(d => d.status === 'not delivered').length,
-        };
-        return counts;
-    };
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Summary");
 
-    const statusCounts = getStatusCounts();
-
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-7xl mx-auto">
-                <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
-                    {/* Header Section */}
-                    <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-5 sm:px-8 sm:py-6">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-center">
-                                <div className="bg-white/20 p-2 rounded-lg mr-4">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                </div>
-                                <h1 className="text-2xl font-bold text-white">Delivery Report Dashboard</h1>
-                            </div>
-                            <div className="mt-4 sm:mt-0">
-                                {displayedDeliveries.length > 0 && (
-                                    <button
-                                        onClick={() => downloadCSV(displayedDeliveries, selectedDate, statusFilter)}
-                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
-                                    >
-                                        <svg className="-ml-1 mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                                        </svg>
-                                        Export CSV
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Status Filter Section */}
-                    <div className="px-6 py-4 sm:px-8 border-b border-gray-200">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                            <label className="text-sm font-medium text-gray-700">
-                                Filter by Status:
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { value: 'all', label: 'All', color: 'bg-gray-100 text-gray-800' },
-                                    { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800' },
-                                    { value: 'reached', label: 'Reached', color: 'bg-yellow-100 text-yellow-800' },
-                                    { value: 'not delivered', label: 'Not Delivered', color: 'bg-red-100 text-red-800' }
-                                ].map((status) => (
-                                    <button
-                                        key={status.value}
-                                        onClick={() => setStatusFilter(status.value)}
-                                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${statusFilter === status.value
-                                                ? `${status.color} ring-2 ring-offset-1 ring-blue-500`
-                                                : `${status.color} hover:shadow-md`
-                                            }`}
-                                    >
-                                        {status.label} ({statusCounts[status.value]})
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Date Filter Section */}
-                    <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-gray-200">
-                        <div className="flex flex-col sm:flex-row sm:items-end gap-6">
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Select Delivery Date
-                                </label>
-                                <div className="relative rounded-md shadow-sm">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                                        </svg>
-                                    </div>
-                                    <input
-                                        type="date"
-                                        value={selectedDate}
-                                        onChange={(e) => setSelectedDate(e.target.value)}
-                                        className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 pr-3 py-2 border-gray-300 rounded-md shadow-sm"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex items-center bg-blue-50 rounded-lg px-4 py-2">
-                                <svg className="h-5 w-5 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                <span className="text-sm font-medium text-blue-700">
-                                    {displayedDeliveries.length} records displayed
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Table Section */}
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Customer ID
-                                    </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Name
-                                    </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Delivery Agent
-                                    </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Del-contact
-                                    </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {displayedDeliveries.length > 0 ? (
-                                    displayedDeliveries.map((row, idx) => (
-                                        <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                {row.custid}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {row.name}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {row.deliveryMan?.name || (
-                                                    <span className="text-gray-400">Not assigned</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {row.deliveryMan?.phone || '-'}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(row.status)}`}>
-                                                    {row.status.toUpperCase()}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="5" className="px-6 py-12 text-center">
-                                            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <h3 className="mt-2 text-sm font-medium text-gray-900">No deliveries found</h3>
-                                            <p className="mt-1 text-sm text-gray-500">
-                                                {statusFilter === 'all' ? 'Try selecting a different date.' : 'Try selecting a different status filter or date.'}
-                                            </p>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
+    const buffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    saveAs(
+      new Blob([buffer], { type: "application/octet-stream" }),
+      `summary_${startRange}_to_${endRange}.xlsx`
     );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-6 flex justify-center">
+      <div className="w-full max-w-7xl bg-white shadow-lg rounded-2xl overflow-hidden">
+
+        {/* HEADER WITH ICON */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 flex items-center gap-4">
+
+          {/* Icon Box */}
+          <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm flex items-center justify-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-7 w-7 text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M3 3v18h18" strokeLinecap="round" />
+              <path d="M7 14v3" strokeLinecap="round" />
+              <path d="M12 11v6" strokeLinecap="round" />
+              <path d="M17 7v10" strokeLinecap="round" />
+            </svg>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-3xl font-semibold text-white tracking-wide">
+            Delivery Report Dashboard
+          </h1>
+        </div>
+
+        {/* FILTER LABEL BAR */}
+        <div className="px-8 py-5 border-b bg-white flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-gray-600 mr-3">
+            Filter by Status:
+          </span>
+
+          {[
+            { value: "all", label: "All", color: "bg-gray-100 text-gray-800" },
+            {
+              value: "delivered",
+              label: "Delivered",
+              color: "bg-green-100 text-green-800",
+            },
+            {
+              value: "reached",
+              label: "Reached",
+              color: "bg-yellow-100 text-yellow-800",
+            },
+            {
+              value: "not delivered",
+              label: "Not Delivered",
+              color: "bg-red-100 text-red-800",
+            },
+          ].map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setStatusFilter(s.value)}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 transition-all border 
+                ${
+                  statusFilter === s.value
+                    ? `${s.color} ring-2 ring-blue-400 shadow-sm`
+                    : `${s.color}`
+                }`}
+            >
+              {s.label} ({statusCounts[s.value]})
+            </button>
+          ))}
+        </div>
+
+        {/* DATE PICKER + RANGE EXPORT */}
+        <div className="px-8 py-5 border-b bg-white flex flex-col md:flex-row justify-between gap-6">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-600">
+              Select Delivery Date
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="border px-4 py-2 rounded-lg shadow-sm focus:ring focus:ring-blue-200"
+            />
+          </div>
+
+          <div className="flex items-end gap-4">
+            <div className="flex flex-col">
+              <label className="text-sm font-medium text-gray-600">Start Date</label>
+              <input
+                type="date"
+                value={startRange}
+                onChange={(e) => setStartRange(e.target.value)}
+                className="border px-3 py-2 rounded-lg shadow-sm"
+              />
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-sm font-medium text-gray-600">End Date</label>
+              <input
+                type="date"
+                value={endRange}
+                onChange={(e) => setEndRange(e.target.value)}
+                className="border px-3 py-2 rounded-lg shadow-sm"
+              />
+            </div>
+
+            <button
+              onClick={downloadSummaryExcel}
+              className="bg-blue-600 text-white px-5 py-2 rounded-lg shadow hover:bg-blue-700"
+            >
+              Download Excel
+            </button>
+          </div>
+        </div>
+
+        {/* TABLE */}
+        <div className="overflow-x-auto p-6">
+          <table className="w-full border rounded-xl overflow-hidden">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                {["Customer ID", "Name", "Delivery Agent", "Del-contact", "Status"].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide"
+                    >
+                      {h}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+
+            <tbody className="bg-white">
+              {displayedDeliveries.length ? (
+                displayedDeliveries.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50 border-b transition">
+                    <td className="px-6 py-4">{row.custid}</td>
+                    <td className="px-6 py-4">{row.name}</td>
+                    <td className="px-6 py-4">{row.deliveryMan?.name || "Not assigned"}</td>
+                    <td className="px-6 py-4">{row.deliveryMan?.phone || "-"}</td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                          row.status
+                        )}`}
+                      >
+                        {row.status.toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan="5"
+                    className="py-14 text-center text-gray-500 text-sm"
+                  >
+                    No deliveries found
+                    <br />
+                    <span className="text-xs text-gray-400">
+                      Try selecting a different date.
+                    </span>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  );
 };
 
 export default Report;
