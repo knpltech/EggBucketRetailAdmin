@@ -11,9 +11,13 @@ import PersonnelList from "./AdminPages/PersonnelList";
 import Customer from "./AdminPages/Customer";
 import Report from "./AdminPages/Report";
 import Analytics from "./AdminPages/Analytics";
-
+import CustomerView from "./Admin-View/CustomerView";
 import CustomerDetails from "./CustomerPages/CustomerDetails";
-
+import PersonnelView from "./Admin-View/PersonalView";
+import ReportView from "./Admin-View/ReportView";
+import AnalyticsView from "./Admin-View/AnalyticsView";
+import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
+import AboutVPage from "./Admin-View/aboutView";
 function App() {
   return (
     <Routes>
@@ -41,8 +45,17 @@ function App() {
         <Route path="analytics" element={<Analytics />} />
       </Route>
 
-      {/*Customer Routes*/}
-      <Route path="/supervisor" element={<CustomerDetails />}></Route>
+      
+      <Route path="/admin-view" element={<AdminViewDashboard />}>
+  <Route index element={<AboutVPage />} />
+  <Route path="customerView" element={<CustomerView />} />
+  <Route path="personalView" element={<PersonnelView />} />
+  <Route path="reportView" element={<ReportView />} />
+  <Route path="analyticsView" element={<AnalyticsView />} />
+  <Route path="about" element={<AboutVPage />} />
+</Route>
+
+
     </Routes>
   );
 }
