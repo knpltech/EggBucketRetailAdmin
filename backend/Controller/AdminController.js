@@ -623,6 +623,81 @@ const addCustomer = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+const getCustomerMapStatus = async (req, res) => {
+  try {
+    const cacheKey = "customerMapStatus:today";
+
+    // 🔥 Cache check
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
+    const db = getFirestore();
+
+    // 🎯 TODAY (start of day)
+    const targetDate = new Date();
+    targetDate.setHours(0, 0, 0, 0);
+
+    const customersSnap = await db.collection("customers").get();
+    const result = [];
+
+    for (const doc of customersSnap.docs) {
+      const c = doc.data();
+      if (!c.location) continue;
+
+      // 📍 Parse lat/lng
+      const parts = c.location
+        .replace("Lat:", "")
+        .replace("Lng:", "")
+        .split(",");
+
+      const lat = parseFloat(parts[0]?.trim());
+      const lng = parseFloat(parts[1]?.trim());
+      if (isNaN(lat) || isNaN(lng)) continue;
+
+      let status = "pending";
+
+      const deliveriesSnap = await db
+        .collection("customers")
+        .doc(doc.id)
+        .collection("deliveries")
+        .get();
+
+      deliveriesSnap.forEach((d) => {
+        const data = d.data();
+        if (!data.timestamp?._seconds) return;
+
+        const deliveryDate = new Date(data.timestamp._seconds * 1000);
+        deliveryDate.setHours(0, 0, 0, 0);
+
+        if (deliveryDate.getTime() === targetDate.getTime()) {
+          if (data.type === "delivered") status = "delivered";
+          else if (data.type === "reached") status = "reached";
+        }
+      });
+
+      result.push({
+        id: doc.id,
+        name: c.name,
+        business: c.business,
+        imageUrl: c.imageUrl || "",
+        location: c.location,
+        lat,
+        lng,
+        status,
+      });
+    }
+
+    // ⏱ Cache for 60 seconds
+    cache.set(cacheKey, result, 60);
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("Customer map status error:", err);
+    return res.status(500).json({ error: "Failed to load map data" });
+  }
+};
 
 export {
     login,
@@ -642,5 +717,6 @@ export {
     getAllCustomerDeliveries,
     toggleDeliveryPerson,
     toggleSalesPerson,
-    addCustomer
+    addCustomer,
+    getCustomerMapStatus
 };

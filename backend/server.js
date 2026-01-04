@@ -28,7 +28,10 @@ admin.initializeApp({
 
 const app = express();
 // Enable CORS - support multiple origins via FRONTEND_ORIGINS (comma-separated)
-const originsEnv = process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || 'https://egg-bucket-retail-admin.vercel.app';
+const originsEnv = process.env.FRONTEND_ORIGINS || process.env.
+  FRONTEND_ORIGIN || 'https://egg-bucket-retail-admin.vercel.app';
+// // for testing locally
+  // FRONTEND_ORIGIN || 'http://localhost:5173';
 const allowedOrigins = originsEnv.split(',').map(s => s.trim()).filter(Boolean);
 // normalize origins (strip trailing slash and lowercase) for robust matching
 const normalize = (u) => (u || '').toString().trim().replace(/\/$/, '').toLowerCase();

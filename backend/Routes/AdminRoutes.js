@@ -23,7 +23,8 @@ import {
     getAllCustomerDeliveries,
     toggleDeliveryPerson,
     toggleSalesPerson,
-    addCustomer
+    addCustomer,
+    getCustomerMapStatus
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -42,6 +43,7 @@ router.get('/get-del-partner', getDeliveryPartners);
 router.put('/delivery/update', updateDeliveryPartner);
 router.delete('/delivery/delete', deleteDeliveryPartner);
 router.put('/delivery/toggle/:id', toggleDeliveryPerson);
+router.get("/customer-map-status", getCustomerMapStatus);
 
 // Sales person related routes
 router.post("/add-sales-partner", addSalesPerson);
