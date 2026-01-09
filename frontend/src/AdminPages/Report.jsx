@@ -8,14 +8,20 @@ const Report = () => {
   const [filteredDeliveries, setFilteredDeliveries] = useState([]);
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
 
-  const [selectedDate, setSelectedDate] = useState(() =>
-    new Date().toISOString().split("T")[0]
+  const [selectedDate, setSelectedDate] = useState(
+    () => new Date().toISOString().split("T")[0]
   );
 
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
+
+  // ✅ ONLY FOR DISPLAY
+  const formatStatus = (status) => {
+    if (status === "reached") return "CHECKED";
+    return status?.toUpperCase() || "UNKNOWN";
+  };
 
   // LOAD DATA
   useEffect(() => {
@@ -51,7 +57,7 @@ const Report = () => {
     setFilteredDeliveries(result.sort((a, b) => a.name.localeCompare(b.name)));
   };
 
-  // FILTER BY STATUS
+  // FILTER BY STATUS (UNCHANGED)
   useEffect(() => {
     if (statusFilter === "all") {
       setDisplayedDeliveries(filteredDeliveries);
@@ -62,7 +68,7 @@ const Report = () => {
     }
   }, [filteredDeliveries, statusFilter]);
 
-  // COLORS
+  // COLORS (UNCHANGED)
   const getStatusColor = (status) => {
     switch (status) {
       case "delivered":
@@ -74,7 +80,7 @@ const Report = () => {
     }
   };
 
-  // COUNT
+  // COUNT (UNCHANGED)
   const getStatusCounts = () => ({
     all: filteredDeliveries.length,
     delivered: filteredDeliveries.filter((d) => d.status === "delivered")
@@ -111,8 +117,9 @@ const Report = () => {
       d.setDate(d.getDate() + 1);
     }
 
+    // ✅ ONLY TEXT CHANGED HERE
     const sheetData = [
-      ["DATE", "ALL", "DELIVERED", "REACHED", "NOT DELIVERED"],
+      ["DATE", "ALL", "DELIVERED", "CHECKED", "NOT DELIVERED"],
     ];
 
     dates.forEach((day) => {
@@ -142,7 +149,7 @@ const Report = () => {
         }),
         TOTAL_CUSTOMERS,
         delivered,
-        reached,
+        reached, // still internally reached
         notDelivered,
       ]);
     });
@@ -162,10 +169,8 @@ const Report = () => {
     <div className="min-h-screen bg-gray-100 p-6 flex justify-center">
       <div className="w-full max-w-7xl bg-white shadow-lg rounded-2xl overflow-hidden">
 
-        {/* HEADER WITH ICON */}
+        {/* HEADER */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 flex items-center gap-4">
-
-          {/* Icon Box */}
           <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm flex items-center justify-center">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -182,13 +187,12 @@ const Report = () => {
             </svg>
           </div>
 
-          {/* Title */}
           <h1 className="text-3xl font-semibold text-white tracking-wide">
             Delivery Report Dashboard
           </h1>
         </div>
 
-        {/* FILTER LABEL BAR */}
+        {/* FILTER BAR */}
         <div className="px-8 py-5 border-b bg-white flex flex-wrap items-center gap-3">
           <span className="text-sm font-medium text-gray-600 mr-3">
             Filter by Status:
@@ -203,7 +207,7 @@ const Report = () => {
             },
             {
               value: "reached",
-              label: "Reached",
+              label: "Checked",
               color: "bg-yellow-100 text-yellow-800",
             },
             {
@@ -227,7 +231,7 @@ const Report = () => {
           ))}
         </div>
 
-        {/* DATE PICKER + RANGE EXPORT */}
+        {/* DATE PICKER + EXPORT */}
         <div className="px-8 py-5 border-b bg-white flex flex-col md:flex-row justify-between gap-6">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-600">
@@ -276,16 +280,20 @@ const Report = () => {
           <table className="w-full border rounded-xl overflow-hidden">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {["Customer ID", "Name", "Delivery Agent", "Del-contact", "Status"].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide"
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+                {[
+                  "Customer ID",
+                  "Name",
+                  "Delivery Agent",
+                  "Del-contact",
+                  "Status",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
 
@@ -295,15 +303,20 @@ const Report = () => {
                   <tr key={i} className="hover:bg-gray-50 border-b transition">
                     <td className="px-6 py-4">{row.custid}</td>
                     <td className="px-6 py-4">{row.name}</td>
-                    <td className="px-6 py-4">{row.deliveryMan?.name || "Not assigned"}</td>
-                    <td className="px-6 py-4">{row.deliveryMan?.phone || "-"}</td>
+                    <td className="px-6 py-4">
+                      {row.deliveryMan?.name || "Not assigned"}
+                    </td>
+                    <td className="px-6 py-4">
+                      {row.deliveryMan?.phone || "-"}
+                    </td>
                     <td className="px-6 py-4">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
                           row.status
                         )}`}
                       >
-                        {row.status.toUpperCase()}
+                        {/* ✅ ONLY TEXT CHANGE */}
+                        {formatStatus(row.status)}
                       </span>
                     </td>
                   </tr>

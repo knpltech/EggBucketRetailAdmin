@@ -99,7 +99,7 @@ const Analytics = () => {
       text = "DELIVERED";
     } else if (type === "reached") {
       bg = "#FB8C00"; // orange-yellow
-      text = "REACHED";
+      text = "CHECKED";
     } else {
       bg = "#FF3B30"; // bright red 
       text = "NOT REACHED";
@@ -126,7 +126,7 @@ const statusShort = (type) => {
   const s = (type || "").toString().trim().toLowerCase();
 
   if (s === "delivered") return "DELIVERED ";
-  if (s === "reached") return "REACHED ";
+  if (s === "reached") return "CHECKED ";
 
   return "NOT REACHED ";
 };
@@ -227,7 +227,7 @@ const statusShort = (type) => {
             const text = (cell.v || "").toString().toLowerCase();
             if (text.includes("delivered") || text.includes("✅")) {
               cell.s.fill = { patternType: "solid", fgColor: { rgb: "FFDFF7E0" } }; // very light green
-            } else if (text.includes("reached") || text.includes("➡")) {
+            } else if (text.includes("checked") || text.includes("➡")) {
               cell.s.fill = { patternType: "solid", fgColor: { rgb: "FFFFF4E5" } }; // very light orange
             } else if (text.includes("not reached") || text.includes("❌")) {
               cell.s.fill = { patternType: "solid", fgColor: { rgb: "FFFEECEC" } }; // very light red
@@ -342,7 +342,7 @@ const statusShort = (type) => {
           <span className="w-4 h-4 bg-[#0F9D58] rounded-full"></span> Delivered
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-4 bg-[#FB8C00] rounded-full"></span> Reached
+          <span className="w-4 h-4 bg-[#FB8C00] rounded-full"></span> Checked
         </div>
         <div className="flex items-center gap-2">
           <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> Not Reached
