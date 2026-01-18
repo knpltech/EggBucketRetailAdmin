@@ -699,6 +699,82 @@ const getCustomerMapStatus = async (req, res) => {
   }
 };
 
+
+
+
+
+
+// Update customer category / paid / remark
+const updateCustomerMeta = async (req, res) => {
+    try {
+      const { id, category, paid, remarks } = req.body;
+  
+      if (!id) {
+        return res.status(400).json({ message: "Customer ID is required" });
+      }
+  
+      const db = getFirestore();
+      const customerRef = db.collection("customers").doc(id);
+  
+      const docSnap = await customerRef.get();
+      if (!docSnap.exists) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+  
+      const updateData = {};
+  
+      // Only update what is sent
+      if (category !== undefined) updateData.category = category;
+      if (paid !== undefined) updateData.paid = paid;
+      if (remarks !== undefined) updateData.remarks = remarks;
+  
+      await customerRef.update(updateData);
+  
+      return res.status(200).json({
+        message: "Customer updated successfully",
+        updated: updateData
+      });
+    } catch (err) {
+      console.error("updateCustomerMeta error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  };
+
+
+  //  RESET ALL CUSTOMERS (FOR TESTING)
+const resetAllCustomers = async (req, res) => {
+    try {
+      const db = getFirestore();
+      const snap = await db.collection("customers").get();
+  
+      if (snap.empty) {
+        return res.status(200).json({ message: "No customers to reset" });
+      }
+  
+      const batch = db.batch();
+  
+      snap.docs.forEach((doc) => {
+        const ref = db.collection("customers").doc(doc.id);
+        batch.update(ref, {
+          paid: false,
+          category: null,
+          remarks: "",
+        });
+      });
+  
+      await batch.commit();
+  
+      return res.status(200).json({
+        message: "All customers reset successfully",
+        count: snap.size,
+      });
+    } catch (err) {
+      console.error("Reset all customers error:", err);
+      return res.status(500).json({ error: "Failed to reset customers" });
+    }
+  };
+  
+  
 export {
     login,
     userInfo,
@@ -718,5 +794,7 @@ export {
     toggleDeliveryPerson,
     toggleSalesPerson,
     addCustomer,
-    getCustomerMapStatus
+    getCustomerMapStatus,
+    updateCustomerMeta,
+    resetAllCustomers
 };

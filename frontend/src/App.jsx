@@ -19,7 +19,7 @@ import AnalyticsView from "./Admin-View/AnalyticsView";
 import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
-
+import CustomerManagement from "./AdminPages/CustomerManagement";
 function App() {
   return (
     <Routes>
@@ -48,6 +48,7 @@ function App() {
         <Route path="customer-info/:id" element={<Customer />} />
         <Route path="report" element={<Report />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="customer-management" element={ <CustomerManagement/>} />
         <Route
           path="customer-map-for-delivery"
           element={<CustomerMapForDelivery />}
@@ -62,6 +63,7 @@ function App() {
         <Route path="analyticsView" element={<AnalyticsView />} />
         <Route path="about" element={<AboutVPage />} />
       </Route>
+
     </Routes>
   );
 }

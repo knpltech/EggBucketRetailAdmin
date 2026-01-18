@@ -24,7 +24,9 @@ import {
     toggleDeliveryPerson,
     toggleSalesPerson,
     addCustomer,
-    getCustomerMapStatus
+    getCustomerMapStatus,
+    updateCustomerMeta,
+    resetAllCustomers
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -36,6 +38,10 @@ router.put("/customer/update", updateCustomer);
 router.get("/customer/deliveries/:id", getUserDeliveries);
 router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single('image'), addCustomer);
+router.post("/customer/status", updateCustomerMeta);
+router.post("/customer/reset-all", resetAllCustomers);
+
+
 
 // Delivery partner related routes
 router.post("/add-del-partner", addDeliveryPartner);

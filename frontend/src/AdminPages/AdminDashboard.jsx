@@ -20,6 +20,7 @@ export default function AdminDashboard() {
     { label: "View Personnel", path: "/admin/personnel" },
     { label: "Report", path: "/admin/report" },
     { label: "Analytics", path: "/admin/analytics" },
+    { label: "Customer Management", path: "/admin/customer-management" },
     { label: "Customer Map ", path: "/admin/customer-map-for-delivery" },
   ];
 
