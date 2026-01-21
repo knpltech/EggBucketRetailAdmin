@@ -26,7 +26,9 @@ import {
     addCustomer,
     getCustomerMapStatus,
     updateCustomerMeta,
-    resetAllCustomers
+    resetAllCustomers,
+    addZone,
+    getZones
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -40,6 +42,10 @@ router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single('image'), addCustomer);
 router.post("/customer/status", updateCustomerMeta);
 router.post("/customer/reset-all", resetAllCustomers);
+router.post("/zones/add", addZone);
+router.get("/zones", getZones);
+
+
 
 
 
