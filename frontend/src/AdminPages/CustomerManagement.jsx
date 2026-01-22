@@ -6,21 +6,8 @@ import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 // CATEGORY NAMES
-const TABS = [
-  "ALL",
-  "ONBOARDING",
-  "REGULAR",
-  "FOLLOW-UP",
-  "RETENTION",
-  "OTHERS",
-];
-const CATEGORIES = [
-  "ONBOARDING",
-  "REGULAR",
-  "FOLLOW-UP",
-  "RETENTION",
-  "OTHERS",
-];
+const TABS = ["ALL", "ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION", "OTHERS"];
+const CATEGORIES = ["ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION", "OTHERS"];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
@@ -35,8 +22,7 @@ export default function CustomerManagement() {
   const [savingRemarkId, setSavingRemarkId] = useState(null);
 
   const isAll = activeTab === "ALL";
-  const isOnboarding = activeTab === "ONBOARDING";
-  const canDownloadExcel = !isAll; // all except ALL
+  const canDownloadExcel = activeTab !== "ALL";
 
   // ================= LOAD =================
   const loadCustomers = async () => {
@@ -62,22 +48,29 @@ export default function CustomerManagement() {
   const filtered = useMemo(() => {
     let list;
 
-    if (isAll || isOnboarding) {
+    if (activeTab === "ALL") {
       list = [...customers];
-    } else {
+    } 
+    else if (activeTab === "ONBOARDING") {
+      //  ONLY customers with NO category
+      list = customers.filter(
+        (c) => !c.category || c.category === "" || c.category === null
+      );
+    } 
+    else {
       list = customers.filter((c) => c.category === activeTab);
     }
 
     if (sortBy === "name") {
       list.sort((a, b) =>
-        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
       );
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
 
     return list;
-  }, [customers, activeTab, sortBy, isAll, isOnboarding]);
+  }, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
   const changeCategory = async (id, category) => {
@@ -118,7 +111,7 @@ export default function CustomerManagement() {
 
   const updateRemarkLocal = (id, value) => {
     setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c)),
+      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c))
     );
   };
 
@@ -137,7 +130,7 @@ export default function CustomerManagement() {
     if (!window.confirm("This will reset ALL customers and zones. Continue?"))
       return;
     await axios.post(`${ADMIN_PATH}/customer/reset-all`);
-    setZones([]); // Clear the zones dropdown menu
+    setZones([]);
     await loadCustomers();
     alert("Reset done");
   };
@@ -160,7 +153,7 @@ export default function CustomerManagement() {
       Name: getName(c),
       Zone: c.zone || "",
       Remarks: c.remarks || "",
-      Paid: c.paid ? "Yes" : "No", // Add paid status as Yes or No
+      Paid: c.paid ? "Yes" : "No",
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -302,15 +295,15 @@ export default function CustomerManagement() {
                           c.paid
                             ? "bg-green-600 text-white"
                             : payingId === c.id
-                              ? "bg-red-400 text-white opacity-60 cursor-not-allowed"
-                              : "bg-red-500 text-white"
-                        } `}
+                            ? "bg-red-400 text-white opacity-60 cursor-not-allowed"
+                            : "bg-red-500 text-white"
+                        }`}
                       >
                         {c.paid
                           ? "PAID"
                           : payingId === c.id
-                            ? "PROCESSING..."
-                            : "UNPAID"}
+                          ? "PROCESSING..."
+                          : "UNPAID"}
                       </button>
                     </td>
                   </>
@@ -322,7 +315,9 @@ export default function CustomerManagement() {
                     <input
                       value={c.remarks || ""}
                       disabled={savingRemarkId === c.id}
-                      onChange={(e) => updateRemarkLocal(c.id, e.target.value)}
+                      onChange={(e) =>
+                        updateRemarkLocal(c.id, e.target.value)
+                      }
                       onBlur={(e) => saveRemarks(c.id, e.target.value)}
                       className="border rounded-lg px-3 py-2 w-full disabled:opacity-50"
                     />
@@ -337,7 +332,9 @@ export default function CustomerManagement() {
                         disabled={movingId === c.id}
                         className="border rounded-lg px-3 py-2 disabled:opacity-50"
                         defaultValue=""
-                        onChange={(e) => changeCategory(c.id, e.target.value)}
+                        onChange={(e) =>
+                          changeCategory(c.id, e.target.value)
+                        }
                       >
                         <option value="">Move</option>
                         {CATEGORIES.map((cat) => (
@@ -352,7 +349,9 @@ export default function CustomerManagement() {
                       disabled={movingId === c.id}
                       className="border rounded-lg px-3 py-2 disabled:opacity-50"
                       defaultValue=""
-                      onChange={(e) => changeCategory(c.id, e.target.value)}
+                      onChange={(e) =>
+                        changeCategory(c.id, e.target.value)
+                      }
                     >
                       <option value="">Move</option>
                       {CATEGORIES.map((cat) => (
