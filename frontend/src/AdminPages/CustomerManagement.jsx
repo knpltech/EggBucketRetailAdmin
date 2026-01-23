@@ -54,7 +54,7 @@ export default function CustomerManagement() {
     else if (activeTab === "ONBOARDING") {
       //  ONLY customers with NO category
       list = customers.filter(
-        (c) => !c.category || c.category === "" || c.category === null
+        (c) => !c.category || c.category === "" || c.category === null ||   c.category === "ONBOARDING"
       );
     } 
     else {
