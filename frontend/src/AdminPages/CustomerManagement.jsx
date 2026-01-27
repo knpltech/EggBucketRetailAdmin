@@ -12,7 +12,7 @@ const TABS = [
   "REGULAR",
   "FOLLOW-UP",
   "RETENTION",
-  "Time Constraint",
+  "TIME CONSTRAINT",
   "OTHERS",
 ];
 const CATEGORIES = [
@@ -20,7 +20,7 @@ const CATEGORIES = [
   "REGULAR",
   "FOLLOW-UP",
   "RETENTION",
-  "Time Constraint",
+   "TIME CONSTRAINT",
   "OTHERS",
 ];
 
