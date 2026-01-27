@@ -6,8 +6,23 @@ import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 // CATEGORY NAMES
-const TABS = ["ALL", "ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION","Time Constraint", "OTHERS"];
-const CATEGORIES = ["ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION","Time Constraint", "OTHERS"];
+const TABS = [
+  "ALL",
+  "ONBOARDING",
+  "REGULAR",
+  "FOLLOW-UP",
+  "RETENTION",
+  "Time Constraint",
+  "OTHERS",
+];
+const CATEGORIES = [
+  "ONBOARDING",
+  "REGULAR",
+  "FOLLOW-UP",
+  "RETENTION",
+  "Time Constraint",
+  "OTHERS",
+];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
@@ -45,38 +60,56 @@ export default function CustomerManagement() {
   }, []);
 
   // ================= FILTER + SORT =================
-  const filtered = useMemo(() => {
-    let list;
+const filtered = useMemo(() => {
+  let list;
 
-    if (activeTab === "ALL") {
-      list = [...customers];
-    } 
-    else if (activeTab === "ONBOARDING") {
-      //  ONLY customers with NO category
-      list = customers.filter(
-        (c) => !c.category || c.category === "" || c.category === null ||   c.category === "ONBOARDING"
-      );
-    } 
-    else {
-      list = customers.filter((c) => c.category === activeTab);
-    }
+  if (activeTab === "ALL") {
+    list = [...customers];
+  } else if (activeTab === "ONBOARDING") {
+    list = customers.filter(
+      (c) =>
+        !c.category ||
+        c.category === "" ||
+        c.category === null ||
+        c.category === "ONBOARDING"
+    );
+  } else {
+    list = customers.filter((c) => c.category === activeTab);
+  }
 
-    if (sortBy === "name") {
-      list.sort((a, b) =>
-        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
-      );
-    } else if (sortBy == "remarks") {
-      list.sort((a, b) => 
-        (a.remarks || "").toLowerCase().localeCompare((b.remarks || "").toLowerCase())
-      );
-      }
-    
-    else {
-      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    }
+  if (sortBy === "name") {
+    list.sort((a, b) =>
+      getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
+    );
+  } else if (sortBy === "remarks") {
+    const withRemarks = list.filter(
+      (c) => c.remarks && c.remarks.trim() !== ""
+    );
 
-    return list;
-  }, [customers, activeTab, sortBy]);
+    const withoutRemarks = list.filter(
+      (c) => !c.remarks || c.remarks.trim() === ""
+    );
+
+    // Sort customers WITH remarks A-Z
+    withRemarks.sort((a, b) =>
+      a.remarks.trim().toLowerCase().localeCompare(
+        b.remarks.trim().toLowerCase()
+      )
+    );
+
+    // Sort customers WITHOUT remarks by name
+    withoutRemarks.sort((a, b) =>
+      getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
+    );
+
+    // First show customers with remarks, then without remarks
+    return [...withRemarks, ...withoutRemarks];
+  } else {
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }
+
+  return list;
+}, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
   const changeCategory = async (id, category) => {
@@ -192,7 +225,7 @@ export default function CustomerManagement() {
           >
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
-            <option value="remarks">Remarks A-Z</option>
+            { !isAll &&<option value="remarks">Remarks A-Z</option>}
           </select>
 
           {isAll && (
@@ -302,15 +335,15 @@ export default function CustomerManagement() {
                           c.paid
                             ? "bg-green-600 text-white"
                             : payingId === c.id
-                            ? "bg-red-400 text-white opacity-60 cursor-not-allowed"
-                            : "bg-red-500 text-white"
+                              ? "bg-red-400 text-white opacity-60 cursor-not-allowed"
+                              : "bg-red-500 text-white"
                         }`}
                       >
                         {c.paid
                           ? "PAID"
                           : payingId === c.id
-                          ? "PROCESSING..."
-                          : "UNPAID"}
+                            ? "PROCESSING..."
+                            : "UNPAID"}
                       </button>
                     </td>
                   </>
@@ -322,9 +355,7 @@ export default function CustomerManagement() {
                     <input
                       value={c.remarks || ""}
                       disabled={savingRemarkId === c.id}
-                      onChange={(e) =>
-                        updateRemarkLocal(c.id, e.target.value)
-                      }
+                      onChange={(e) =>updateRemarkLocal(c.id, e.target.value)}
                       onBlur={(e) => saveRemarks(c.id, e.target.value)}
                       className="border rounded-lg px-3 py-2 w-full disabled:opacity-50"
                     />
@@ -339,9 +370,7 @@ export default function CustomerManagement() {
                         disabled={movingId === c.id}
                         className="border rounded-lg px-3 py-2 disabled:opacity-50"
                         defaultValue=""
-                        onChange={(e) =>
-                          changeCategory(c.id, e.target.value)
-                        }
+                        onChange={(e) => changeCategory(c.id, e.target.value)}
                       >
                         <option value="">Move</option>
                         {CATEGORIES.map((cat) => (
@@ -356,9 +385,7 @@ export default function CustomerManagement() {
                       disabled={movingId === c.id}
                       className="border rounded-lg px-3 py-2 disabled:opacity-50"
                       defaultValue=""
-                      onChange={(e) =>
-                        changeCategory(c.id, e.target.value)
-                      }
+                      onChange={(e) => changeCategory(c.id, e.target.value)}
                     >
                       <option value="">Move</option>
                       {CATEGORIES.map((cat) => (
