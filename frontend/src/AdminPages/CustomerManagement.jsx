@@ -6,8 +6,8 @@ import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 // CATEGORY NAMES
-const TABS = ["ALL", "ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION", "OTHERS"];
-const CATEGORIES = ["ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION", "OTHERS"];
+const TABS = ["ALL", "ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION","Time Constraint", "OTHERS"];
+const CATEGORIES = ["ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION","Time Constraint", "OTHERS"];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
@@ -65,7 +65,13 @@ export default function CustomerManagement() {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
       );
-    } else {
+    } else if (sortBy == "remarks") {
+      list.sort((a, b) => 
+        (a.remarks || "").toLowerCase().localeCompare((b.remarks || "").toLowerCase())
+      );
+      }
+    
+    else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
 
@@ -186,6 +192,7 @@ export default function CustomerManagement() {
           >
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
+            <option value="remarks">Remarks A-Z</option>
           </select>
 
           {isAll && (
