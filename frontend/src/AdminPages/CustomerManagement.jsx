@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers } from "react-icons/fi";
+import { FiUsers, FiEdit2 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
@@ -13,15 +13,15 @@ const TABS = [
   "FOLLOW-UP",
   "RETENTION",
   "TIME CONSTRAINT",
-  "OTHERS",
+  "DAILY CALLING",
 ];
 const CATEGORIES = [
   "ONBOARDING",
   "REGULAR",
   "FOLLOW-UP",
   "RETENTION",
-   "TIME CONSTRAINT",
-  "OTHERS",
+  "TIME CONSTRAINT",
+  "DAILY CALLING",
 ];
 
 export default function CustomerManagement() {
@@ -35,6 +35,7 @@ export default function CustomerManagement() {
   const [movingId, setMovingId] = useState(null);
   const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [savingRemarkId, setSavingRemarkId] = useState(null);
+  const [editingZoneId, setEditingZoneId] = useState(null);
 
   const isAll = activeTab === "ALL";
   const canDownloadExcel = activeTab !== "ALL";
@@ -60,56 +61,56 @@ export default function CustomerManagement() {
   }, []);
 
   // ================= FILTER + SORT =================
-const filtered = useMemo(() => {
-  let list;
+  const filtered = useMemo(() => {
+    let list;
 
-  if (activeTab === "ALL") {
-    list = [...customers];
-  } else if (activeTab === "ONBOARDING") {
-    list = customers.filter(
-      (c) =>
-        !c.category ||
-        c.category === "" ||
-        c.category === null ||
-        c.category === "ONBOARDING"
-    );
-  } else {
-    list = customers.filter((c) => c.category === activeTab);
-  }
+    if (activeTab === "ALL") {
+      list = [...customers];
+    } else if (activeTab === "ONBOARDING") {
+      list = customers.filter(
+        (c) =>
+          !c.category ||
+          c.category === "" ||
+          c.category === null ||
+          c.category === "ONBOARDING"
+      );
+    } else {
+      list = customers.filter((c) => c.category === activeTab);
+    }
 
-  if (sortBy === "name") {
-    list.sort((a, b) =>
-      getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
-    );
-  } else if (sortBy === "remarks") {
-    const withRemarks = list.filter(
-      (c) => c.remarks && c.remarks.trim() !== ""
-    );
+    if (sortBy === "name") {
+      list.sort((a, b) =>
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
+      );
+    } else if (sortBy === "remarks") {
+      const withRemarks = list.filter(
+        (c) => c.remarks && c.remarks.trim() !== ""
+      );
 
-    const withoutRemarks = list.filter(
-      (c) => !c.remarks || c.remarks.trim() === ""
-    );
+      const withoutRemarks = list.filter(
+        (c) => !c.remarks || c.remarks.trim() === ""
+      );
 
-    // Sort customers WITH remarks A-Z
-    withRemarks.sort((a, b) =>
-      a.remarks.trim().toLowerCase().localeCompare(
-        b.remarks.trim().toLowerCase()
-      )
-    );
+      // Sort customers WITH remarks A-Z
+      withRemarks.sort((a, b) =>
+        a.remarks.trim().toLowerCase().localeCompare(
+          b.remarks.trim().toLowerCase()
+        )
+      );
 
-    // Sort customers WITHOUT remarks by name
-    withoutRemarks.sort((a, b) =>
-      getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
-    );
+      // Sort customers WITHOUT remarks by name
+      withoutRemarks.sort((a, b) =>
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
+      );
 
-    // First show customers with remarks, then without remarks
-    return [...withRemarks, ...withoutRemarks];
-  } else {
-    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  }
+      // First show customers with remarks, then without remarks
+      return [...withRemarks, ...withoutRemarks];
+    } else {
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    }
 
-  return list;
-}, [customers, activeTab, sortBy]);
+    return list;
+  }, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
   const changeCategory = async (id, category) => {
@@ -271,18 +272,18 @@ const filtered = useMemo(() => {
       </div>
 
       {/* TABLE */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="w-full text-sm table-fixed text-center">
-          <thead className="bg-gray-100">
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="w-full text-sm text-center border-collapse">
+          <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="p-3">Image</th>
-              <th className="p-3">Customer ID</th>
-              <th className="p-3">Name</th>
-              <th className="p-3">Zone</th>
-              {isAll && <th className="p-3">Category</th>}
-              {isAll && <th className="p-3">Paid</th>}
-              {!isAll && <th className="p-3">Remarks</th>}
-              <th className="p-3">Move</th>
+              <th className="p-3 whitespace-nowrap">Image</th>
+              <th className="p-3 whitespace-nowrap">Customer ID</th>
+              <th className="p-3 whitespace-nowrap">Name</th>
+              <th className="p-3 whitespace-nowrap">Zone</th>
+              {isAll && <th className="p-3 whitespace-nowrap">Category</th>}
+              {isAll && <th className="p-3 whitespace-nowrap">Paid</th>}
+              {!isAll && <th className="p-3 whitespace-nowrap">Remarks</th>}
+              <th className="p-3 whitespace-nowrap">Move</th>
             </tr>
           </thead>
 
@@ -300,26 +301,57 @@ const filtered = useMemo(() => {
 
                 {/* ZONE */}
                 <td className="p-3">
-                  {isAll ? (
-                    c.zone ? (
-                      c.zone
-                    ) : (
-                      <select
-                        disabled={assigningZoneId === c.id}
-                        className="border rounded-lg px-3 py-2 disabled:opacity-50"
-                        defaultValue=""
-                        onChange={(e) => assignZone(c.id, e.target.value)}
-                      >
-                        <option value="">Assign</option>
-                        {zones.map((z) => (
-                          <option key={z} value={z}>
-                            {z}
-                          </option>
-                        ))}
-                      </select>
-                    )
+                  {isAll && (!c.zone || c.zone === "UNASSIGNED") ? (
+                    <select
+                      disabled={assigningZoneId === c.id}
+                      className="border rounded-lg px-3 py-2 disabled:opacity-50"
+                      defaultValue=""
+                      onChange={(e) => assignZone(c.id, e.target.value)}
+                    >
+                      <option value="">Assign</option>
+                      {zones.map((z) => (
+                        <option key={z} value={z}>
+                          {z}
+                        </option>
+                      ))}
+                    </select>
+                  ) : isAll && editingZoneId === c.id ? (
+                    <select
+                      autoFocus
+                      defaultValue={c.zone}
+                      disabled={assigningZoneId === c.id}
+                      onChange={async (e) => {
+                        const zone = e.target.value;
+                        if (!zone || zone === c.zone) {
+                          setEditingZoneId(null);
+                          return;
+                        }
+                        await assignZone(c.id, zone);
+                        setEditingZoneId(null);
+                      }}
+                      onBlur={() => setEditingZoneId(null)}
+                      className="border rounded-lg px-3 py-2"
+                    >
+                      {zones.map((z) => (
+                        <option key={z} value={z}>
+                          {z}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
-                    c.zone || "UNASSIGNED"
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="font-medium">
+                        {c.zone || "UNASSIGNED"}
+                      </span>
+                      {isAll && (
+                        <button
+                          onClick={() => setEditingZoneId(c.id)}
+                          className="text-gray-500 hover:text-blue-600"
+                        >
+                          <FiEdit2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </td>
 
@@ -357,7 +389,8 @@ const filtered = useMemo(() => {
                       disabled={savingRemarkId === c.id}
                       onChange={(e) =>updateRemarkLocal(c.id, e.target.value)}
                       onBlur={(e) => saveRemarks(c.id, e.target.value)}
-                      className="border rounded-lg px-3 py-2 w-full disabled:opacity-50"
+                      className="border rounded-lg px-3 py-2 disabled:opacity-50 text-left"
+                      placeholder="Add remarks..."
                     />
                   </td>
                 )}
@@ -368,7 +401,7 @@ const filtered = useMemo(() => {
                     !c.category && (
                       <select
                         disabled={movingId === c.id}
-                        className="border rounded-lg px-3 py-2 disabled:opacity-50"
+                        className="border rounded-lg px-3 py-2 disabled:opacity-50 w-full max-w-[150px] mx-auto"
                         defaultValue=""
                         onChange={(e) => changeCategory(c.id, e.target.value)}
                       >
@@ -383,7 +416,7 @@ const filtered = useMemo(() => {
                   ) : (
                     <select
                       disabled={movingId === c.id}
-                      className="border rounded-lg px-3 py-2 disabled:opacity-50"
+                      className="border rounded-lg px-3 py-2 disabled:opacity-50 w-full max-w-[150px] mx-auto"
                       defaultValue=""
                       onChange={(e) => changeCategory(c.id, e.target.value)}
                     >
