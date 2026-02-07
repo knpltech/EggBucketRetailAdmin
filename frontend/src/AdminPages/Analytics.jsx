@@ -26,37 +26,27 @@ const Analytics = () => {
 
   // Load all customers + deliveries only once
   const loadAnalyticsOnce = async () => {
-    try {
-      const res = await axios.get(`${ADMIN_PATH}/user-info`);
-      let all = res.data || [];
+  try {
+    const res = await axios.get(
+      `${ADMIN_PATH}/analytics/last7`
+    );
 
-      const full = await Promise.all(
-        all.map(async (c) => {
-          try {
-            const dres = await axios.get(`${ADMIN_PATH}/customer/deliveries/${c.id}`);
-            return {
-              ...c,
-              deliveries: dres.data.deliveries || [],
-              last7: computeLast7Days(dres.data.deliveries || []),
-            };
-          } catch {
-            return {
-              ...c,
-              deliveries: [],
-              last7: computeLast7Days([]),
-            };
-          }
-        })
-      );
+    const customers = res.data.customers || [];
 
-      setAllCustomers(full);
-      setCustomers(full);
-    } catch (err) {
-      console.log("Analytics load error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const full = customers.map((c) => ({
+      ...c,
+      last7: computeLast7Days(c.deliveries || []),
+    }));
+
+    setAllCustomers(full);
+    setCustomers(full);
+  } catch (err) {
+    console.log("Analytics load error:", err);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const applySorting = (option) => {
     let sorted = [...allCustomers];
