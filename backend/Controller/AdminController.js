@@ -873,6 +873,79 @@ const getZones = async (req, res) => {
   }
 };
 
+
+
+
+const getAnalyticsLast7 = async (req, res) => {
+  const cacheKey = "analytics:last7";
+
+  // Cache first
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.status(200).json({ customers: cached });
+  }
+
+  try {
+    const db = getFirestore();
+
+    // Today 00:00
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 7 days ago
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+
+    // Get customers
+    const customersSnap = await db.collection("customers").get();
+
+    if (customersSnap.empty) {
+      return res.json({ customers: [] });
+    }
+
+    // Parallel
+    const customers = await Promise.all(
+      customersSnap.docs.map(async (doc) => {
+        const c = doc.data();
+
+        // Get only last 7 days deliveries
+        const deliveriesSnap = await db
+          .collection("customers")
+          .doc(doc.id)
+          .collection("deliveries")
+          .where("timestamp", ">=", sevenDaysAgo)
+          .get();
+
+        const deliveries = deliveriesSnap.docs.map((d) => {
+          const data = d.data();
+          return {
+            timestamp: data.timestamp,
+            type: data.type,
+          };
+        });
+
+        return {
+          id: doc.id,
+          name: c.name,
+          custid: c.custid,
+          imageUrl: c.imageUrl || "",
+          createdAt: c.createdAt,
+          deliveries,
+        };
+      })
+    );
+
+    // Cache 5 minutes
+    cache.set(cacheKey, customers, 300);
+
+    return res.status(200).json({ customers });
+  } catch (err) {
+    console.error("Analytics API error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
 export {
   login,
   userInfo,
@@ -897,4 +970,5 @@ export {
   resetAllCustomers,
   addZone,
   getZones,
+  getAnalyticsLast7
 };

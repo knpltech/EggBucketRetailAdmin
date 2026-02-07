@@ -28,7 +28,8 @@ import {
     updateCustomerMeta,
     resetAllCustomers,
     addZone,
-    getZones
+    getZones,
+    getAnalyticsLast7
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -44,6 +45,8 @@ router.post("/customer/status", updateCustomerMeta);
 router.post("/customer/reset-all", resetAllCustomers);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
+router.get("/analytics/last7", getAnalyticsLast7);
+
 
 
 
