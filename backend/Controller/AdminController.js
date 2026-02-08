@@ -829,31 +829,14 @@ const resetAllCustomers = async (req, res) => {
           paid: false,
           category: null,
           remarks: "",
-          zone: null, // ✅ RESET ZONE FIELD
         });
       });
 
       await customerBatch.commit();
     }
-
-    // ================= DELETE ALL ZONES =================
-    const zoneSnap = await db.collection("zones").get();
-
-    if (!zoneSnap.empty) {
-      const zoneBatch = db.batch();
-
-      zoneSnap.docs.forEach((doc) => {
-        const ref = db.collection("zones").doc(doc.id);
-        zoneBatch.delete(ref); // ✅ DELETE ZONE DOC
-      });
-
-      await zoneBatch.commit();
-    }
-
     return res.status(200).json({
-      message: "All customers and zones reset successfully",
+      message: "All customers reset successfully",
       customers: customerSnap.size,
-      zones: zoneSnap.size,
     });
   } catch (err) {
     console.error("Reset all error:", err);
@@ -945,6 +928,83 @@ const getAnalyticsLast7 = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+//  Auto assign category for ONE customer
+const autoAssignCategoryForCustomer = async (customerId) => {
+  const db = getFirestore();
+
+  // Today 00:00
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 14 days ago
+  const fourteenDaysAgo = new Date(today);
+  fourteenDaysAgo.setDate(today.getDate() - 14);
+
+  const customerRef = db.collection("customers").doc(customerId);
+
+  // Get last 14 days deliveries
+  const snap = await customerRef
+    .collection("deliveries")
+    .where("timestamp", ">=", fourteenDaysAgo)
+    .get();
+
+  const count = snap.size;
+
+  let category = "RETENTION"; // default
+
+  // ✅ Proper ranges (no overlap)
+  if (count >= 5) {
+    category = "REGULAR";
+  } else if (count >= 2 && count <= 4) {
+    category = "FOLLOW-UP";
+  } else {
+    category = "RETENTION";
+  }
+
+  // Update customer
+  await customerRef.update({ category });
+
+  return category;
+};
+// ✅ Add Delivery + Auto Assign Category
+const addDelivery = async (req, res) => {
+  try {
+    const { customerId, type, deliveredBy } = req.body;
+
+    if (!customerId || !type) {
+      return res.status(400).json({ message: "Missing fields" });
+    }
+
+    const db = getFirestore();
+
+    // Save delivery
+    await db
+      .collection("customers")
+      .doc(customerId)
+      .collection("deliveries")
+      .add({
+        type,
+        deliveredBy: deliveredBy || null,
+        timestamp: new Date(),
+      });
+
+    // Auto update category immediately
+    const newCategory = await autoAssignCategoryForCustomer(customerId);
+
+    return res.status(200).json({
+      message: "Delivery added successfully",
+      category: newCategory,
+    });
+
+  } catch (err) {
+    console.error("Add delivery error:", err);
+
+    return res.status(500).json({
+      message: "Failed to add delivery",
+    });
+  }
+};
+
 
 
 export {
@@ -971,5 +1031,7 @@ export {
   resetAllCustomers,
   addZone,
   getZones,
-  getAnalyticsLast7
+  getAnalyticsLast7,
+  autoAssignCategoryForCustomer,
+  addDelivery
 };

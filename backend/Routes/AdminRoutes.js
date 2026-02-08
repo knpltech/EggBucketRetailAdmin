@@ -29,7 +29,9 @@ import {
     resetAllCustomers,
     addZone,
     getZones,
-    getAnalyticsLast7
+    getAnalyticsLast7,
+    autoAssignCategoryForCustomer,
+    addDelivery
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -46,6 +48,10 @@ router.post("/customer/reset-all", resetAllCustomers);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
 router.get("/analytics/last7", getAnalyticsLast7);
+router.post("/customer/auto-assign-category", autoAssignCategoryForCustomer);
+router.post("/delivery/add", addDelivery);
+
+
 
 
 
