@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiEdit2 } from "react-icons/fi";
+import { FiUsers } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
@@ -12,30 +12,24 @@ const TABS = [
   "REGULAR",
   "FOLLOW-UP",
   "RETENTION",
-  "TIME CONSTRAINT",
-  "DAILY CALLING",
 ];
+
 const CATEGORIES = [
   "ONBOARDING",
   "REGULAR",
   "FOLLOW-UP",
   "RETENTION",
-  "TIME CONSTRAINT",
-  "DAILY CALLING",
 ];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
-  const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
 
   const [payingId, setPayingId] = useState(null);
   const [movingId, setMovingId] = useState(null);
-  const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [savingRemarkId, setSavingRemarkId] = useState(null);
-  const [editingZoneId, setEditingZoneId] = useState(null);
 
   const isAll = activeTab === "ALL";
   const canDownloadExcel = activeTab !== "ALL";
@@ -46,43 +40,44 @@ export default function CustomerManagement() {
     setCustomers(Array.isArray(res.data) ? res.data : []);
   };
 
-  const loadZones = async () => {
-    const res = await axios.get(`${ADMIN_PATH}/zones`);
-    setZones(res.data || []);
-  };
-
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await Promise.all([loadCustomers(), loadZones()]);
+      await loadCustomers(); //  Only load (fast)
       setLoading(false);
     };
     init();
   }, []);
 
-  // ================= FILTER + SORT =================
+  
   const filtered = useMemo(() => {
     let list;
 
     if (activeTab === "ALL") {
       list = [...customers];
-    } else if (activeTab === "ONBOARDING") {
+    }
+
+    //  ONBOARDING =  Zone Unassigned
+    else if (activeTab === "ONBOARDING") {
       list = customers.filter(
         (c) =>
-          !c.category ||
-          c.category === "" ||
-          c.category === null ||
-          c.category === "ONBOARDING"
+          
+          (!c.zone || c.zone === "" || c.zone === "UNASSIGNED")
       );
-    } else {
+    }
+
+    else {
       list = customers.filter((c) => c.category === activeTab);
     }
 
+    // SORT
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
       );
-    } else if (sortBy === "remarks") {
+    }
+
+    else if (sortBy === "remarks") {
       const withRemarks = list.filter(
         (c) => c.remarks && c.remarks.trim() !== ""
       );
@@ -91,59 +86,59 @@ export default function CustomerManagement() {
         (c) => !c.remarks || c.remarks.trim() === ""
       );
 
-      // Sort customers WITH remarks A-Z
       withRemarks.sort((a, b) =>
         a.remarks.trim().toLowerCase().localeCompare(
           b.remarks.trim().toLowerCase()
         )
       );
 
-      // Sort customers WITHOUT remarks by name
       withoutRemarks.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
       );
 
-      // First show customers with remarks, then without remarks
       return [...withRemarks, ...withoutRemarks];
-    } else {
+    }
+
+    else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
 
     return list;
+
   }, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
   const changeCategory = async (id, category) => {
     if (!category || movingId === id) return;
+
     try {
       setMovingId(id);
-      await axios.post(`${ADMIN_PATH}/customer/status`, { id, category });
+
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        category,
+      });
+
       await loadCustomers();
+
     } finally {
       setMovingId(null);
     }
   };
 
-  const assignZone = async (id, zone) => {
-    if (!zone || assigningZoneId === id) return;
-    try {
-      setAssigningZoneId(id);
-      await axios.post(`${ADMIN_PATH}/customer/status`, { id, zone });
-      await loadCustomers();
-    } finally {
-      setAssigningZoneId(null);
-    }
-  };
-
   const markPaidOnce = async (c) => {
     if (c.paid || payingId === c.id) return;
+
     try {
       setPayingId(c.id);
+
       await axios.post(`${ADMIN_PATH}/customer/status`, {
         id: c.id,
         paid: true,
       });
+
       await loadCustomers();
+
     } finally {
       setPayingId(null);
     }
@@ -151,37 +146,37 @@ export default function CustomerManagement() {
 
   const updateRemarkLocal = (id, value) => {
     setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c))
+      prev.map((c) =>
+        c.id === id ? { ...c, remarks: value } : c
+      )
     );
   };
 
   const saveRemarks = async (id, remarks) => {
     try {
       setSavingRemarkId(id);
-      await axios.post(`${ADMIN_PATH}/customer/status`, { id, remarks });
+
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        remarks,
+      });
+
       await loadCustomers();
+
     } finally {
       setSavingRemarkId(null);
     }
   };
 
-  // ================= RESET =================
+  //  RESET 
   const resetAll = async () => {
     if (!window.confirm("This will reset ALL customers and zones. Continue?"))
       return;
-    await axios.post(`${ADMIN_PATH}/customer/reset-all`);
-    setZones([]);
-    await loadCustomers();
-    alert("Reset done");
-  };
 
-  // ================= ADD ZONE =================
-  const addZonePrompt = async () => {
-    const name = prompt("Enter new Zone name:");
-    if (!name) return;
-    await axios.post(`${ADMIN_PATH}/zones/add`, { name });
-    await loadZones();
-    alert("Zone added");
+    await axios.post(`${ADMIN_PATH}/customer/reset-all`);
+    await loadCustomers();
+
+    alert("Reset done");
   };
 
   // ================= EXCEL =================
@@ -197,21 +192,31 @@ export default function CustomerManagement() {
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, activeTab);
-    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
+    const buf = XLSX.write(wb, {
+      bookType: "xlsx",
+      type: "array",
+    });
+
     saveAs(new Blob([buf]), `${activeTab}.xlsx`);
   };
 
-  // ================= UI =================
+  // UI
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
+
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
+
         <h1 className="text-3xl font-bold">Customer Management</h1>
 
         <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
+
           <FiUsers className="text-3xl text-blue-500" />
+
           <div>
             <p className="text-sm text-gray-600">Total Customers</p>
             <p className="text-2xl font-bold">
@@ -226,17 +231,8 @@ export default function CustomerManagement() {
           >
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
-            { !isAll &&<option value="remarks">Remarks A-Z</option>}
+            {!isAll && <option value="remarks">Remarks A-Z</option>}
           </select>
-
-          {isAll && (
-            <button
-              onClick={addZonePrompt}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-            >
-              Add Zone
-            </button>
-          )}
 
           {canDownloadExcel && (
             <button
@@ -253,6 +249,7 @@ export default function CustomerManagement() {
           >
             Reset All
           </button>
+
         </div>
       </div>
 
@@ -273,92 +270,52 @@ export default function CustomerManagement() {
 
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
+
         <table className="w-full text-sm text-center border-collapse">
+
           <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="p-3 whitespace-nowrap">Image</th>
-              <th className="p-3 whitespace-nowrap">Customer ID</th>
-              <th className="p-3 whitespace-nowrap">Name</th>
-              <th className="p-3 whitespace-nowrap">Zone</th>
-              {isAll && <th className="p-3 whitespace-nowrap">Category</th>}
-              {isAll && <th className="p-3 whitespace-nowrap">Paid</th>}
-              {!isAll && <th className="p-3 whitespace-nowrap">Remarks</th>}
-              <th className="p-3 whitespace-nowrap">Move</th>
+              <th className="p-3">Image</th>
+              <th className="p-3">Customer ID</th>
+              <th className="p-3">Name</th>
+              <th className="p-3">Zone</th>
+
+              {isAll && <th className="p-3">Category</th>}
+              {isAll && <th className="p-3">Paid</th>}
+              {!isAll && <th className="p-3">Remarks</th>}
+              <th className="p-3">Move</th>
             </tr>
           </thead>
 
           <tbody>
             {filtered.map((c) => (
               <tr key={c.id} className="border-t">
+
                 <td className="p-3">
                   <img
                     src={getImage(c)}
                     className="w-10 h-10 rounded-full object-cover mx-auto"
                   />
                 </td>
-                <td className="p-3 font-medium">{c.custid || c.id}</td>
-                <td className="p-3 font-medium">{getName(c)}</td>
 
-                {/* ZONE */}
-                <td className="p-3">
-                  {isAll && (!c.zone || c.zone === "UNASSIGNED") ? (
-                    <select
-                      disabled={assigningZoneId === c.id}
-                      className="border rounded-lg px-3 py-2 disabled:opacity-50"
-                      defaultValue=""
-                      onChange={(e) => assignZone(c.id, e.target.value)}
-                    >
-                      <option value="">Assign</option>
-                      {zones.map((z) => (
-                        <option key={z} value={z}>
-                          {z}
-                        </option>
-                      ))}
-                    </select>
-                  ) : isAll && editingZoneId === c.id ? (
-                    <select
-                      autoFocus
-                      defaultValue={c.zone}
-                      disabled={assigningZoneId === c.id}
-                      onChange={async (e) => {
-                        const zone = e.target.value;
-                        if (!zone || zone === c.zone) {
-                          setEditingZoneId(null);
-                          return;
-                        }
-                        await assignZone(c.id, zone);
-                        setEditingZoneId(null);
-                      }}
-                      onBlur={() => setEditingZoneId(null)}
-                      className="border rounded-lg px-3 py-2"
-                    >
-                      {zones.map((z) => (
-                        <option key={z} value={z}>
-                          {z}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="font-medium">
-                        {c.zone || "UNASSIGNED"}
-                      </span>
-                      {isAll && (
-                        <button
-                          onClick={() => setEditingZoneId(c.id)}
-                          className="text-gray-500 hover:text-blue-600"
-                        >
-                          <FiEdit2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  )}
+                <td className="p-3 font-medium">
+                  {c.custid || c.id}
                 </td>
 
-                {/* CATEGORY + PAID ONLY IN ALL */}
+                <td className="p-3 font-medium">
+                  {getName(c)}
+                </td>
+
+                <td className="p-3 font-medium text-gray-700">
+                  {c.zone || "UNASSIGNED"}
+                </td>
+
                 {isAll && (
                   <>
-                    <td className="p-3">{c.category || "UNASSIGNED"}</td>
+                    <td className="p-3">
+                      {c.category || "UNASSIGNED"}
+                    </td>
+
                     <td className="p-3">
                       <button
                         disabled={c.paid || payingId === c.id}
@@ -367,28 +324,31 @@ export default function CustomerManagement() {
                           c.paid
                             ? "bg-green-600 text-white"
                             : payingId === c.id
-                              ? "bg-red-400 text-white opacity-60 cursor-not-allowed"
-                              : "bg-red-500 text-white"
+                            ? "bg-red-400 text-white opacity-60"
+                            : "bg-red-500 text-white"
                         }`}
                       >
                         {c.paid
                           ? "PAID"
                           : payingId === c.id
-                            ? "PROCESSING..."
-                            : "UNPAID"}
+                          ? "PROCESSING..."
+                          : "UNPAID"}
                       </button>
                     </td>
                   </>
                 )}
 
-                {/* REMARKS IN NON-ALL */}
                 {!isAll && (
                   <td className="p-3">
                     <input
                       value={c.remarks || ""}
                       disabled={savingRemarkId === c.id}
-                      onChange={(e) =>updateRemarkLocal(c.id, e.target.value)}
-                      onBlur={(e) => saveRemarks(c.id, e.target.value)}
+                      onChange={(e) =>
+                        updateRemarkLocal(c.id, e.target.value)
+                      }
+                      onBlur={(e) =>
+                        saveRemarks(c.id, e.target.value)
+                      }
                       className="border rounded-lg px-3 py-2 disabled:opacity-50 text-left"
                       placeholder="Add remarks..."
                     />
@@ -397,48 +357,37 @@ export default function CustomerManagement() {
 
                 {/* MOVE */}
                 <td className="p-3">
-                  {isAll ? (
-                    !c.category && (
-                      <select
-                        disabled={movingId === c.id}
-                        className="border rounded-lg px-3 py-2 disabled:opacity-50 w-full max-w-[150px] mx-auto"
-                        defaultValue=""
-                        onChange={(e) => changeCategory(c.id, e.target.value)}
-                      >
-                        <option value="">Move</option>
-                        {CATEGORIES.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                    )
-                  ) : (
-                    <select
-                      disabled={movingId === c.id}
-                      className="border rounded-lg px-3 py-2 disabled:opacity-50 w-full max-w-[150px] mx-auto"
-                      defaultValue=""
-                      onChange={(e) => changeCategory(c.id, e.target.value)}
-                    >
-                      <option value="">Move</option>
-                      {CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  <select
+                    disabled={movingId === c.id}
+                    className="border rounded-lg px-3 py-2 disabled:opacity-50"
+                    defaultValue=""
+                    onChange={(e) =>
+                      changeCategory(c.id, e.target.value)
+                    }
+                  >
+                    <option value="">Move</option>
+
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
                 </td>
+
               </tr>
             ))}
           </tbody>
+
         </table>
+
       </div>
     </div>
   );
 }
 
-// HELPERS
+// ================= HELPERS =================
+
 function getName(c) {
   return c.name || c.customerName || "Unknown";
 }
