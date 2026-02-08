@@ -150,13 +150,13 @@ const statusShort = (type) => {
     }
 
     // header row: Customer ID, Name, then dates as "DD MMM"
-    const header = ["Customer ID", "Name", ...dateList.map((d) => `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}`)];
+    const header = ["Customer ID", "Name","Zone" ,...dateList.map((d) => `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}`)];
 
     // build rows array
     const aoa = [header];
 
     customers.forEach((c) => {
-      const row = [c.custid || "", c.name || ""];
+      const row = [c.custid || "", c.name || "", c.zone || "UNASSIGNED"];
 
       dateList.forEach((day) => {
         // find delivery on that exact day
@@ -178,7 +178,8 @@ const statusShort = (type) => {
     // Column widths: cust id small, name wide, other date columns medium
     const cols = [
       { wch: 14 }, // Customer ID
-      { wch: 36 }, // Name - made wider for long names
+      { wch: 36 },// Name - made wider for long names
+      {wch: 18 }, // zone
       ...dateList.map(() => ({ wch: 12 })), 
     ];
     ws["!cols"] = cols;
@@ -213,7 +214,7 @@ const statusShort = (type) => {
           cell.s.fill = { patternType: "solid", fgColor: { rgb: "FFF3F4F6" } };
         } else {
           
-          if (C >= 2) {
+          if (C >= 3) {
             const text = (cell.v || "").toString().toLowerCase();
             if (text.includes("delivered") || text.includes("✅")) {
               cell.s.fill = { patternType: "solid", fgColor: { rgb: "FFDFF7E0" } }; // very light green
@@ -347,6 +348,7 @@ const statusShort = (type) => {
               <th className="p-3 text-left font-semibold">Image</th>
               <th className="p-3 text-left font-semibold">Cust Id</th>
               <th className="p-3 text-left font-semibold">Name</th>
+               <th className="p-3 text-left font-semibold">Zone</th>
 
               {last7DaysHeader.map((d, i) => (
                 <th key={i} className="p-3 text-center font-semibold">
@@ -369,8 +371,12 @@ const statusShort = (type) => {
                       <div className="w-20 h-4 bg-gray-300 rounded animate-pulse"></div>
                     </td>
                     <td className="p-3">
-                      <div className="w-32 h-4 bg-gray-300 rounded animate-pulse"></div>
-                    </td>
+                      <div className="w-24 h-4 bg-gray-300 rounded animate-pulse"></div>
+                  </td>
+                    {/* Zone */}
+  <td className="p-3">
+    <div className="w-20 h-4 bg-gray-300 rounded animate-pulse"></div>
+  </td>
 
                     {[...Array(7)].map((_, i) => (
                       <td key={i} className="p-3 text-center">
@@ -386,7 +392,10 @@ const statusShort = (type) => {
                     </td>
 
                     <td className="p-3 font-medium">{c.custid}</td>
-                    <td className="p-3 font-medium">{c.name}</td>
+                  <td className="p-3 font-medium">{c.name}</td>
+                  <td className="p-3 font-medium text-gray-700">
+  {c.zone || "UNASSIGNED"}
+</td>
 
                     {c.last7.map((d, index) => (
                       <td key={index} className="p-3 text-center">
