@@ -930,6 +930,7 @@ const getAnalyticsLast7 = async (req, res) => {
           custid: c.custid,
           imageUrl: c.imageUrl || "",
           createdAt: c.createdAt,
+              zone: c.zone || "UNASSIGNED",
           deliveries,
         };
       })
