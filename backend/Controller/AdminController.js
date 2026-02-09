@@ -657,6 +657,10 @@ const addCustomer = async (req, res) => {
       createdby,
       custid,
       location,
+      category: "RETENTION",
+      zone: "UNASSIGNED",
+  paid: false,
+  remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
     res.status(200).json({ message: "Customer added successfully" });
@@ -813,36 +817,7 @@ const addZone = async (req, res) => {
   }
 };
 
-const resetAllCustomers = async (req, res) => {
-  try {
-    const db = getFirestore();
 
-    // ================= RESET CUSTOMERS =================
-    const customerSnap = await db.collection("customers").get();
-
-    if (!customerSnap.empty) {
-      const customerBatch = db.batch();
-
-      customerSnap.docs.forEach((doc) => {
-        const ref = db.collection("customers").doc(doc.id);
-        customerBatch.update(ref, {
-          paid: false,
-          category: null,
-          remarks: "",
-        });
-      });
-
-      await customerBatch.commit();
-    }
-    return res.status(200).json({
-      message: "All customers reset successfully",
-      customers: customerSnap.size,
-    });
-  } catch (err) {
-    console.error("Reset all error:", err);
-    return res.status(500).json({ error: "Failed to reset system" });
-  }
-};
 
 const getZones = async (req, res) => {
   try {
@@ -942,69 +917,75 @@ const autoAssignCategoryForCustomer = async (customerId) => {
 
   const customerRef = db.collection("customers").doc(customerId);
 
-  // Get last 14 days deliveries
+  
   const snap = await customerRef
     .collection("deliveries")
     .where("timestamp", ">=", fourteenDaysAgo)
+    .select("timestamp") // fetch only needed field
     .get();
 
   const count = snap.size;
 
-  let category = "RETENTION"; // default
+  let category = "RETENTION";
 
-  // ✅ Proper ranges (no overlap)
   if (count >= 5) {
     category = "REGULAR";
-  } else if (count >= 2 && count <= 4) {
+  } else if (count >= 2) {
     category = "FOLLOW-UP";
   } else {
     category = "RETENTION";
   }
 
-  // Update customer
   await customerRef.update({ category });
 
   return category;
 };
-// ✅ Add Delivery + Auto Assign Category
-const addDelivery = async (req, res) => {
+
+//  Recalculate category for ALL customers
+const recalculateAllCategories = async (req, res) => {
   try {
-    const { customerId, type, deliveredBy } = req.body;
-
-    if (!customerId || !type) {
-      return res.status(400).json({ message: "Missing fields" });
-    }
-
     const db = getFirestore();
 
-    // Save delivery
-    await db
-      .collection("customers")
-      .doc(customerId)
-      .collection("deliveries")
-      .add({
-        type,
-        deliveredBy: deliveredBy || null,
-        timestamp: new Date(),
-      });
+    const customersSnap = await db.collection("customers").get();
 
-    // Auto update category immediately
-    const newCategory = await autoAssignCategoryForCustomer(customerId);
+    if (customersSnap.empty) {
+      return res.json({ message: "No customers found" });
+    }
+
+
+    const BATCH_SIZE = 25; // safe for Firestore
+    let updated = 0;
+
+    const docs = customersSnap.docs;
+
+    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+      const batch = docs.slice(i, i + BATCH_SIZE);
+
+      const results = await Promise.all(
+        batch.map((doc) =>
+          autoAssignCategoryForCustomer(doc.id)
+        )
+      );
+
+      updated += results.filter(Boolean).length;
+    }
 
     return res.status(200).json({
-      message: "Delivery added successfully",
-      category: newCategory,
+      message: "Recalculation completed",
+      updated,
     });
 
   } catch (err) {
-    console.error("Add delivery error:", err);
+    console.error("Recalculate error:", err);
 
     return res.status(500).json({
-      message: "Failed to add delivery",
+      message: "Failed to recalculate categories",
     });
   }
 };
 
+
+// 
 
 
 export {
@@ -1028,10 +1009,9 @@ export {
   addCustomer,
   getCustomerMapStatus,
   updateCustomerMeta,
-  resetAllCustomers,
   addZone,
   getZones,
   getAnalyticsLast7,
-  autoAssignCategoryForCustomer,
-  addDelivery
+  recalculateAllCategories,
+  autoAssignCategoryForCustomer
 };
