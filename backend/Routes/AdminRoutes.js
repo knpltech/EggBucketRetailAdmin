@@ -26,12 +26,11 @@ import {
     addCustomer,
     getCustomerMapStatus,
     updateCustomerMeta,
-    resetAllCustomers,
     addZone,
     getZones,
     getAnalyticsLast7,
-    autoAssignCategoryForCustomer,
-    addDelivery
+    recalculateAllCategories,
+    autoAssignCategoryForCustomer
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -44,12 +43,11 @@ router.get("/customer/deliveries/:id", getUserDeliveries);
 router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single('image'), addCustomer);
 router.post("/customer/status", updateCustomerMeta);
-router.post("/customer/reset-all", resetAllCustomers);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
 router.get("/analytics/last7", getAnalyticsLast7);
-router.post("/customer/auto-assign-category", autoAssignCategoryForCustomer);
-router.post("/delivery/add", addDelivery);
+router.post("/customer/recalculate",recalculateAllCategories
+);
 
 
 

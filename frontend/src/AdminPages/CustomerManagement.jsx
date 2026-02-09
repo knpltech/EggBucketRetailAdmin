@@ -5,25 +5,16 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
-// CATEGORY NAMES
-const TABS = [
-  "ALL",
-  "ONBOARDING",
-  "REGULAR",
-  "FOLLOW-UP",
-  "RETENTION",
-];
+// TABS
+const TABS = ["ALL", "ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION"];
 
-const CATEGORIES = [
-  "ONBOARDING",
-  "REGULAR",
-  "FOLLOW-UP",
-  "RETENTION",
-];
+// ❌ NO ONBOARDING HERE
+const CATEGORIES = ["REGULAR", "FOLLOW-UP", "RETENTION"];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
 
@@ -31,10 +22,13 @@ export default function CustomerManagement() {
   const [movingId, setMovingId] = useState(null);
   const [savingRemarkId, setSavingRemarkId] = useState(null);
 
+  const [recalculating, setRecalculating] = useState(false);
+
   const isAll = activeTab === "ALL";
   const canDownloadExcel = activeTab !== "ALL";
 
   // ================= LOAD =================
+
   const loadCustomers = async () => {
     const res = await axios.get(`${ADMIN_PATH}/user-info`);
     setCustomers(Array.isArray(res.data) ? res.data : []);
@@ -43,29 +37,46 @@ export default function CustomerManagement() {
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await loadCustomers(); //  Only load (fast)
+      await loadCustomers();
       setLoading(false);
     };
+
     init();
   }, []);
 
-  
+  // ================= BUSINESS TOTAL =================
+  // REG + FOLLOW + RET only
+
+  const businessTotal = useMemo(() => {
+    return customers.filter((c) =>
+      ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category)
+    ).length;
+  }, [customers]);
+
+  // ================= FILTER =================
+
   const filtered = useMemo(() => {
-    let list;
+    let list = [];
 
+    // ALL = Business Customers
     if (activeTab === "ALL") {
-      list = [...customers];
-    }
-
-    //  ONBOARDING =  Zone Unassigned
-    else if (activeTab === "ONBOARDING") {
-      list = customers.filter(
-        (c) =>
-          
-          (!c.zone || c.zone === "" || c.zone === "UNASSIGNED")
+      list = customers.filter((c) =>
+        ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category)
       );
     }
 
+    // ONBOARDING = Zone Unassigned
+    else if (activeTab === "ONBOARDING") {
+      list = customers.filter(
+        (c) =>
+          !c.zone ||
+          c.zone === "" ||
+          c.zone === null ||
+          c.zone === "UNASSIGNED"
+      );
+    }
+
+    // Category Tabs
     else {
       list = customers.filter((c) => c.category === activeTab);
     }
@@ -75,9 +86,7 @@ export default function CustomerManagement() {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
       );
-    }
-
-    else if (sortBy === "remarks") {
+    } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
         (c) => c.remarks && c.remarks.trim() !== ""
       );
@@ -98,13 +107,11 @@ export default function CustomerManagement() {
 
       return [...withRemarks, ...withoutRemarks];
     }
-
     else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
 
     return list;
-
   }, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
@@ -146,9 +153,7 @@ export default function CustomerManagement() {
 
   const updateRemarkLocal = (id, value) => {
     setCustomers((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, remarks: value } : c
-      )
+      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c))
     );
   };
 
@@ -168,18 +173,28 @@ export default function CustomerManagement() {
     }
   };
 
-  //  RESET 
-  const resetAll = async () => {
-    if (!window.confirm("This will reset ALL customers and zones. Continue?"))
-      return;
+  // ================= RECALCULATE =================
 
-    await axios.post(`${ADMIN_PATH}/customer/reset-all`);
-    await loadCustomers();
+  const recalculateAll = async () => {
+    if (!window.confirm("Recalculate all customer categories?")) return;
 
-    alert("Reset done");
+    try {
+      setRecalculating(true);
+
+      await axios.post(`${ADMIN_PATH}/customer/recalculate`);
+
+      await loadCustomers();
+
+      alert("Categories recalculated");
+    } catch {
+      alert("Failed to recalculate");
+    } finally {
+      setRecalculating(false);
+    }
   };
 
   // ================= EXCEL =================
+
   const downloadExcel = () => {
     if (!canDownloadExcel) return;
 
@@ -187,6 +202,7 @@ export default function CustomerManagement() {
       "Customer ID": c.custid || c.id,
       Name: getName(c),
       Zone: c.zone || "",
+      Category: c.category || "RETENTION",
       Remarks: c.remarks || "",
       Paid: c.paid ? "Yes" : "No",
     }));
@@ -204,7 +220,8 @@ export default function CustomerManagement() {
     saveAs(new Blob([buf]), `${activeTab}.xlsx`);
   };
 
-  // UI
+  // ================= UI =================
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
 
@@ -219,8 +236,14 @@ export default function CustomerManagement() {
 
           <div>
             <p className="text-sm text-gray-600">Total Customers</p>
+
+            {/* BUSINESS TOTAL */}
             <p className="text-2xl font-bold">
-              {loading ? "…" : filtered.length}
+              {loading
+                ? "…"
+                : isAll
+                ? businessTotal
+                : filtered.length}
             </p>
           </div>
 
@@ -239,17 +262,21 @@ export default function CustomerManagement() {
               onClick={downloadExcel}
               className="bg-green-600 text-white px-4 py-2 rounded-lg"
             >
-              Download {activeTab} Excel
+              Download {activeTab}
             </button>
           )}
 
           <button
-            onClick={resetAll}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg"
+            disabled={recalculating}
+            onClick={recalculateAll}
+            className={`px-4 py-2 rounded-lg text-white ${
+              recalculating
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-indigo-600"
+            }`}
           >
-            Reset All
+            {recalculating ? "Recalculating..." : "Recalculate"}
           </button>
-
         </div>
       </div>
 
@@ -295,6 +322,7 @@ export default function CustomerManagement() {
                   <img
                     src={getImage(c)}
                     className="w-10 h-10 rounded-full object-cover mx-auto"
+                    alt=""
                   />
                 </td>
 
@@ -313,7 +341,7 @@ export default function CustomerManagement() {
                 {isAll && (
                   <>
                     <td className="p-3">
-                      {c.category || "UNASSIGNED"}
+                      {c.category || "RETENTION"}
                     </td>
 
                     <td className="p-3">
@@ -323,16 +351,10 @@ export default function CustomerManagement() {
                         className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           c.paid
                             ? "bg-green-600 text-white"
-                            : payingId === c.id
-                            ? "bg-red-400 text-white opacity-60"
                             : "bg-red-500 text-white"
                         }`}
                       >
-                        {c.paid
-                          ? "PAID"
-                          : payingId === c.id
-                          ? "PROCESSING..."
-                          : "UNPAID"}
+                        {c.paid ? "PAID" : "UNPAID"}
                       </button>
                     </td>
                   </>
@@ -355,7 +377,6 @@ export default function CustomerManagement() {
                   </td>
                 )}
 
-                {/* MOVE */}
                 <td className="p-3">
                   <select
                     disabled={movingId === c.id}
@@ -374,13 +395,10 @@ export default function CustomerManagement() {
                     ))}
                   </select>
                 </td>
-
               </tr>
             ))}
           </tbody>
-
         </table>
-
       </div>
     </div>
   );
