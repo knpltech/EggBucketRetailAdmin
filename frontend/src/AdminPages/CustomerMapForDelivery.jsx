@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -27,25 +26,31 @@ const ICONS = {
   pending: pin("#e74c3c"),
 };
 
-/* FIT BOUNDS COMPONENT */
+/*  FIT BOUNDS COMPONENT  */
 
 const FitBounds = ({ points, onReady }) => {
   const map = useMap();
+  const hasRun = useRef(false); // important
 
   useEffect(() => {
     if (!points.length) return;
+
+    // Run only once
+    if (hasRun.current) return;
 
     const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng]));
 
     map.fitBounds(bounds, { padding: [50, 50] });
 
     if (onReady) onReady(bounds);
+
+    hasRun.current = true; // lock it after first run
   }, [points, map, onReady]);
 
   return null;
 };
 
-/*  MAIN COMPONENT*/
+/*  MAIN COMPONENT */
 
 const CustomerMap = () => {
   const [customers, setCustomers] = useState([]);
@@ -53,7 +58,6 @@ const CustomerMap = () => {
 
   const mapRef = useRef(null);
   const initialBoundsRef = useRef(null);
- 
 
   useEffect(() => {
     axios
@@ -62,7 +66,7 @@ const CustomerMap = () => {
       .catch((err) => console.error("Map error:", err));
   }, []);
 
-  /*  RESET HANDLER  */
+  /* RESET HANDLER */
 
   const handleReset = () => {
     setSelected(null);
@@ -76,7 +80,7 @@ const CustomerMap = () => {
 
   return (
     <>
-      {/*  STYLES  */}
+      {/* STYLES */}
       <style>{`
         .leaflet-container {
           height: 100vh;
@@ -125,7 +129,6 @@ const CustomerMap = () => {
         .status.pending { color: #e74c3c; font-weight: 700; }
       `}</style>
 
-      
       <button className="reset-btn" onClick={handleReset}>
         Reset
       </button>
@@ -154,13 +157,16 @@ const CustomerMap = () => {
             position={[c.lat, c.lng]}
             icon={ICONS[c.status] || ICONS.pending}
             eventHandlers={{
-              click: () => setSelected(c),
+              click: (e) => {
+                e.originalEvent.stopPropagation(); // prevent any default map movement
+                setSelected(c);
+              },
             }}
           />
         ))}
       </MapContainer>
 
-      {/* ================= BOTTOM CARD ================= */}
+      {/*BOTTOM CARD*/}
       {selected && (
         <div className="bottom-card">
           <img src={selected.imageUrl || "/logo.png"} alt="" />
