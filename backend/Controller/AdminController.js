@@ -165,11 +165,9 @@ const addDeliveryPartner = async (req, res) => {
 
     try {
       await admin.auth().getUserByEmail(email);
-      return res
-        .status(400)
-        .json({
-          message: "A delivery partner with this phone number already exists.",
-        });
+      return res.status(400).json({
+        message: "A delivery partner with this phone number already exists.",
+      });
     } catch (error) {
       if (error.code !== "auth/user-not-found") {
         throw error;
@@ -216,11 +214,9 @@ const addSalesPerson = async (req, res) => {
     // Check if user already exists
     try {
       await admin.auth().getUserByEmail(email);
-      return res
-        .status(400)
-        .json({
-          message: "A salesperson with this phone number already exists.",
-        });
+      return res.status(400).json({
+        message: "A salesperson with this phone number already exists.",
+      });
     } catch (error) {
       if (error.code !== "auth/user-not-found") {
         throw error;
@@ -539,7 +535,12 @@ const getUserDeliveries = async (req, res) => {
 
 // Controller to get all customers along with their deliveries
 const getAllCustomerDeliveries = async (req, res) => {
-  const cacheKey = "allCustomerDeliveries";
+  const date = req.query.date; // from frontend
+
+  const cacheKey = date
+    ? `allCustomerDeliveries:${date}`
+    : "allCustomerDeliveries";
+
   const cached = cache.get(cacheKey);
 
   if (cached) {
@@ -548,70 +549,54 @@ const getAllCustomerDeliveries = async (req, res) => {
 
   try {
     const db = getFirestore();
-    const customersSnapshot = await db.collection("customers").get();
 
-    if (customersSnapshot.empty) {
-      return res.status(404).json({ error: "No customers found." });
-    }
+    const customersSnap = await db.collection("customers").get();
 
-    const customersWithDeliveries = [];
+    const customersWithDeliveries = await Promise.all(
+      customersSnap.docs.map(async (doc) => {
+        const deliveriesCollection = db
+          .collection("customers")
+          .doc(doc.id)
+          .collection("deliveries");
 
-    for (const customerDoc of customersSnapshot.docs) {
-      const customerData = customerDoc.data();
-      const customerId = customerDoc.id;
+        let deliveries = [];
 
-      const deliveriesSnapshot = await db
-        .collection("customers")
-        .doc(customerId)
-        .collection("deliveries")
-        .get();
-
-      const deliveries = [];
-
-      for (const deliveryDoc of deliveriesSnapshot.docs) {
-        const deliveryData = deliveryDoc.data();
-        const deliveredByUID = deliveryData.deliveredBy;
-
-        let deliveryMan = null;
-
-        if (deliveredByUID) {
-          const deliveryManDoc = await db
-            .collection("DeliveryMan")
-            .doc(deliveredByUID)
-            .get();
-          if (deliveryManDoc.exists) {
-            const manData = deliveryManDoc.data();
-            deliveryMan = {
-              name: manData.name || "",
-              phone: manData.phone || "",
-            };
+        // FILTER BY DATE - Use doc() when date is provided
+        if (date) {
+          const deliveryDoc = await deliveriesCollection.doc(date).get();
+          if (deliveryDoc.exists) {
+            deliveries = [
+              {
+                id: deliveryDoc.id,
+                ...deliveryDoc.data(),
+              },
+            ];
           }
+        } else {
+          // Get all deliveries when no date filter
+          const deliveriesSnap = await deliveriesCollection.get();
+          deliveries = deliveriesSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
         }
 
-        deliveries.push({
-          id: deliveryDoc.id,
-          ...deliveryData,
-          deliveryMan,
-        });
-      }
+        return {
+          id: doc.id,
+          ...doc.data(),
+          deliveries,
+        };
+      }),
+    );
 
-      customersWithDeliveries.push({
-        id: customerId,
-        ...customerData,
-        deliveries,
-      });
-    }
+    cache.set(cacheKey, customersWithDeliveries, 300);
 
-    cache.set(cacheKey, customersWithDeliveries); // ✅ cache it
-    res.status(200).json({ customers: customersWithDeliveries });
-  } catch (error) {
-    console.error("Error fetching customers with deliveries:", error);
-    res
-      .status(500)
-      .json({ message: "Server error while fetching customer deliveries." });
+    res.json({ customers: customersWithDeliveries });
+  } catch (err) {
+    console.error("API Error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
-
 // Controller to add a new customer with location and image
 const addCustomer = async (req, res) => {
   try {
@@ -659,8 +644,8 @@ const addCustomer = async (req, res) => {
       location,
       category: "RETENTION",
       zone: "UNASSIGNED",
-  paid: false,
-  remarks: "",
+      paid: false,
+      remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
     res.status(200).json({ message: "Customer added successfully" });
@@ -673,7 +658,7 @@ const getCustomerMapStatus = async (req, res) => {
   try {
     const cacheKey = "customerMapStatus:today";
 
-    // 🔥 Cache check
+    //  Cache check
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.status(200).json(cached);
@@ -681,7 +666,7 @@ const getCustomerMapStatus = async (req, res) => {
 
     const db = getFirestore();
 
-    // 🎯 TODAY (start of day)
+    //  TODAY (start of day)
     const targetDate = new Date();
     targetDate.setHours(0, 0, 0, 0);
 
@@ -692,7 +677,7 @@ const getCustomerMapStatus = async (req, res) => {
       const c = doc.data();
       if (!c.location) continue;
 
-      // 📍 Parse lat/lng
+      //  Parse lat/lng
       const parts = c.location
         .replace("Lat:", "")
         .replace("Lng:", "")
@@ -817,8 +802,6 @@ const addZone = async (req, res) => {
   }
 };
 
-
-
 const getZones = async (req, res) => {
   try {
     const db = getFirestore();
@@ -830,9 +813,6 @@ const getZones = async (req, res) => {
     res.status(500).json({ message: "Error fetching zones" });
   }
 };
-
-
-
 
 const getAnalyticsLast7 = async (req, res) => {
   const cacheKey = "analytics:last7";
@@ -888,10 +868,10 @@ const getAnalyticsLast7 = async (req, res) => {
           custid: c.custid,
           imageUrl: c.imageUrl || "",
           createdAt: c.createdAt,
-              zone: c.zone || "UNASSIGNED",
+          zone: c.zone || "UNASSIGNED",
           deliveries,
         };
-      })
+      }),
     );
 
     // Cache 5 minutes
@@ -917,7 +897,6 @@ const autoAssignCategoryForCustomer = async (customerId) => {
 
   const customerRef = db.collection("customers").doc(customerId);
 
-  
   const snap = await customerRef
     .collection("deliveries")
     .where("timestamp", ">=", fourteenDaysAgo)
@@ -952,7 +931,6 @@ const recalculateAllCategories = async (req, res) => {
       return res.json({ message: "No customers found" });
     }
 
-
     const BATCH_SIZE = 25; // safe for Firestore
     let updated = 0;
 
@@ -962,9 +940,7 @@ const recalculateAllCategories = async (req, res) => {
       const batch = docs.slice(i, i + BATCH_SIZE);
 
       const results = await Promise.all(
-        batch.map((doc) =>
-          autoAssignCategoryForCustomer(doc.id)
-        )
+        batch.map((doc) => autoAssignCategoryForCustomer(doc.id)),
       );
 
       updated += results.filter(Boolean).length;
@@ -974,7 +950,6 @@ const recalculateAllCategories = async (req, res) => {
       message: "Recalculation completed",
       updated,
     });
-
   } catch (err) {
     console.error("Recalculate error:", err);
 
@@ -984,9 +959,59 @@ const recalculateAllCategories = async (req, res) => {
   }
 };
 
+// Get deliveries between date range (For Excel)
+const getAllCustomerDeliveriesRange = async (req, res) => {
+  const { start, end } = req.query;
 
-// 
+  if (!start || !end) {
+    return res.status(400).json({
+      message: "Start and End date required",
+    });
+  }
 
+  try {
+    const db = getFirestore();
+
+    const customersSnap = await db.collection("customers").get();
+
+    const customersWithDeliveries = await Promise.all(
+      customersSnap.docs.map(async (doc) => {
+        const deliveriesRef = db
+          .collection("customers")
+          .doc(doc.id)
+          .collection("deliveries");
+
+        // 🔥 Fetch only needed range
+        const snap = await deliveriesRef
+          .where(admin.firestore.FieldPath.documentId(), ">=", start)
+          .where(admin.firestore.FieldPath.documentId(), "<=", end)
+          .get();
+
+        const deliveries = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+
+        return {
+          id: doc.id,
+          ...doc.data(),
+          deliveries,
+        };
+      })
+    );
+
+    return res.json({ customers: customersWithDeliveries });
+
+  } catch (err) {
+    console.error("Range API error:", err);
+
+    return res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+//
 
 export {
   login,
@@ -1013,5 +1038,6 @@ export {
   getZones,
   getAnalyticsLast7,
   recalculateAllCategories,
-  autoAssignCategoryForCustomer
+  autoAssignCategoryForCustomer,
+  getAllCustomerDeliveriesRange
 };
