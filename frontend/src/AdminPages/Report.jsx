@@ -7,44 +7,61 @@ const Report = () => {
   const [data, setData] = useState([]);
   const [filteredDeliveries, setFilteredDeliveries] = useState([]);
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [selectedDate, setSelectedDate] = useState(
-    () => new Date().toISOString().split("T")[0]
-  );
+  // ================= DATE =================
+
+  const getYesterday = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  };
+
+  const yesterday = getYesterday();
+
+  const [selectedDate, setSelectedDate] = useState(yesterday);
 
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
 
-  // ✅ ONLY FOR DISPLAY
+  // ================= STATUS =================
+
   const formatStatus = (status) => {
     if (status === "reached") return "CHECKED";
-    return status?.toUpperCase() || "UNKNOWN";
+    return status?.toUpperCase() || "NOT DELIVERED";
   };
 
-  // LOAD DATA
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch(`${ADMIN_PATH}/all-deliveries`);
-        const json = await res.json();
-        setData(json.customers || []);
-      } catch (err) {
-        console.error("Error fetching deliveries:", err);
-      }
-    };
-    fetchData();
-  }, []);
+  // ================= LOAD DATA =================
 
-  // FILTER BY DATE
-  useEffect(() => {
-    filterByDate(selectedDate);
-  }, [data, selectedDate]);
+  const fetchData = async (date) => {
+    setLoading(true);
 
-  const filterByDate = (dateStr) => {
+    try {
+      const res = await fetch(
+        `${ADMIN_PATH}/all-deliveries?date=${date}`
+      );
+
+      const json = await res.json();
+
+      setData(json.customers || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(selectedDate);
+  }, [selectedDate]);
+
+  // ================= PROCESS =================
+
+  useEffect(() => {
     const result = data.map((customer) => {
-      const delivery = customer.deliveries.find((d) => d.id === dateStr);
+      const delivery = customer.deliveries?.[0];
 
       return {
         custid: customer.custid,
@@ -54,10 +71,13 @@ const Report = () => {
       };
     });
 
-    setFilteredDeliveries(result.sort((a, b) => a.name.localeCompare(b.name)));
-  };
+    setFilteredDeliveries(
+      result.sort((a, b) => a.name.localeCompare(b.name))
+    );
+  }, [data]);
 
-  // FILTER BY STATUS (UNCHANGED)
+  // ================= FILTER =================
+
   useEffect(() => {
     if (statusFilter === "all") {
       setDisplayedDeliveries(filteredDeliveries);
@@ -68,7 +88,8 @@ const Report = () => {
     }
   }, [filteredDeliveries, statusFilter]);
 
-  // COLORS (UNCHANGED)
+  // ================= COLORS =================
+
   const getStatusColor = (status) => {
     switch (status) {
       case "delivered":
@@ -80,12 +101,16 @@ const Report = () => {
     }
   };
 
-  // COUNT (UNCHANGED)
+  // ================= COUNTS =================
+
   const getStatusCounts = () => ({
     all: filteredDeliveries.length,
-    delivered: filteredDeliveries.filter((d) => d.status === "delivered")
-      .length,
-    reached: filteredDeliveries.filter((d) => d.status === "reached").length,
+    delivered: filteredDeliveries.filter(
+      (d) => d.status === "delivered"
+    ).length,
+    reached: filteredDeliveries.filter(
+      (d) => d.status === "reached"
+    ).length,
     "not delivered": filteredDeliveries.filter(
       (d) => d.status === "not delivered"
     ).length,
@@ -93,10 +118,16 @@ const Report = () => {
 
   const statusCounts = getStatusCounts();
 
-  // EXCEL EXPORT
-  const downloadSummaryExcel = () => {
+  // ================= EXCEL =================
+
+  const downloadSummaryExcel = async () => {
     if (!startRange || !endRange) {
       alert("Select Start & End Date");
+      return;
+    }
+
+    if (startRange > yesterday || endRange > yesterday) {
+      alert("Only till yesterday allowed");
       return;
     }
 
@@ -108,7 +139,11 @@ const Report = () => {
       return;
     }
 
-    const TOTAL_CUSTOMERS = data.length;
+    const res = await fetch(`${ADMIN_PATH}/all-deliveries`);
+    const json = await res.json();
+
+    const customers = json.customers || [];
+
     const dates = [];
     let d = new Date(start);
 
@@ -117,7 +152,6 @@ const Report = () => {
       d.setDate(d.getDate() + 1);
     }
 
-    // ✅ ONLY TEXT CHANGED HERE
     const sheetData = [
       ["DATE", "ALL", "DELIVERED", "CHECKED", "NOT DELIVERED"],
     ];
@@ -125,12 +159,14 @@ const Report = () => {
     dates.forEach((day) => {
       const dateId = day.toISOString().split("T")[0];
 
-      let delivered = 0,
-        reached = 0,
-        notDelivered = 0;
+      let delivered = 0;
+      let reached = 0;
+      let notDelivered = 0;
 
-      data.forEach((customer) => {
-        const entry = customer.deliveries.find((x) => x.id === dateId);
+      customers.forEach((customer) => {
+        const entry = customer.deliveries.find(
+          (x) => x.id === dateId
+        );
 
         if (!entry) {
           notDelivered++;
@@ -147,23 +183,42 @@ const Report = () => {
           day: "2-digit",
           month: "short",
         }),
-        TOTAL_CUSTOMERS,
+        customers.length,
         delivered,
-        reached, // still internally reached
+        reached,
         notDelivered,
       ]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     const wb = XLSX.utils.book_new();
+
     XLSX.utils.book_append_sheet(wb, ws, "Summary");
 
-    const buffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const buffer = XLSX.write(wb, {
+      type: "array",
+      bookType: "xlsx",
+    });
+
     saveAs(
-      new Blob([buffer], { type: "application/octet-stream" }),
+      new Blob([buffer], {
+        type: "application/octet-stream",
+      }),
       `summary_${startRange}_to_${endRange}.xlsx`
     );
   };
+
+  // ================= LOADING =================
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg">
+        Loading...
+      </div>
+    );
+  }
+
+  // ================= UI =================
 
   return (
     <div className="min-h-screen bg-gray-100 p-6 flex justify-center">
@@ -171,7 +226,8 @@ const Report = () => {
 
         {/* HEADER */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 flex items-center gap-4">
-          <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm flex items-center justify-center">
+
+          <div className="bg-white/20 p-3 rounded-xl">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-7 w-7 text-white"
@@ -180,10 +236,10 @@ const Report = () => {
               stroke="currentColor"
               strokeWidth="2"
             >
-              <path d="M3 3v18h18" strokeLinecap="round" />
-              <path d="M7 14v3" strokeLinecap="round" />
-              <path d="M12 11v6" strokeLinecap="round" />
-              <path d="M17 7v10" strokeLinecap="round" />
+              <path d="M3 3v18h18" />
+              <path d="M7 14v3" />
+              <path d="M12 11v6" />
+              <path d="M17 7v10" />
             </svg>
           </div>
 
@@ -194,6 +250,7 @@ const Report = () => {
 
         {/* FILTER BAR */}
         <div className="px-8 py-5 border-b bg-white flex flex-wrap items-center gap-3">
+
           <span className="text-sm font-medium text-gray-600 mr-3">
             Filter by Status:
           </span>
@@ -219,7 +276,7 @@ const Report = () => {
             <button
               key={s.value}
               onClick={() => setStatusFilter(s.value)}
-              className={`px-4 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 transition-all border 
+              className={`px-4 py-1.5 rounded-full text-xs font-medium border 
                 ${
                   statusFilter === s.value
                     ? `${s.color} ring-2 ring-blue-400 shadow-sm`
@@ -231,25 +288,33 @@ const Report = () => {
           ))}
         </div>
 
-        {/* DATE PICKER + EXPORT */}
+        {/* DATE BAR */}
         <div className="px-8 py-5 border-b bg-white flex flex-col md:flex-row justify-between gap-6">
+
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-600">
               Select Delivery Date
             </label>
+
             <input
               type="date"
               value={selectedDate}
+              max={yesterday}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="border px-4 py-2 rounded-lg shadow-sm focus:ring focus:ring-blue-200"
+              className="border px-4 py-2 rounded-lg shadow-sm"
             />
           </div>
 
           <div className="flex items-end gap-4">
+
             <div className="flex flex-col">
-              <label className="text-sm font-medium text-gray-600">Start Date</label>
+              <label className="text-sm font-medium text-gray-600">
+                Start Date
+              </label>
+
               <input
                 type="date"
+                max={yesterday}
                 value={startRange}
                 onChange={(e) => setStartRange(e.target.value)}
                 className="border px-3 py-2 rounded-lg shadow-sm"
@@ -257,9 +322,13 @@ const Report = () => {
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm font-medium text-gray-600">End Date</label>
+              <label className="text-sm font-medium text-gray-600">
+                End Date
+              </label>
+
               <input
                 type="date"
+                max={yesterday}
                 value={endRange}
                 onChange={(e) => setEndRange(e.target.value)}
                 className="border px-3 py-2 rounded-lg shadow-sm"
@@ -267,17 +336,25 @@ const Report = () => {
             </div>
 
             <button
+              disabled={!startRange || !endRange || !data.length}
               onClick={downloadSummaryExcel}
-              className="bg-blue-600 text-white px-5 py-2 rounded-lg shadow hover:bg-blue-700"
+              className={`px-5 py-2 rounded-lg shadow text-white ${
+                !startRange || !endRange || !data.length
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
             >
               Download Excel
             </button>
+
           </div>
         </div>
 
         {/* TABLE */}
         <div className="overflow-x-auto p-6">
+
           <table className="w-full border rounded-xl overflow-hidden">
+
             <thead className="bg-gray-50 border-b">
               <tr>
                 {[
@@ -289,7 +366,7 @@ const Report = () => {
                 ].map((h) => (
                   <th
                     key={h}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
                   >
                     {h}
                   </th>
@@ -298,35 +375,41 @@ const Report = () => {
             </thead>
 
             <tbody className="bg-white">
+
               {displayedDeliveries.length ? (
+
                 displayedDeliveries.map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50 border-b transition">
+
+                  <tr key={i} className="hover:bg-gray-50 border-b">
+
                     <td className="px-6 py-4">{row.custid}</td>
                     <td className="px-6 py-4">{row.name}</td>
+
                     <td className="px-6 py-4">
                       {row.deliveryMan?.name || "Not assigned"}
                     </td>
+
                     <td className="px-6 py-4">
                       {row.deliveryMan?.phone || "-"}
                     </td>
+
                     <td className="px-6 py-4">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
                           row.status
                         )}`}
                       >
-                        {/* ✅ ONLY TEXT CHANGE */}
                         {formatStatus(row.status)}
                       </span>
                     </td>
+
                   </tr>
                 ))
+
               ) : (
+
                 <tr>
-                  <td
-                    colSpan="5"
-                    className="py-14 text-center text-gray-500 text-sm"
-                  >
+                  <td colSpan="5" className="py-14 text-center text-gray-500">
                     No deliveries found
                     <br />
                     <span className="text-xs text-gray-400">
@@ -334,9 +417,13 @@ const Report = () => {
                     </span>
                   </td>
                 </tr>
+
               )}
+
             </tbody>
+
           </table>
+
         </div>
 
       </div>
