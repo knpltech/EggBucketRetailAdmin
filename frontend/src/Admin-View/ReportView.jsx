@@ -9,7 +9,7 @@ const ReportView = () => {
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ================= DATE =================
+  //  DATE 
 
   const getToday = () => {
     const d = new Date();
@@ -24,14 +24,14 @@ const ReportView = () => {
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
 
-  // ================= STATUS =================
+  //  STATUS 
 
   const formatStatus = (status) => {
     if (status === "reached") return "CHECKED";
     return status?.toUpperCase() || "NOT DELIVERED";
   };
 
-  // ================= LOAD DATA =================
+  // LOAD DATA 
 
   const fetchData = async (date) => {
     setLoading(true);
@@ -55,7 +55,7 @@ const ReportView = () => {
     fetchData(selectedDate);
   }, [selectedDate]);
 
-  // ================= PROCESS =================
+  //  PROCESS 
 
   useEffect(() => {
     const result = data.map((customer) => {
@@ -74,7 +74,7 @@ const ReportView = () => {
     );
   }, [data]);
 
-  // ================= FILTER =================
+  // FILTER
 
   useEffect(() => {
     if (statusFilter === "all") {
@@ -86,7 +86,7 @@ const ReportView = () => {
     }
   }, [filteredDeliveries, statusFilter]);
 
-  // ================= COLORS =================
+  //COLORS 
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -99,7 +99,7 @@ const ReportView = () => {
     }
   };
 
-  // ================= COUNTS =================
+  // COUNTS 
 
   const getStatusCounts = () => ({
     all: filteredDeliveries.length,
@@ -116,82 +116,55 @@ const ReportView = () => {
 
   const statusCounts = getStatusCounts();
 
-  // ================= EXCEL =================
+  // EXCEL 
+const downloadSummaryExcel = async () => {
+  if (!startRange || !endRange) {
+    alert("Select Start & End Date");
+    return;
+  }
 
-  const downloadSummaryExcel = async () => {
-    if (!startRange || !endRange) {
-      alert("Select Start & End Date");
-      return;
-    }
+  if (new Date(startRange) > new Date(endRange)) {
+    alert("Invalid date range");
+    return;
+  }
 
-    if (startRange > today || endRange >today) {
-      alert("Only till yesterday allowed");
-      return;
-    }
+  try {
+    const res = await fetch(
+      `${ADMIN_PATH}/all-deliveries-range?start=${startRange}&end=${endRange}`
+    );
 
-    const start = new Date(startRange);
-    const end = new Date(endRange);
-
-    if (start > end) {
-      alert("Start date cannot be after End date");
-      return;
-    }
-
-    const res = await fetch(`${ADMIN_PATH}/all-deliveries`);
     const json = await res.json();
-
     const customers = json.customers || [];
 
-    const dates = [];
-    let d = new Date(start);
-
-    while (d <= end) {
-      dates.push(new Date(d));
-      d.setDate(d.getDate() + 1);
-    }
 
     const sheetData = [
-      ["DATE", "ALL", "DELIVERED", "CHECKED", "NOT DELIVERED"],
+      [
+        "Date",
+        "Customer ID",
+        "Customer Name",
+        "Delivery Boy Name",
+        "Delivery Boy Phone",
+        "Status",
+      ],
     ];
 
-    dates.forEach((day) => {
-      const dateId = day.toISOString().split("T")[0];
-
-      let delivered = 0;
-      let reached = 0;
-      let notDelivered = 0;
-
-      customers.forEach((customer) => {
-        const entry = customer.deliveries.find(
-          (x) => x.id === dateId
-        );
-
-        if (!entry) {
-          notDelivered++;
-          return;
-        }
-
-        if (entry.type === "delivered") delivered++;
-        else if (entry.type === "reached") reached++;
-        else notDelivered++;
+    customers.forEach((customer) => {
+      customer.deliveries.forEach((delivery) => {
+        sheetData.push([
+          delivery.id,
+          customer.custid,
+          customer.name,
+          delivery.deliveryMan?.name || "Not Assigned",
+          delivery.deliveryMan?.phone || "-",
+          delivery.type || "not delivered",
+        ]);
       });
-
-      sheetData.push([
-        day.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-        }),
-        customers.length,
-        delivered,
-        reached,
-        notDelivered,
-      ]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     const wb = XLSX.utils.book_new();
 
-    XLSX.utils.book_append_sheet(wb, ws, "Summary");
+    XLSX.utils.book_append_sheet(wb, ws, "Detailed Report");
 
     const buffer = XLSX.write(wb, {
       type: "array",
@@ -202,11 +175,15 @@ const ReportView = () => {
       new Blob([buffer], {
         type: "application/octet-stream",
       }),
-      `summary_${startRange}_to_${endRange}.xlsx`
+      `delivery_report_${startRange}_to_${endRange}.xlsx`
     );
-  };
 
-  // ================= LOADING =================
+  } catch (err) {
+    console.error(err);
+    alert("Excel generation failed");
+  }
+};
+
 
   if (loading) {
     return (
@@ -216,7 +193,7 @@ const ReportView = () => {
     );
   }
 
-  // ================= UI =================
+ 
 
   return (
     <div className="min-h-screen bg-gray-100 p-6 flex justify-center">
