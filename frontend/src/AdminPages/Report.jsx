@@ -11,15 +11,13 @@ const Report = () => {
 
   // ================= DATE =================
 
-  const getYesterday = () => {
+  const getToday = () => {
     const d = new Date();
-    d.setDate(d.getDate() - 1);
     return d.toISOString().split("T")[0];
-  };
+  }
+  const today = getToday();
 
-  const yesterday = getYesterday();
-
-  const [selectedDate, setSelectedDate] = useState(yesterday);
+  const [selectedDate, setSelectedDate] = useState(today);
 
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -126,7 +124,7 @@ const Report = () => {
       return;
     }
 
-    if (startRange > yesterday || endRange > yesterday) {
+    if (startRange > today || endRange >today) {
       alert("Only till yesterday allowed");
       return;
     }
@@ -299,7 +297,7 @@ const Report = () => {
             <input
               type="date"
               value={selectedDate}
-              max={yesterday}
+              max={today}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="border px-4 py-2 rounded-lg shadow-sm"
             />
@@ -314,7 +312,7 @@ const Report = () => {
 
               <input
                 type="date"
-                max={yesterday}
+                max={today}
                 value={startRange}
                 onChange={(e) => setStartRange(e.target.value)}
                 className="border px-3 py-2 rounded-lg shadow-sm"
@@ -328,7 +326,7 @@ const Report = () => {
 
               <input
                 type="date"
-                max={yesterday}
+                max={today}
                 value={endRange}
                 onChange={(e) => setEndRange(e.target.value)}
                 className="border px-3 py-2 rounded-lg shadow-sm"
