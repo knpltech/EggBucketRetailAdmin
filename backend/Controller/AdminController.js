@@ -562,23 +562,66 @@ const getAllCustomerDeliveries = async (req, res) => {
         let deliveries = [];
 
         // FILTER BY DATE - Use doc() when date is provided
-        if (date) {
-          const deliveryDoc = await deliveriesCollection.doc(date).get();
-          if (deliveryDoc.exists) {
-            deliveries = [
-              {
-                id: deliveryDoc.id,
-                ...deliveryDoc.data(),
-              },
-            ];
-          }
-        } else {
+       if (date) {
+  const deliveryDoc = await deliveriesCollection.doc(date).get();
+
+  if (deliveryDoc.exists) {
+    const data = deliveryDoc.data();
+    let deliveryMan = null;
+
+    if (data.deliveredBy) {
+      const manDoc = await db
+        .collection("DeliveryMan")
+        .doc(data.deliveredBy)
+        .get();
+
+      if (manDoc.exists) {
+        const manData = manDoc.data();
+        deliveryMan = {
+          name: manData.name || "",
+          phone: manData.phone || "",
+        };
+      }
+    }
+
+    deliveries = [
+      {
+        id: deliveryDoc.id,
+        ...data,
+        deliveryMan,
+      },
+    ];
+  }
+} else {
           // Get all deliveries when no date filter
           const deliveriesSnap = await deliveriesCollection.get();
-          deliveries = deliveriesSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }));
+        deliveries = await Promise.all(
+  deliveriesSnap.docs.map(async (d) => {
+    const data = d.data();
+    let deliveryMan = null;
+
+    if (data.deliveredBy) {
+      const manDoc = await db
+        .collection("DeliveryMan")
+        .doc(data.deliveredBy)
+        .get();
+
+      if (manDoc.exists) {
+        const manData = manDoc.data();
+        deliveryMan = {
+          name: manData.name || "",
+          phone: manData.phone || "",
+        };
+      }
+    }
+
+    return {
+      id: d.id,
+      ...data,
+      deliveryMan,
+    };
+  })
+);
         }
 
         return {
@@ -972,6 +1015,21 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
   try {
     const db = getFirestore();
 
+    //  Fetch all delivery boys once
+    const deliveryManSnap = await db.collection("DeliveryMan").get();
+
+    const deliveryManMap = {};
+
+    deliveryManSnap.docs.forEach((doc) => {
+      const data = doc.data();
+
+      deliveryManMap[doc.id] = {
+        name: data.name || "",
+        phone: data.phone || "",
+      };
+    });
+
+    //  Fetch customers
     const customersSnap = await db.collection("customers").get();
 
     const customersWithDeliveries = await Promise.all(
@@ -981,16 +1039,24 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
           .doc(doc.id)
           .collection("deliveries");
 
-        // 🔥 Fetch only needed range
+        //  Fetch deliveries in range
         const snap = await deliveriesRef
           .where(admin.firestore.FieldPath.documentId(), ">=", start)
           .where(admin.firestore.FieldPath.documentId(), "<=", end)
           .get();
 
-        const deliveries = snap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        //  Attach delivery boy details
+        const deliveries = snap.docs.map((d) => {
+          const data = d.data();
+
+          return {
+            id: d.id,
+            ...data,
+            deliveryMan: data.deliveredBy
+              ? deliveryManMap[data.deliveredBy] || null
+              : null,
+          };
+        });
 
         return {
           id: doc.id,
@@ -1000,7 +1066,9 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
       })
     );
 
-    return res.json({ customers: customersWithDeliveries });
+    return res.status(200).json({
+      customers: customersWithDeliveries,
+    });
 
   } catch (err) {
     console.error("Range API error:", err);
