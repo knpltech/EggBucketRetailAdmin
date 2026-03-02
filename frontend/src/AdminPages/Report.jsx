@@ -5,6 +5,7 @@ import { ADMIN_PATH } from "../constant";
 
 const Report = () => {
   const [data, setData] = useState([]);
+  const [zones, setZones] = useState([]);
   const [filteredDeliveries, setFilteredDeliveries] = useState([]);
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,18 +43,37 @@ const Report = () => {
     }
   };
 
+  const fetchZones = async () => {
+    try {
+      const res = await fetch(`${ADMIN_PATH}/zones`);
+      const json = await res.json();
+      setZones(Array.isArray(json) ? json : []);
+    } catch (err) {
+      console.error("Zones fetch error:", err);
+      setZones([]);
+    }
+  };
+
   useEffect(() => {
     fetchData(selectedDate);
   }, [selectedDate]);
+
+  useEffect(() => {
+    fetchZones();
+  }, []);
 
   // PROCESS DATA
   useEffect(() => {
     const result = data.map((customer) => {
       const delivery = customer.deliveries?.[0];
+      const resolvedZone = zones.includes(customer.zone)
+        ? customer.zone
+        : "UNASSIGNED";
 
       return {
         custid: customer.custid,
         name: customer.name,
+        zone: resolvedZone,
         deliveryMan: delivery?.deliveryMan || null,
         status: delivery?.type || "not delivered",
         createdAt: delivery?.createdAt || null,
@@ -61,14 +81,14 @@ const Report = () => {
     });
 
     setFilteredDeliveries(result);
-  }, [data]);
+  }, [data, zones]);
 
   // DELIVERY AGENT OPTIONS
   const deliveryAgentOptions = [
     ...new Set(
       filteredDeliveries
         .map((d) => (d.deliveryMan?.name || "").trim())
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ].sort((a, b) => a.localeCompare(b));
 
@@ -84,27 +104,20 @@ const Report = () => {
     // AGENT FILTER
     if (selectedAgent !== "all") {
       temp = temp.filter(
-        (d) =>
-          (d.deliveryMan?.name || "").trim() === selectedAgent
+        (d) => (d.deliveryMan?.name || "").trim() === selectedAgent,
       );
     }
 
     // SORT BY CUSTOMER NAME
     if (sortBy === "customer") {
-      temp.sort((a, b) =>
-        (a.name || "").localeCompare(b.name || "")
-      );
+      temp.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     }
 
     // SORT BY DELIVERY TIME (Newest First)
     if (sortBy === "time") {
       temp.sort((a, b) => {
-        const aTime = a.createdAt
-          ? new Date(a.createdAt).getTime()
-          : 0;
-        const bTime = b.createdAt
-          ? new Date(b.createdAt).getTime()
-          : 0;
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return bTime - aTime;
       });
     }
@@ -125,10 +138,11 @@ const Report = () => {
 
   const getStatusCounts = () => ({
     all: filteredDeliveries.length,
-    delivered: filteredDeliveries.filter((d) => d.status === "delivered").length,
+    delivered: filteredDeliveries.filter((d) => d.status === "delivered")
+      .length,
     reached: filteredDeliveries.filter((d) => d.status === "reached").length,
     "not delivered": filteredDeliveries.filter(
-      (d) => d.status === "not delivered"
+      (d) => d.status === "not delivered",
     ).length,
   });
 
@@ -147,7 +161,7 @@ const Report = () => {
 
     try {
       const res = await fetch(
-        `${ADMIN_PATH}/all-deliveries-range?start=${startRange}&end=${endRange}`
+        `${ADMIN_PATH}/all-deliveries-range?start=${startRange}&end=${endRange}`,
       );
 
       const json = await res.json();
@@ -158,6 +172,7 @@ const Report = () => {
           "Date",
           "Customer ID",
           "Customer Name",
+          "Zone",
           "Delivery Agent Name",
           "Status",
         ],
@@ -165,10 +180,15 @@ const Report = () => {
 
       customers.forEach((customer) => {
         customer.deliveries.forEach((delivery) => {
+          const resolvedZone = zones.includes(customer.zone)
+            ? customer.zone
+            : "UNASSIGNED";
+
           sheetData.push([
             delivery.id,
             customer.custid,
             customer.name,
+            resolvedZone,
             delivery.deliveryMan?.name || "Not Assigned",
             delivery.type || "not delivered",
           ]);
@@ -188,9 +208,9 @@ const Report = () => {
         new Blob([buffer], {
           type: "application/octet-stream",
         }),
-        `delivery_report_${startRange}_to_${endRange}.xlsx`
+        `delivery_report_${startRange}_to_${endRange}.xlsx`,
       );
-    } catch  {
+    } catch {
       alert("Excel generation failed");
     }
   };
@@ -206,7 +226,6 @@ const Report = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-6 flex justify-center">
       <div className="w-full max-w-7xl bg-white shadow-lg rounded-2xl overflow-hidden">
-
         {/* HEADER */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 flex items-center gap-4">
           <div className="bg-white/20 p-3 rounded-xl">
@@ -237,9 +256,21 @@ const Report = () => {
 
           {[
             { value: "all", label: "All", color: "bg-gray-100 text-gray-800" },
-            { value: "delivered", label: "Delivered", color: "bg-green-100 text-green-800" },
-            { value: "reached", label: "Checked", color: "bg-yellow-100 text-yellow-800" },
-            { value: "not delivered", label: "Not Delivered", color: "bg-red-100 text-red-800" },
+            {
+              value: "delivered",
+              label: "Delivered",
+              color: "bg-green-100 text-green-800",
+            },
+            {
+              value: "reached",
+              label: "Checked",
+              color: "bg-yellow-100 text-yellow-800",
+            },
+            {
+              value: "not delivered",
+              label: "Not Delivered",
+              color: "bg-red-100 text-red-800",
+            },
           ].map((s) => (
             <button
               key={s.value}
@@ -350,16 +381,20 @@ const Report = () => {
           <table className="w-full border rounded-xl overflow-hidden">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {["Customer ID", "Customer Name", "Delivery Agent", "Status"].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+                {[
+                  "Customer ID",
+                  "Customer Name",
+                  "Zone",
+                  "Delivery Agent",
+                  "Status",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="bg-white">
@@ -368,13 +403,14 @@ const Report = () => {
                   <tr key={i} className="hover:bg-gray-50 border-b">
                     <td className="px-6 py-4">{row.custid}</td>
                     <td className="px-6 py-4">{row.name}</td>
+                    <td className="px-6 py-4">{row.zone || "UNASSIGNED"}</td>
                     <td className="px-6 py-4">
                       {row.deliveryMan?.name || "Not assigned"}
                     </td>
                     <td className="px-6 py-4">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                          row.status
+                          row.status,
                         )}`}
                       >
                         {formatStatus(row.status)}
@@ -384,7 +420,7 @@ const Report = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="4" className="py-14 text-center text-gray-500">
+                  <td colSpan="5" className="py-14 text-center text-gray-500">
                     No deliveries found
                   </td>
                 </tr>
