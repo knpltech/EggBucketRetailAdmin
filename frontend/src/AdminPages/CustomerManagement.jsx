@@ -6,9 +6,16 @@ import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 // TABS
-const TABS = ["ALL", "ONBOARDING", "REGULAR", "FOLLOW-UP", "RETENTION"];
+const TABS = [
+  "ALL",
+  "ONBOARDING",
+  "REGULAR",
+  "FOLLOW-UP",
+  "RETENTION",
+  "CUSTOMIZE",
+];
 
-// ❌ NO ONBOARDING HERE
+
 const CATEGORIES = ["REGULAR", "FOLLOW-UP", "RETENTION"];
 
 export default function CustomerManagement() {
@@ -18,6 +25,8 @@ export default function CustomerManagement() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
 
+  const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
+
   const [payingId, setPayingId] = useState(null);
   const [movingId, setMovingId] = useState(null);
   const [savingRemarkId, setSavingRemarkId] = useState(null);
@@ -25,7 +34,8 @@ export default function CustomerManagement() {
   const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
-  const canDownloadExcel = activeTab !== "ALL";
+  const canDownloadExcel =
+    activeTab !== "ALL" && activeTab !== "CUSTOMIZE";
 
   // ================= LOAD =================
 
@@ -34,7 +44,10 @@ export default function CustomerManagement() {
     setCustomers(Array.isArray(res.data) ? res.data : []);
   };
 
+  // Load normal tabs
   useEffect(() => {
+    if (activeTab === "CUSTOMIZE") return;
+
     const init = async () => {
       setLoading(true);
       await loadCustomers();
@@ -42,10 +55,32 @@ export default function CustomerManagement() {
     };
 
     init();
-  }, []);
+  }, [activeTab]);
+
+  // Load CUSTOMIZE tab
+  useEffect(() => {
+    if (activeTab !== "CUSTOMIZE") return;
+
+    const loadCustomCustomers = async () => {
+      try {
+        setLoading(true);
+
+        const res = await axios.get(
+          `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`
+        );
+
+        setCustomers(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
+        console.error("Customize fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCustomCustomers();
+  }, [activeTab, deliveryCountFilter]);
 
   // ================= BUSINESS TOTAL =================
-  // REG + FOLLOW + RET only
 
   const businessTotal = useMemo(() => {
     return customers.filter((c) =>
@@ -57,15 +92,13 @@ export default function CustomerManagement() {
 
   const filtered = useMemo(() => {
     let list = [];
-
     // ALL = Business Customers
     if (activeTab === "ALL") {
       list = customers.filter((c) =>
         ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category)
       );
     }
-
-    // ONBOARDING = Zone Unassigned
+ // ONBOARDING = Zone Unassigned
     else if (activeTab === "ONBOARDING") {
       list = customers.filter(
         (c) =>
@@ -74,10 +107,9 @@ export default function CustomerManagement() {
           c.zone === null ||
           c.zone === "UNASSIGNED"
       );
-    }
-
-    // Category Tabs
-    else {
+    } else if (activeTab === "CUSTOMIZE") {
+      list = customers;
+    } else {
       list = customers.filter((c) => c.category === activeTab);
     }
 
@@ -173,8 +205,6 @@ export default function CustomerManagement() {
     }
   };
 
-  // ================= RECALCULATE =================
-
   const recalculateAll = async () => {
     if (!window.confirm("Recalculate all customer categories?")) return;
 
@@ -208,7 +238,7 @@ export default function CustomerManagement() {
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
-
+    
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, activeTab);
 
@@ -224,20 +254,14 @@ export default function CustomerManagement() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
-
-      {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
-
         <h1 className="text-3xl font-bold">Customer Management</h1>
 
         <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
-
           <FiUsers className="text-3xl text-blue-500" />
 
           <div>
             <p className="text-sm text-gray-600">Total Customers</p>
-
-            {/* BUSINESS TOTAL */}
             <p className="text-2xl font-bold">
               {loading
                 ? "…"
@@ -295,29 +319,44 @@ export default function CustomerManagement() {
         ))}
       </div>
 
+      {/* CUSTOMIZE DROPDOWN */}
+      {activeTab === "CUSTOMIZE" && (
+        <div className="mb-4">
+          <select
+            value={deliveryCountFilter}
+            onChange={(e) =>
+              setDeliveryCountFilter(Number(e.target.value))
+            }
+            className="border rounded-lg px-4 py-2"
+          >
+            <option value={0}>0 Deliveries (Last 7 Days)</option>
+            <option value={1}>1 Delivery (Last 7 Days)</option>
+            <option value={2}>2 Deliveries (Last 7 Days)</option>
+            <option value={3}>3 Deliveries (Last 7 Days)</option>
+            <option value={4}>4+ Deliveries (Last 7 Days)</option>
+          </select>
+        </div>
+      )}
+
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
-
         <table className="w-full text-sm text-center border-collapse">
-
           <thead className="bg-gray-100 sticky top-0">
             <tr>
               <th className="p-3">Image</th>
               <th className="p-3">Customer ID</th>
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
-
               {isAll && <th className="p-3">Category</th>}
               {isAll && <th className="p-3">Paid</th>}
               {!isAll && <th className="p-3">Remarks</th>}
-              <th className="p-3">Move</th>
+             {activeTab !== "CUSTOMIZE" && <th className="p-3">Move</th>}
             </tr>
           </thead>
 
           <tbody>
             {filtered.map((c) => (
               <tr key={c.id} className="border-t">
-
                 <td className="p-3">
                   <img
                     src={getImage(c)}
@@ -325,15 +364,12 @@ export default function CustomerManagement() {
                     alt=""
                   />
                 </td>
-
                 <td className="p-3 font-medium">
                   {c.custid || c.id}
                 </td>
-
                 <td className="p-3 font-medium">
                   {getName(c)}
                 </td>
-
                 <td className="p-3 font-medium text-gray-700">
                   {c.zone || "UNASSIGNED"}
                 </td>
@@ -343,7 +379,6 @@ export default function CustomerManagement() {
                     <td className="p-3">
                       {c.category || "RETENTION"}
                     </td>
-
                     <td className="p-3">
                       <button
                         disabled={c.paid || payingId === c.id}
@@ -377,24 +412,25 @@ export default function CustomerManagement() {
                   </td>
                 )}
 
-                <td className="p-3">
-                  <select
-                    disabled={movingId === c.id}
-                    className="border rounded-lg px-3 py-2 disabled:opacity-50"
-                    defaultValue=""
-                    onChange={(e) =>
-                      changeCategory(c.id, e.target.value)
-                    }
-                  >
-                    <option value="">Move</option>
-
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </td>
+               {activeTab !== "CUSTOMIZE" && (
+  <td className="p-3">
+    <select
+      disabled={movingId === c.id}
+      className="border rounded-lg px-3 py-2 disabled:opacity-50"
+      defaultValue=""
+      onChange={(e) =>
+        changeCategory(c.id, e.target.value)
+      }
+    >
+      <option value="">Move</option>
+      {CATEGORIES.map((cat) => (
+        <option key={cat} value={cat}>
+          {cat}
+        </option>
+      ))}
+    </select>
+  </td>
+)}
               </tr>
             ))}
           </tbody>
@@ -403,8 +439,6 @@ export default function CustomerManagement() {
     </div>
   );
 }
-
-// ================= HELPERS =================
 
 function getName(c) {
   return c.name || c.customerName || "Unknown";

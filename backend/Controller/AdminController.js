@@ -1079,8 +1079,102 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
   }
 };
 
-//
+const getCustomersByDeliveryCount = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const countFilter = Number(req.query.count);
 
+    if (isNaN(countFilter)) {
+      return res.status(400).json({ message: "Invalid count value" });
+    }
+
+    // Today start
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Yesterday
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    // 7 days before yesterday
+    const sevenDaysAgo = new Date(yesterday);
+    sevenDaysAgo.setDate(yesterday.getDate() - 6);
+
+    //  Get all customers
+    const customersSnap = await db.collection("customers").get();
+
+    if (customersSnap.empty) {
+      return res.status(200).json([]);
+    }
+
+    // Get all deliveries (no firestore filter → no index needed)
+    const deliveriesSnap = await db.collectionGroup("deliveries").get();
+
+    const deliveryMap = {};
+
+    deliveriesSnap.forEach((doc) => {
+      const data = doc.data();
+      const customerId = doc.ref.parent.parent.id;
+
+      const deliveryDate = data.timestamp?.toDate
+        ? data.timestamp.toDate()
+        : new Date(data.timestamp);
+
+      // Only count delivered and within range
+      if (
+        deliveryDate >= sevenDaysAgo &&
+        deliveryDate <= yesterday &&
+        data.type === "delivered"
+      ) {
+        if (!deliveryMap[customerId]) {
+          deliveryMap[customerId] = new Set();
+        }
+
+        // prevent duplicate same-day deliveries
+        const dayKey = deliveryDate.toDateString();
+        deliveryMap[customerId].add(dayKey);
+      }
+    });
+
+    //  Filter customers based on delivery count
+    const result = [];
+
+    customersSnap.forEach((doc) => {
+      const customerId = doc.id;
+
+      const deliveryCount = deliveryMap[customerId]
+        ? deliveryMap[customerId].size
+        : 0;
+
+      let shouldInclude = false;
+
+      if (countFilter >= 0 && countFilter <= 3) {
+        shouldInclude = deliveryCount === countFilter;
+      }
+
+      if (countFilter === 4) {
+        shouldInclude = deliveryCount >= 4;
+      }
+
+      if (shouldInclude) {
+        result.push({
+          id: customerId,
+          ...doc.data(),
+          deliveryCount,
+        });
+      }
+    });
+
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error("getCustomersByDeliveryCount error:", error);
+
+    return res.status(500).json({
+      message: "Failed to fetch customers",
+    });
+  }
+};
 export {
   login,
   userInfo,
@@ -1107,5 +1201,6 @@ export {
   getAnalyticsLast7,
   recalculateAllCategories,
   autoAssignCategoryForCustomer,
-  getAllCustomerDeliveriesRange
+  getAllCustomerDeliveriesRange,
+  getCustomersByDeliveryCount
 };

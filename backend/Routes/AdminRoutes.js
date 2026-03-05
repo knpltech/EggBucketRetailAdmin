@@ -30,8 +30,9 @@ import {
     getZones,
     getAnalyticsLast7,
     recalculateAllCategories,
-    autoAssignCategoryForCustomer,
-    getAllCustomerDeliveriesRange
+
+    getAllCustomerDeliveriesRange,
+    getCustomersByDeliveryCount
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -49,9 +50,8 @@ router.get("/zones", getZones);
 router.get("/analytics/last7", getAnalyticsLast7);
 router.post("/customer/recalculate", recalculateAllCategories
 );
-router.get("/all-deliveries-range",getAllCustomerDeliveriesRange
-);
-
+router.get("/all-deliveries-range",getAllCustomerDeliveriesRange);
+router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 
 
 
