@@ -930,20 +930,17 @@ const getAnalyticsLast7 = async (req, res) => {
 const autoAssignCategoryForCustomer = async (customerId) => {
   const db = getFirestore();
 
-  // Today 00:00
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // 14 days ago
-  const fourteenDaysAgo = new Date(today);
-  fourteenDaysAgo.setDate(today.getDate() - 14);
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+  fourteenDaysAgo.setHours(0, 0, 0, 0);
 
   const customerRef = db.collection("customers").doc(customerId);
 
   const snap = await customerRef
     .collection("deliveries")
     .where("timestamp", ">=", fourteenDaysAgo)
-    .select("timestamp") // fetch only needed field
+    .where("type", "==", "delivered")
+    .select("timestamp")
     .get();
 
   const count = snap.size;
@@ -954,16 +951,12 @@ const autoAssignCategoryForCustomer = async (customerId) => {
     category = "REGULAR";
   } else if (count >= 2) {
     category = "FOLLOW-UP";
-  } else {
-    category = "RETENTION";
   }
 
   await customerRef.update({ category });
 
   return category;
 };
-
-//  Recalculate category for ALL customers
 const recalculateAllCategories = async (req, res) => {
   try {
     const db = getFirestore();
@@ -974,7 +967,7 @@ const recalculateAllCategories = async (req, res) => {
       return res.json({ message: "No customers found" });
     }
 
-    const BATCH_SIZE = 25; // safe for Firestore
+    const BATCH_SIZE = 25;
     let updated = 0;
 
     const docs = customersSnap.docs;
@@ -983,7 +976,9 @@ const recalculateAllCategories = async (req, res) => {
       const batch = docs.slice(i, i + BATCH_SIZE);
 
       const results = await Promise.all(
-        batch.map((doc) => autoAssignCategoryForCustomer(doc.id)),
+        batch.map((doc) =>
+          autoAssignCategoryForCustomer(doc.id)
+        )
       );
 
       updated += results.filter(Boolean).length;
@@ -993,6 +988,7 @@ const recalculateAllCategories = async (req, res) => {
       message: "Recalculation completed",
       updated,
     });
+
   } catch (err) {
     console.error("Recalculate error:", err);
 
@@ -1001,7 +997,6 @@ const recalculateAllCategories = async (req, res) => {
     });
   }
 };
-
 // Get deliveries between date range (For Excel)
 const getAllCustomerDeliveriesRange = async (req, res) => {
   const { start, end } = req.query;
