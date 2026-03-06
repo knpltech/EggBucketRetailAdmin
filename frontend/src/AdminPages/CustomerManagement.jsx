@@ -34,8 +34,7 @@ export default function CustomerManagement() {
   const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
-  const canDownloadExcel =
-    activeTab !== "ALL" && activeTab !== "CUSTOMIZE";
+  const canDownloadExcel = activeTab !== "ALL";
 
   // ================= LOAD =================
 
@@ -66,7 +65,7 @@ export default function CustomerManagement() {
         setLoading(true);
 
         const res = await axios.get(
-          `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`
+          `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`,
         );
 
         setCustomers(Array.isArray(res.data) ? res.data : []);
@@ -84,7 +83,7 @@ export default function CustomerManagement() {
 
   const businessTotal = useMemo(() => {
     return customers.filter((c) =>
-      ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category)
+      ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category),
     ).length;
   }, [customers]);
 
@@ -95,17 +94,17 @@ export default function CustomerManagement() {
     // ALL = Business Customers
     if (activeTab === "ALL") {
       list = customers.filter((c) =>
-        ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category)
+        ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category),
       );
     }
- // ONBOARDING = Zone Unassigned
+    // ONBOARDING = Zone Unassigned
     else if (activeTab === "ONBOARDING") {
       list = customers.filter(
         (c) =>
           !c.zone ||
           c.zone === "" ||
           c.zone === null ||
-          c.zone === "UNASSIGNED"
+          c.zone === "UNASSIGNED",
       );
     } else if (activeTab === "CUSTOMIZE") {
       list = customers;
@@ -116,30 +115,30 @@ export default function CustomerManagement() {
     // SORT
     if (sortBy === "name") {
       list.sort((a, b) =>
-        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
-        (c) => c.remarks && c.remarks.trim() !== ""
+        (c) => c.remarks && c.remarks.trim() !== "",
       );
 
       const withoutRemarks = list.filter(
-        (c) => !c.remarks || c.remarks.trim() === ""
+        (c) => !c.remarks || c.remarks.trim() === "",
       );
 
       withRemarks.sort((a, b) =>
-        a.remarks.trim().toLowerCase().localeCompare(
-          b.remarks.trim().toLowerCase()
-        )
+        a.remarks
+          .trim()
+          .toLowerCase()
+          .localeCompare(b.remarks.trim().toLowerCase()),
       );
 
       withoutRemarks.sort((a, b) =>
-        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase())
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
 
       return [...withRemarks, ...withoutRemarks];
-    }
-    else {
+    } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
 
@@ -159,7 +158,6 @@ export default function CustomerManagement() {
       });
 
       await loadCustomers();
-
     } finally {
       setMovingId(null);
     }
@@ -177,7 +175,6 @@ export default function CustomerManagement() {
       });
 
       await loadCustomers();
-
     } finally {
       setPayingId(null);
     }
@@ -185,7 +182,7 @@ export default function CustomerManagement() {
 
   const updateRemarkLocal = (id, value) => {
     setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c))
+      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c)),
     );
   };
 
@@ -199,7 +196,6 @@ export default function CustomerManagement() {
       });
 
       await loadCustomers();
-
     } finally {
       setSavingRemarkId(null);
     }
@@ -238,7 +234,7 @@ export default function CustomerManagement() {
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
-    
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, activeTab);
 
@@ -263,11 +259,7 @@ export default function CustomerManagement() {
           <div>
             <p className="text-sm text-gray-600">Total Customers</p>
             <p className="text-2xl font-bold">
-              {loading
-                ? "…"
-                : isAll
-                ? businessTotal
-                : filtered.length}
+              {loading ? "…" : isAll ? businessTotal : filtered.length}
             </p>
           </div>
 
@@ -294,9 +286,7 @@ export default function CustomerManagement() {
             disabled={recalculating}
             onClick={recalculateAll}
             className={`px-4 py-2 rounded-lg text-white ${
-              recalculating
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-indigo-600"
+              recalculating ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600"
             }`}
           >
             {recalculating ? "Recalculating..." : "Recalculate"}
@@ -324,9 +314,7 @@ export default function CustomerManagement() {
         <div className="mb-4">
           <select
             value={deliveryCountFilter}
-            onChange={(e) =>
-              setDeliveryCountFilter(Number(e.target.value))
-            }
+            onChange={(e) => setDeliveryCountFilter(Number(e.target.value))}
             className="border rounded-lg px-4 py-2"
           >
             <option value={0}>0 Deliveries (Last 7 Days)</option>
@@ -350,7 +338,7 @@ export default function CustomerManagement() {
               {isAll && <th className="p-3">Category</th>}
               {isAll && <th className="p-3">Paid</th>}
               {!isAll && <th className="p-3">Remarks</th>}
-             {activeTab !== "CUSTOMIZE" && <th className="p-3">Move</th>}
+              {activeTab !== "CUSTOMIZE" && <th className="p-3">Move</th>}
             </tr>
           </thead>
 
@@ -364,21 +352,15 @@ export default function CustomerManagement() {
                     alt=""
                   />
                 </td>
-                <td className="p-3 font-medium">
-                  {c.custid || c.id}
-                </td>
-                <td className="p-3 font-medium">
-                  {getName(c)}
-                </td>
+                <td className="p-3 font-medium">{c.custid || c.id}</td>
+                <td className="p-3 font-medium">{getName(c)}</td>
                 <td className="p-3 font-medium text-gray-700">
                   {c.zone || "UNASSIGNED"}
                 </td>
 
                 {isAll && (
                   <>
-                    <td className="p-3">
-                      {c.category || "RETENTION"}
-                    </td>
+                    <td className="p-3">{c.category || "RETENTION"}</td>
                     <td className="p-3">
                       <button
                         disabled={c.paid || payingId === c.id}
@@ -400,37 +382,31 @@ export default function CustomerManagement() {
                     <input
                       value={c.remarks || ""}
                       disabled={savingRemarkId === c.id}
-                      onChange={(e) =>
-                        updateRemarkLocal(c.id, e.target.value)
-                      }
-                      onBlur={(e) =>
-                        saveRemarks(c.id, e.target.value)
-                      }
+                      onChange={(e) => updateRemarkLocal(c.id, e.target.value)}
+                      onBlur={(e) => saveRemarks(c.id, e.target.value)}
                       className="border rounded-lg px-3 py-2 disabled:opacity-50 text-left"
                       placeholder="Add remarks..."
                     />
                   </td>
                 )}
 
-               {activeTab !== "CUSTOMIZE" && (
-  <td className="p-3">
-    <select
-      disabled={movingId === c.id}
-      className="border rounded-lg px-3 py-2 disabled:opacity-50"
-      defaultValue=""
-      onChange={(e) =>
-        changeCategory(c.id, e.target.value)
-      }
-    >
-      <option value="">Move</option>
-      {CATEGORIES.map((cat) => (
-        <option key={cat} value={cat}>
-          {cat}
-        </option>
-      ))}
-    </select>
-  </td>
-)}
+                {activeTab !== "CUSTOMIZE" && (
+                  <td className="p-3">
+                    <select
+                      disabled={movingId === c.id}
+                      className="border rounded-lg px-3 py-2 disabled:opacity-50"
+                      defaultValue=""
+                      onChange={(e) => changeCategory(c.id, e.target.value)}
+                    >
+                      <option value="">Move</option>
+                      {CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
