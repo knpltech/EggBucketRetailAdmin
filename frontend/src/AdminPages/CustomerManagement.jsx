@@ -15,9 +15,6 @@ const TABS = [
   "CUSTOMIZE",
 ];
 
-
-const CATEGORIES = ["REGULAR", "FOLLOW-UP", "RETENTION"];
-
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +25,6 @@ export default function CustomerManagement() {
   const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
 
   const [payingId, setPayingId] = useState(null);
-  const [movingId, setMovingId] = useState(null);
   const [savingRemarkId, setSavingRemarkId] = useState(null);
 
   const [recalculating, setRecalculating] = useState(false);
@@ -81,11 +77,7 @@ export default function CustomerManagement() {
 
   // ================= BUSINESS TOTAL =================
 
-  const businessTotal = useMemo(() => {
-    return customers.filter((c) =>
-      ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category),
-    ).length;
-  }, [customers]);
+
 
   // ================= FILTER =================
 
@@ -93,9 +85,7 @@ export default function CustomerManagement() {
     let list = [];
     // ALL = Business Customers
     if (activeTab === "ALL") {
-      list = customers.filter((c) =>
-        ["REGULAR", "FOLLOW-UP", "RETENTION"].includes(c.category),
-      );
+     list = customers;
     }
     // ONBOARDING = Zone Unassigned
     else if (activeTab === "ONBOARDING") {
@@ -146,23 +136,6 @@ export default function CustomerManagement() {
   }, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
-  const changeCategory = async (id, category) => {
-    if (!category || movingId === id) return;
-
-    try {
-      setMovingId(id);
-
-      await axios.post(`${ADMIN_PATH}/customer/status`, {
-        id,
-        category,
-      });
-
-      await loadCustomers();
-    } finally {
-      setMovingId(null);
-    }
-  };
-
   const markPaidOnce = async (c) => {
     if (c.paid || payingId === c.id) return;
 
@@ -259,7 +232,7 @@ export default function CustomerManagement() {
           <div>
             <p className="text-sm text-gray-600">Total Customers</p>
             <p className="text-2xl font-bold">
-              {loading ? "…" : isAll ? businessTotal : filtered.length}
+             {loading ? "…" : filtered.length}
             </p>
           </div>
 
@@ -338,7 +311,6 @@ export default function CustomerManagement() {
               {isAll && <th className="p-3">Category</th>}
               {isAll && <th className="p-3">Paid</th>}
               {!isAll && <th className="p-3">Remarks</th>}
-              {activeTab !== "CUSTOMIZE" && <th className="p-3">Move</th>}
             </tr>
           </thead>
 
@@ -387,24 +359,6 @@ export default function CustomerManagement() {
                       className="border rounded-lg px-3 py-2 disabled:opacity-50 text-left"
                       placeholder="Add remarks..."
                     />
-                  </td>
-                )}
-
-                {activeTab !== "CUSTOMIZE" && (
-                  <td className="p-3">
-                    <select
-                      disabled={movingId === c.id}
-                      className="border rounded-lg px-3 py-2 disabled:opacity-50"
-                      defaultValue=""
-                      onChange={(e) => changeCategory(c.id, e.target.value)}
-                    >
-                      <option value="">Move</option>
-                      {CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
                   </td>
                 )}
               </tr>
