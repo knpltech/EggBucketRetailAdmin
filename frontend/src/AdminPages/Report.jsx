@@ -30,6 +30,41 @@ const Report = () => {
     return status?.toUpperCase() || "NOT DELIVERED";
   };
 
+  const parseTimestamp = (value) => {
+    if (!value) return null;
+
+    if (value instanceof Date) return value;
+
+    if (typeof value?.toDate === "function") {
+      return value.toDate();
+    }
+
+    if (typeof value === "number") {
+      // Treat 10-digit numbers as seconds, otherwise milliseconds.
+      const ms = value < 1e12 ? value * 1000 : value;
+      const date = new Date(ms);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (typeof value === "string") {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (typeof value === "object") {
+      const seconds = value.seconds ?? value._seconds;
+      const nanoseconds = value.nanoseconds ?? value._nanoseconds ?? 0;
+
+      if (typeof seconds === "number") {
+        const ms = seconds * 1000 + Math.floor(nanoseconds / 1e6);
+        const date = new Date(ms);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+
+    return null;
+  };
+
   const fetchData = async (date) => {
     setLoading(true);
     try {
@@ -76,7 +111,7 @@ const Report = () => {
         zone: resolvedZone,
         deliveryMan: delivery?.deliveryMan || null,
         status: delivery?.type || "not delivered",
-        createdAt: delivery?.createdAt || null,
+        createdAt: delivery?.timestamp || null,
       };
     });
 
@@ -116,8 +151,8 @@ const Report = () => {
     // SORT BY DELIVERY TIME (Newest First)
     if (sortBy === "time") {
       temp.sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        const aTime = parseTimestamp(a.createdAt)?.getTime() || 0;
+        const bTime = parseTimestamp(b.createdAt)?.getTime() || 0;
         return bTime - aTime;
       });
     }
@@ -172,6 +207,7 @@ const Report = () => {
           "Date",
           "Customer ID",
           "Customer Name",
+          "Creation Time",
           "Zone",
           "Delivery Agent Name",
           "Status",
@@ -188,6 +224,8 @@ const Report = () => {
             delivery.id,
             customer.custid,
             customer.name,
+            // customer.formatTime(createdAt),
+            formatTime(delivery.timestamp),
             resolvedZone,
             delivery.deliveryMan?.name || "Not Assigned",
             delivery.type || "not delivered",
@@ -222,16 +260,26 @@ const Report = () => {
       </div>
     );
   }
+  // to display creation time
+  const formatTime = (timestamp) => {
+    const date = parseTimestamp(timestamp);
+    if (!date) return "-";
 
+    return date.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
   return (
-    <div className="min-h-screen bg-gray-100 p-6 flex justify-center">
+    <div className="min-h-screen bg-gray-100 px-2 py-3 sm:px-4 sm:py-6 lg:px-6 lg:py-8 flex justify-center">
       <div className="w-full max-w-7xl bg-white shadow-lg rounded-2xl overflow-hidden">
         {/* HEADER */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 flex items-center gap-4">
-          <div className="bg-white/20 p-3 rounded-xl">
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6 flex items-center gap-3 sm:gap-4">
+          <div className="bg-white/20 p-2.5 sm:p-3 rounded-xl">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-7 w-7 text-white"
+              className="h-6 w-6 sm:h-7 sm:w-7 text-white"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -243,14 +291,14 @@ const Report = () => {
               <path d="M17 7v10" />
             </svg>
           </div>
-          <h1 className="text-3xl font-semibold text-white tracking-wide">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-semibold text-white tracking-wide">
             Delivery Report Dashboard
           </h1>
         </div>
 
         {/* FILTER BAR */}
-        <div className="px-8 py-5 border-b bg-white flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-gray-600 mr-3">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 lg:px-8 border-b bg-white flex flex-wrap items-center gap-2 sm:gap-3">
+          <span className="text-sm font-medium text-gray-600 mr-1 sm:mr-3">
             Filter by Status:
           </span>
 
@@ -275,7 +323,7 @@ const Report = () => {
             <button
               key={s.value}
               onClick={() => setStatusFilter(s.value)}
-              className={`px-4 py-1.5 rounded-full text-xs font-medium border ${
+              className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-medium border ${
                 statusFilter === s.value
                   ? `${s.color} ring-2 ring-blue-400 shadow-sm`
                   : `${s.color}`
@@ -287,9 +335,9 @@ const Report = () => {
         </div>
 
         {/* DATE + SORT + AGENT FILTER */}
-        <div className="px-8 py-5 border-b bg-white flex flex-col md:flex-row justify-between gap-6">
-          <div className="flex flex-col md:flex-row md:items-end gap-4">
-            <div className="flex flex-col gap-1">
+        <div className="px-4 py-4 sm:px-6 sm:py-5 lg:px-8 border-b bg-white flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 sm:gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 flex-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-600">
                 Select Delivery Date
               </label>
@@ -298,32 +346,32 @@ const Report = () => {
                 value={selectedDate}
                 max={today}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="border px-4 py-2 rounded-lg shadow-sm"
+                className="w-full border px-4 py-2.5 rounded-lg shadow-sm"
               />
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-600">
                 Sort By
               </label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="border px-4 py-2 rounded-lg shadow-sm"
+                className="w-full border px-4 py-2.5 rounded-lg shadow-sm"
               >
                 <option value="customer">Customer Name (A-Z)</option>
                 <option value="time">Delivery Creation Time</option>
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-600">
                 Delivery Agent
               </label>
               <select
                 value={selectedAgent}
                 onChange={(e) => setSelectedAgent(e.target.value)}
-                className="border px-4 py-2 rounded-lg shadow-sm"
+                className="w-full border px-4 py-2.5 rounded-lg shadow-sm"
               >
                 <option value="all">All Delivery Agents</option>
                 {deliveryAgentOptions.map((agent) => (
@@ -335,8 +383,8 @@ const Report = () => {
             </div>
           </div>
 
-          <div className="flex items-end gap-4">
-            <div className="flex flex-col">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 xl:w-auto w-full">
+            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-600">
                 Start Date
               </label>
@@ -345,11 +393,11 @@ const Report = () => {
                 max={today}
                 value={startRange}
                 onChange={(e) => setStartRange(e.target.value)}
-                className="border px-3 py-2 rounded-lg shadow-sm"
+                className="w-full border px-3 py-2.5 rounded-lg shadow-sm"
               />
             </div>
 
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-600">
                 End Date
               </label>
@@ -358,14 +406,14 @@ const Report = () => {
                 max={today}
                 value={endRange}
                 onChange={(e) => setEndRange(e.target.value)}
-                className="border px-3 py-2 rounded-lg shadow-sm"
+                className="w-full border px-3 py-2.5 rounded-lg shadow-sm"
               />
             </div>
 
             <button
               disabled={!startRange || !endRange || !data.length}
               onClick={downloadSummaryExcel}
-              className={`px-5 py-2 rounded-lg shadow text-white ${
+              className={`w-full sm:self-end px-5 py-2.5 rounded-lg shadow text-white ${
                 !startRange || !endRange || !data.length
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700"
@@ -377,20 +425,21 @@ const Report = () => {
         </div>
 
         {/* TABLE */}
-        <div className="overflow-x-auto p-6">
+        <div className="overflow-x-auto p-2.5 sm:p-4 lg:p-6">
           <table className="w-full border rounded-xl overflow-hidden">
             <thead className="bg-gray-50 border-b">
               <tr>
                 {[
                   "Customer ID",
                   "Customer Name",
+                  "Delivery  Time",
                   "Zone",
                   "Delivery Agent",
                   "Status",
                 ].map((h) => (
                   <th
                     key={h}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
+                    className="px-3 sm:px-5 lg:px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
                   >
                     {h}
                   </th>
@@ -401,15 +450,24 @@ const Report = () => {
               {displayedDeliveries.length ? (
                 displayedDeliveries.map((row, i) => (
                   <tr key={i} className="hover:bg-gray-50 border-b">
-                    <td className="px-6 py-4">{row.custid}</td>
-                    <td className="px-6 py-4">{row.name}</td>
-                    <td className="px-6 py-4">{row.zone || "UNASSIGNED"}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                      {row.custid}
+                    </td>
+                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                      {row.name}
+                    </td>
+                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                      {formatTime(row.createdAt)}
+                    </td>
+                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                      {row.zone || "UNASSIGNED"}
+                    </td>
+                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
                       {row.deliveryMan?.name || "Not assigned"}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                        className={`inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
                           row.status,
                         )}`}
                       >
@@ -420,7 +478,7 @@ const Report = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="py-14 text-center text-gray-500">
+                  <td colSpan="6" className="py-14 text-center text-gray-500">
                     No deliveries found
                   </td>
                 </tr>
