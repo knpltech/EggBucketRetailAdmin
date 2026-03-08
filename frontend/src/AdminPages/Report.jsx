@@ -148,12 +148,18 @@ const Report = () => {
       temp.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     }
 
-    // SORT BY DELIVERY TIME (Newest First)
+    // SORT BY DELIVERY TIME (Oldest First)
     if (sortBy === "time") {
       temp.sort((a, b) => {
-        const aTime = parseTimestamp(a.createdAt)?.getTime() || 0;
-        const bTime = parseTimestamp(b.createdAt)?.getTime() || 0;
-        return bTime - aTime;
+        const aTime = parseTimestamp(a.createdAt)?.getTime();
+        const bTime = parseTimestamp(b.createdAt)?.getTime();
+
+        // Keep rows with missing/invalid time at the bottom.
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+
+        return aTime - bTime;
       });
     }
 
