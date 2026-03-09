@@ -519,6 +519,9 @@ const getUserDeliveries = async (req, res) => {
         deliveredBy: deliveredByUID,
         timestamp: data.timestamp,
         type: data.type,
+        checkReason: data.checkReason || "",
+        traysDelivered:
+          typeof data.traysDelivered === "number" ? data.traysDelivered : null,
         deliveryMan,
       });
     }
@@ -562,66 +565,66 @@ const getAllCustomerDeliveries = async (req, res) => {
         let deliveries = [];
 
         // FILTER BY DATE - Use doc() when date is provided
-       if (date) {
-  const deliveryDoc = await deliveriesCollection.doc(date).get();
+        if (date) {
+          const deliveryDoc = await deliveriesCollection.doc(date).get();
 
-  if (deliveryDoc.exists) {
-    const data = deliveryDoc.data();
-    let deliveryMan = null;
+          if (deliveryDoc.exists) {
+            const data = deliveryDoc.data();
+            let deliveryMan = null;
 
-    if (data.deliveredBy) {
-      const manDoc = await db
-        .collection("DeliveryMan")
-        .doc(data.deliveredBy)
-        .get();
+            if (data.deliveredBy) {
+              const manDoc = await db
+                .collection("DeliveryMan")
+                .doc(data.deliveredBy)
+                .get();
 
-      if (manDoc.exists) {
-        const manData = manDoc.data();
-        deliveryMan = {
-          name: manData.name || "",
-          phone: manData.phone || "",
-        };
-      }
-    }
+              if (manDoc.exists) {
+                const manData = manDoc.data();
+                deliveryMan = {
+                  name: manData.name || "",
+                  phone: manData.phone || "",
+                };
+              }
+            }
 
-    deliveries = [
-      {
-        id: deliveryDoc.id,
-        ...data,
-        deliveryMan,
-      },
-    ];
-  }
-} else {
+            deliveries = [
+              {
+                id: deliveryDoc.id,
+                ...data,
+                deliveryMan,
+              },
+            ];
+          }
+        } else {
           // Get all deliveries when no date filter
           const deliveriesSnap = await deliveriesCollection.get();
-        deliveries = await Promise.all(
-  deliveriesSnap.docs.map(async (d) => {
-    const data = d.data();
-    let deliveryMan = null;
+          deliveries = await Promise.all(
+            deliveriesSnap.docs.map(async (d) => {
+              const data = d.data();
+              let deliveryMan = null;
 
-    if (data.deliveredBy) {
-      const manDoc = await db
-        .collection("DeliveryMan")
-        .doc(data.deliveredBy)
-        .get();
+              if (data.deliveredBy) {
+                const manDoc = await db
+                  .collection("DeliveryMan")
+                  .doc(data.deliveredBy)
+                  .get();
 
-      if (manDoc.exists) {
-        const manData = manDoc.data();
-        deliveryMan = {
-          name: manData.name || "",
-          phone: manData.phone || "",
-        };
-      }
-    }
+                if (manDoc.exists) {
+                  const manData = manDoc.data();
+                  deliveryMan = {
+                    name: manData.name || "",
+                    phone: manData.phone || "",
+                  };
+                }
+              }
 
-    return {
-      id: d.id,
-      ...data,
-      deliveryMan,
-    };
-  })
-);
+              return {
+                id: d.id,
+                ...data,
+                deliveryMan,
+              };
+            })
+          );
         }
 
         return {
@@ -1170,6 +1173,202 @@ const getCustomersByDeliveryCount = async (req, res) => {
     });
   }
 };
+
+
+
+//  for storing the Checked Reasonn and Delivery Quantity
+
+const saveDeliveredTrays = async (req, res) => {
+  try {
+    const { customerId, deliveryId, traysDelivered } = req.body;
+
+    if (!customerId || !deliveryId || traysDelivered === undefined) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const trays = Number(traysDelivered);
+    if (!Number.isInteger(trays) || trays < 3 || trays > 30) {
+      return res
+        .status(400)
+        .json({ message: "Trays must be an integer between 3 and 30" });
+    }
+
+    const db = getFirestore();
+    const deliveryRef = db
+      .collection("customers")
+      .doc(customerId)
+      .collection("deliveries")
+      .doc(deliveryId);
+
+    const deliverySnap = await deliveryRef.get();
+    if (!deliverySnap.exists) {
+      return res.status(404).json({ message: "Delivery not found" });
+    }
+
+    const deliveryData = deliverySnap.data();
+    if (deliveryData.type !== "delivered") {
+      return res
+        .status(400)
+        .json({ message: "Trays can only be added for DELIVERED entries" });
+    }
+
+    await deliveryRef.update({ traysDelivered: trays });
+
+    cache.del(`userDeliveries:${customerId}`);
+    const allDeliveriesKeys = cache
+      .keys()
+      .filter((key) => key.startsWith("allCustomerDeliveries"));
+    if (allDeliveriesKeys.length > 0) {
+      cache.del(allDeliveriesKeys);
+    }
+
+    return res.status(200).json({
+      message: "Trays saved successfully",
+      traysDelivered: trays,
+    });
+  } catch (err) {
+    console.error("saveDeliveredTrays error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const saveCheckedReason = async (req, res) => {
+  try {
+    const { customerId, deliveryId, reason } = req.body;
+
+    const allowedReasons = [
+      "Price Mismatch",
+      "Stock available",
+      "Timing Issue",
+    ];
+
+    if (!customerId || !deliveryId || !reason) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    if (!allowedReasons.includes(reason)) {
+      return res.status(400).json({ message: "Invalid reason selected" });
+    }
+
+    const db = getFirestore();
+    const deliveryRef = db
+      .collection("customers")
+      .doc(customerId)
+      .collection("deliveries")
+      .doc(deliveryId);
+
+    const deliverySnap = await deliveryRef.get();
+
+    if (!deliverySnap.exists) {
+      return res.status(404).json({ message: "Delivery not found" });
+    }
+
+    const deliveryData = deliverySnap.data();
+
+    if (deliveryData.type !== "reached") {
+      return res
+        .status(400)
+        .json({ message: "Reason can only be added for CHECKED deliveries" });
+    }
+
+    if (deliveryData.checkReason) {
+      return res.status(409).json({
+        message: "Reason already selected for this delivery",
+        checkReason: deliveryData.checkReason,
+      });
+    }
+
+    await deliveryRef.update({
+      checkReason: reason,
+      checkReasonAt: Date.now(),
+    });
+
+    // Invalidate caches that may serve stale delivery rows.
+    cache.del(`userDeliveries:${customerId}`);
+    cache.del("allCustomerDeliveries");
+    cache.del(`allCustomerDeliveries:${deliveryId}`);
+
+    return res.status(200).json({
+      message: "Reason saved successfully",
+      checkReason: reason,
+    });
+  } catch (err) {
+    console.error("saveCheckedReason error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const resetAllCheckedReasons = async (req, res) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({ message: "Customer ID is required" });
+    }
+
+    const db = getFirestore();
+    const deliveriesRef = db
+      .collection("customers")
+      .doc(customerId)
+      .collection("deliveries");
+
+    const deliveriesSnap = await deliveriesRef.get();
+
+    if (deliveriesSnap.empty) {
+      return res.status(200).json({
+        message: "No deliveries found",
+        resetCount: 0,
+      });
+    }
+
+    const batch = db.batch();
+    let resetCount = 0;
+
+    deliveriesSnap.forEach((doc) => {
+      const data = doc.data();
+      const hasCheckedReason =
+        data.type === "reached" && (data.checkReason || data.checkReasonAt);
+      const hasTrays =
+        data.type === "delivered" && data.traysDelivered !== undefined;
+
+      if (!hasCheckedReason && !hasTrays) {
+        return;
+      }
+
+      const updatePayload = {};
+      if (hasCheckedReason) {
+        updatePayload.checkReason = admin.firestore.FieldValue.delete();
+        updatePayload.checkReasonAt = admin.firestore.FieldValue.delete();
+      }
+      if (hasTrays) {
+        updatePayload.traysDelivered = admin.firestore.FieldValue.delete();
+      }
+
+      batch.update(doc.ref, updatePayload);
+      resetCount += 1;
+    });
+
+    if (resetCount > 0) {
+      await batch.commit();
+    }
+
+    cache.del(`userDeliveries:${customerId}`);
+    const allDeliveriesKeys = cache
+      .keys()
+      .filter((key) => key.startsWith("allCustomerDeliveries"));
+    if (allDeliveriesKeys.length > 0) {
+      cache.del(allDeliveriesKeys);
+    }
+
+    return res.status(200).json({
+      message: "Checked reasons and trays reset successfully",
+      resetCount,
+    });
+  } catch (err) {
+    console.error("resetAllCheckedReasons error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
 export {
   login,
   userInfo,
@@ -1197,5 +1396,8 @@ export {
   recalculateAllCategories,
   autoAssignCategoryForCustomer,
   getAllCustomerDeliveriesRange,
-  getCustomersByDeliveryCount
+  getCustomersByDeliveryCount,
+  saveCheckedReason,
+  resetAllCheckedReasons,
+  saveDeliveredTrays,
 };
