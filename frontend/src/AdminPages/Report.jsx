@@ -112,6 +112,11 @@ const Report = () => {
         deliveryMan: delivery?.deliveryMan || null,
         status: delivery?.type || "not delivered",
         createdAt: delivery?.timestamp || null,
+        checkReason: delivery?.checkReason || "",
+        traysDelivered:
+          typeof delivery?.traysDelivered === "number"
+            ? delivery.traysDelivered
+            : null,
       };
     });
 
@@ -472,13 +477,27 @@ const Report = () => {
                       {row.deliveryMan?.name || "Not assigned"}
                     </td>
                     <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      <span
-                        className={`inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                          row.status,
-                        )}`}
-                      >
-                        {formatStatus(row.status)}
-                      </span>
+                      <div className="flex flex-col items-start gap-1.5">
+                        <span
+                          className={`inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                            row.status,
+                          )}`}
+                        >
+                          {formatStatus(row.status)}
+                        </span>
+
+                        {row.status === "reached" && (
+                          <span className="text-sm text-gray-700  items-center ">
+                            {row.checkReason || "-"}
+                          </span>
+                        )}
+
+                        {row.status === "delivered" && (
+                            <span className="text-sm text-gray-700 ">
+                            {row.traysDelivered !=null? `${row.traysDelivered} trays`:"-"} 
+                            </span>
+                          )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -9,6 +9,7 @@ import {
   FiCalendar,
   FiTruck,
   FiPhone,
+  FiEdit2,
 } from "react-icons/fi";
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
 const CHECK_REASONS = ["Price Mismatch", "Stock available", "Timing Issue"];
@@ -27,6 +28,8 @@ const Customer = () => {
   const [showFullImage, setShowFullImage] = useState(false);
   const [savingReasonId, setSavingReasonId] = useState("");
   const [savingTraysId, setSavingTraysId] = useState("");
+  const [editingReasonId, setEditingReasonId] = useState("");
+  const [editingTraysId, setEditingTraysId] = useState("");
   const [reasonError, setReasonError] = useState("");
   const [isResettingAllReasons, setIsResettingAllReasons] = useState(false);
 
@@ -152,6 +155,7 @@ const Customer = () => {
       }
     } finally {
       setSavingReasonId("");
+      setEditingReasonId("");
     }
   };
 
@@ -233,6 +237,7 @@ const Customer = () => {
       setReasonError(msg);
     } finally {
       setSavingTraysId("");
+      setEditingTraysId("");
     }
   };
 
@@ -502,14 +507,28 @@ const Customer = () => {
                               </span>
                               {delivery.type === "reached" && (
                                 <div className="mt-2 self-end">
-                                  {delivery.checkReason ? (
-                                    <p className="text-sm text-gray-700 text-right">
-                                      {delivery.checkReason}
-                                    </p>
+                                  {delivery.checkReason &&
+                                  editingReasonId !== delivery.id ? (
+                                    <div className="flex items-center gap-2 justify-end">
+                                      <p className="text-sm text-gray-700 text-right">
+                                        {delivery.checkReason}
+                                      </p>
+                                      <button
+                                        type="button"
+                                        className="text-slate-500 hover:text-slate-700 transition-colors"
+                                        onClick={() =>
+                                          setEditingReasonId(delivery.id)
+                                        }
+                                        title="Edit reason"
+                                        aria-label="Edit reason"
+                                      >
+                                        <FiEdit2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
                                   ) : (
                                     <select
                                       className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                      defaultValue=""
+                                      value={delivery.checkReason || ""}
                                       disabled={savingReasonId === delivery.id}
                                       onChange={(e) =>
                                         handleSelectCheckedReason(
@@ -532,10 +551,24 @@ const Customer = () => {
                               )}
                               {delivery.type === "delivered" && (
                                 <div className="mt-2 self-end">
-                                  {delivery.traysDelivered !== null ? (
-                                    <p className="text-sm text-gray-700 text-right">
-                                      {delivery.traysDelivered} trays
-                                    </p>
+                                  {delivery.traysDelivered !== null &&
+                                  editingTraysId !== delivery.id ? (
+                                    <div className="flex items-center gap-2 justify-end">
+                                      <p className="text-sm text-gray-700 text-right">
+                                        {delivery.traysDelivered} trays
+                                      </p>
+                                      <button
+                                        type="button"
+                                        className="text-slate-500 hover:text-slate-700 transition-colors"
+                                        onClick={() =>
+                                          setEditingTraysId(delivery.id)
+                                        }
+                                        title="Edit trays"
+                                        aria-label="Edit trays"
+                                      >
+                                        <FiEdit2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
                                   ) : (
                                     <select
                                       className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
