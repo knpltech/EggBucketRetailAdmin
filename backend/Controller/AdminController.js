@@ -1271,10 +1271,13 @@ const saveCheckedReason = async (req, res) => {
         .json({ message: "Reason can only be added for CHECKED deliveries" });
     }
 
-    if (deliveryData.checkReason) {
-      return res.status(409).json({
-        message: "Reason already selected for this delivery",
-        checkReason: deliveryData.checkReason,
+    const previousReason = deliveryData.checkReason || "";
+
+    // Editing should be idempotent: if same value is selected, return success.
+    if (previousReason === reason) {
+      return res.status(200).json({
+        message: "Reason already up to date",
+        checkReason: previousReason,
       });
     }
 
@@ -1289,7 +1292,9 @@ const saveCheckedReason = async (req, res) => {
     cache.del(`allCustomerDeliveries:${deliveryId}`);
 
     return res.status(200).json({
-      message: "Reason saved successfully",
+      message: previousReason
+        ? "Reason updated successfully"
+        : "Reason saved successfully",
       checkReason: reason,
     });
   } catch (err) {
