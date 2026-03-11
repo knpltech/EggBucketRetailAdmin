@@ -25,7 +25,6 @@ export default function CustomerManagement() {
   const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
 
   const [payingId, setPayingId] = useState(null);
-  const [savingRemarkId, setSavingRemarkId] = useState(null);
 
   const [recalculating, setRecalculating] = useState(false);
 
@@ -39,6 +38,22 @@ export default function CustomerManagement() {
     setCustomers(Array.isArray(res.data) ? res.data : []);
   };
 
+  const loadRemarks = async () => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/customer/latest-remarks`);
+      const remarksMap = res.data || {};
+
+      setCustomers((prev) =>
+        prev.map((c) => ({
+          ...c,
+          latestRemark: remarksMap[c.id] || "-",
+        })),
+      );
+    } catch (err) {
+      console.error("Error loading remarks:", err);
+    }
+  };
+
   // Load normal tabs
   useEffect(() => {
     if (activeTab === "CUSTOMIZE") return;
@@ -47,6 +62,7 @@ export default function CustomerManagement() {
       setLoading(true);
       await loadCustomers();
       setLoading(false);
+      loadRemarks();
     };
 
     init();
@@ -70,13 +86,11 @@ export default function CustomerManagement() {
       } finally {
         setLoading(false);
       }
+      loadRemarks();
     };
 
     loadCustomCustomers();
   }, [activeTab, deliveryCountFilter]);
-
-  // ================= BUSINESS TOTAL =================
-
 
 
   // ================= FILTER =================
@@ -85,7 +99,7 @@ export default function CustomerManagement() {
     let list = [];
     // ALL = Business Customers
     if (activeTab === "ALL") {
-     list = customers;
+      list = customers;
     }
     // ONBOARDING = Zone Unassigned
     else if (activeTab === "ONBOARDING") {
@@ -109,18 +123,17 @@ export default function CustomerManagement() {
       );
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
-        (c) => c.remarks && c.remarks.trim() !== "",
+        (c) => c.latestRemark && c.latestRemark !== "-",
       );
 
       const withoutRemarks = list.filter(
-        (c) => !c.remarks || c.remarks.trim() === "",
+        (c) => !c.latestRemark || c.latestRemark === "-",
       );
 
       withRemarks.sort((a, b) =>
-        a.remarks
-          .trim()
+        a.latestRemark
           .toLowerCase()
-          .localeCompare(b.remarks.trim().toLowerCase()),
+          .localeCompare(b.latestRemark.toLowerCase()),
       );
 
       withoutRemarks.sort((a, b) =>
@@ -148,29 +161,9 @@ export default function CustomerManagement() {
       });
 
       await loadCustomers();
+      loadRemarks();
     } finally {
       setPayingId(null);
-    }
-  };
-
-  const updateRemarkLocal = (id, value) => {
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, remarks: value } : c)),
-    );
-  };
-
-  const saveRemarks = async (id, remarks) => {
-    try {
-      setSavingRemarkId(id);
-
-      await axios.post(`${ADMIN_PATH}/customer/status`, {
-        id,
-        remarks,
-      });
-
-      await loadCustomers();
-    } finally {
-      setSavingRemarkId(null);
     }
   };
 
@@ -183,6 +176,7 @@ export default function CustomerManagement() {
       await axios.post(`${ADMIN_PATH}/customer/recalculate`);
 
       await loadCustomers();
+      loadRemarks();
 
       alert("Categories recalculated");
     } catch {
@@ -202,7 +196,7 @@ export default function CustomerManagement() {
       Name: getName(c),
       Zone: c.zone || "",
       Category: c.category || "RETENTION",
-      Remarks: c.remarks || "",
+      Remarks: c.latestRemark || "-",
       Paid: c.paid ? "Yes" : "No",
     }));
 
@@ -232,7 +226,7 @@ export default function CustomerManagement() {
           <div>
             <p className="text-sm text-gray-600">Total Customers</p>
             <p className="text-2xl font-bold">
-             {loading ? "…" : filtered.length}
+              {loading ? "…" : filtered.length}
             </p>
           </div>
 
@@ -350,16 +344,7 @@ export default function CustomerManagement() {
                 )}
 
                 {!isAll && (
-                  <td className="p-3">
-                    <input
-                      value={c.remarks || ""}
-                      disabled={savingRemarkId === c.id}
-                      onChange={(e) => updateRemarkLocal(c.id, e.target.value)}
-                      onBlur={(e) => saveRemarks(c.id, e.target.value)}
-                      className="border rounded-lg px-3 py-2 disabled:opacity-50 text-left"
-                      placeholder="Add remarks..."
-                    />
-                  </td>
+                  <td className="p-3 text-left">{c.latestRemark || "-"}</td>
                 )}
               </tr>
             ))}

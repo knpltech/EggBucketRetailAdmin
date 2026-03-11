@@ -35,6 +35,7 @@ import {
   saveDeliveredTrays,
   getAllCustomerDeliveriesRange,
   getCustomersByDeliveryCount,
+  getLatestRemarks,
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -56,6 +57,7 @@ router.get("/analytics/last7", getAnalyticsLast7);
 router.post("/customer/recalculate", recalculateAllCategories);
 router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
+router.get("/customer/latest-remarks", getLatestRemarks);
 
 // Delivery partner related routes
 router.post("/add-del-partner", addDeliveryPartner);
