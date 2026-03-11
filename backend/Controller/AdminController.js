@@ -1215,6 +1215,7 @@ const saveDeliveredTrays = async (req, res) => {
     await deliveryRef.update({ traysDelivered: trays });
 
     cache.del(`userDeliveries:${customerId}`);
+    cache.del("latestRemarks");
     const allDeliveriesKeys = cache
       .keys()
       .filter((key) => key.startsWith("allCustomerDeliveries"));
@@ -1290,6 +1291,7 @@ const saveCheckedReason = async (req, res) => {
     cache.del(`userDeliveries:${customerId}`);
     cache.del("allCustomerDeliveries");
     cache.del(`allCustomerDeliveries:${deliveryId}`);
+    cache.del("latestRemarks");
 
     return res.status(200).json({
       message: previousReason
@@ -1358,6 +1360,7 @@ const resetAllCheckedReasons = async (req, res) => {
     }
 
     cache.del(`userDeliveries:${customerId}`);
+    cache.del("latestRemarks");
     const allDeliveriesKeys = cache
       .keys()
       .filter((key) => key.startsWith("allCustomerDeliveries"));
@@ -1371,6 +1374,72 @@ const resetAllCheckedReasons = async (req, res) => {
     });
   } catch (err) {
     console.error("resetAllCheckedReasons error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+//  returns only the latest delivery remark per customer
+const getLatestRemarks = async (req, res) => {
+  try {
+    const db = getFirestore();
+
+    // Fetch ALL deliveries across all customers
+    const allDeliveriesSnap = await db.collectionGroup("deliveries").get();
+
+    const customerDeliveries = {};
+
+    allDeliveriesSnap.forEach((doc) => {
+      const customerId = doc.ref.parent.parent.id;
+      const data = doc.data();
+      const docId = doc.id; // date string like "2026-03-10"
+
+      // Initialize array
+      if (!customerDeliveries[customerId]) {
+        customerDeliveries[customerId] = [];
+      }
+
+      // Keep only deliveries that have remark data
+      if (
+        (data.type === "reached" && data.checkReason) ||
+        (data.type === "delivered" && typeof data.traysDelivered === "number")
+      ) {
+        customerDeliveries[customerId].push({
+          docId,
+          type: data.type,
+          checkReason: data.checkReason,
+          traysDelivered: data.traysDelivered,
+        });
+      }
+    });
+
+    const remarks = {};
+
+    // Find latest remark for each customer
+    for (const [customerId, deliveries] of Object.entries(customerDeliveries)) {
+      // Sort by date (latest first)
+      deliveries.sort((a, b) => b.docId.localeCompare(a.docId));
+
+      const latest = deliveries[0];
+
+      if (!latest) {
+        remarks[customerId] = "-";
+        continue;
+      }
+
+      if (latest.type === "reached" && latest.checkReason) {
+        remarks[customerId] = latest.checkReason;
+      } else if (
+        latest.type === "delivered" &&
+        typeof latest.traysDelivered === "number"
+      ) {
+        remarks[customerId] = `${latest.traysDelivered} trays`;
+      } else {
+        remarks[customerId] = "-";
+      }
+    }
+
+    return res.status(200).json(remarks);
+  } catch (err) {
+    console.error("getLatestRemarks error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -1405,4 +1474,5 @@ export {
   saveCheckedReason,
   resetAllCheckedReasons,
   saveDeliveredTrays,
+  getLatestRemarks,
 };
