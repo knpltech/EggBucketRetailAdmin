@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
+
+const CHECK_REASONS = ["Price Mismatch", "Stock available", "Timing Issue"];
+const TRAY_OPTIONS = Array.from({ length: 28 }, (_, idx) => idx + 3);
 
 const Report = () => {
   const [data, setData] = useState([]);
@@ -9,6 +13,10 @@ const Report = () => {
   const [filteredDeliveries, setFilteredDeliveries] = useState([]);
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [savingReasonId, setSavingReasonId] = useState("");
+  const [savingTraysId, setSavingTraysId] = useState("");
+  const [editingReasonId, setEditingReasonId] = useState("");
+  const [editingTraysId, setEditingTraysId] = useState("");
 
   const [sortBy, setSortBy] = useState("customer");
   const [selectedAgent, setSelectedAgent] = useState("all");
@@ -89,6 +97,120 @@ const Report = () => {
     }
   };
 
+  const updateDeliveryValue = (customerId, deliveryId, patch) => {
+    setData((prev) =>
+      prev.map((customer) => {
+        if (customer.id !== customerId) {
+          return customer;
+        }
+
+        return {
+          ...customer,
+          deliveries: (customer.deliveries || []).map((delivery) =>
+            delivery.id === deliveryId ? { ...delivery, ...patch } : delivery,
+          ),
+        };
+      }),
+    );
+  };
+
+  const handleSelectCheckedReason = async (customerId, deliveryId, reason) => {
+    if (!customerId || !deliveryId || !reason) return;
+
+    const previousReason =
+      data
+        .find((customer) => customer.id === customerId)
+        ?.deliveries?.find((delivery) => delivery.id === deliveryId)
+        ?.checkReason || "";
+
+    setSavingReasonId(deliveryId);
+    updateDeliveryValue(customerId, deliveryId, { checkReason: reason });
+
+    try {
+      const res = await fetch(`${ADMIN_PATH}/customer/delivery-reason`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId,
+          deliveryId,
+          reason,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Failed to save checked reason.");
+      }
+
+      updateDeliveryValue(customerId, deliveryId, {
+        checkReason: json?.checkReason || reason,
+      });
+    } catch (err) {
+      updateDeliveryValue(customerId, deliveryId, {
+        checkReason: previousReason,
+      });
+      alert(err.message || "Failed to save checked reason.");
+    } finally {
+      setSavingReasonId("");
+      setEditingReasonId("");
+    }
+  };
+
+  const handleSelectDeliveredTrays = async (
+    customerId,
+    deliveryId,
+    traysValue,
+  ) => {
+    if (!customerId || !deliveryId || !traysValue) return;
+
+    const trays = Number(traysValue);
+    if (!Number.isInteger(trays) || trays < 3 || trays > 30) return;
+
+    const previousTrays =
+      data
+        .find((customer) => customer.id === customerId)
+        ?.deliveries?.find((delivery) => delivery.id === deliveryId)
+        ?.traysDelivered ?? null;
+
+    setSavingTraysId(deliveryId);
+    updateDeliveryValue(customerId, deliveryId, { traysDelivered: trays });
+
+    try {
+      const res = await fetch(`${ADMIN_PATH}/customer/delivery-trays`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId,
+          deliveryId,
+          traysDelivered: trays,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Failed to save delivered trays.");
+      }
+
+      updateDeliveryValue(customerId, deliveryId, {
+        traysDelivered: Number(json?.traysDelivered ?? trays),
+      });
+    } catch (err) {
+      updateDeliveryValue(customerId, deliveryId, {
+        traysDelivered: previousTrays,
+      });
+      alert(err.message || "Failed to save delivered trays.");
+    } finally {
+      setSavingTraysId("");
+      setEditingTraysId("");
+    }
+  };
+
   useEffect(() => {
     fetchData(selectedDate);
   }, [selectedDate]);
@@ -106,6 +228,8 @@ const Report = () => {
         : "UNASSIGNED";
 
       return {
+        customerId: customer.id,
+        deliveryId: delivery?.id || "",
         custid: customer.custid,
         name: customer.name,
         zone: resolvedZone,
@@ -487,16 +611,96 @@ const Report = () => {
                         </span>
 
                         {row.status === "reached" && (
-                          <span className="text-sm text-gray-700  items-center ">
-                            {row.checkReason || "-"}
-                          </span>
+                          <div>
+                            {row.checkReason &&
+                            editingReasonId !== row.deliveryId ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-700 items-center">
+                                  {row.checkReason}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-slate-500 hover:text-slate-700 transition-colors"
+                                  onClick={() =>
+                                    setEditingReasonId(row.deliveryId)
+                                  }
+                                  title="Edit reason"
+                                  aria-label="Edit reason"
+                                >
+                                  <FiEdit2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <select
+                                className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                value={row.checkReason || ""}
+                                disabled={savingReasonId === row.deliveryId}
+                                onChange={(e) =>
+                                  handleSelectCheckedReason(
+                                    row.customerId,
+                                    row.deliveryId,
+                                    e.target.value,
+                                  )
+                                }
+                              >
+                                <option value="" disabled>
+                                  Select reason
+                                </option>
+                                {CHECK_REASONS.map((reason) => (
+                                  <option key={reason} value={reason}>
+                                    {reason}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         )}
 
                         {row.status === "delivered" && (
-                            <span className="text-sm text-gray-700 ">
-                            {row.traysDelivered !=null? `${row.traysDelivered} trays`:"-"} 
-                            </span>
-                          )}
+                          <div>
+                            {row.traysDelivered !== null &&
+                            editingTraysId !== row.deliveryId ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-700">
+                                  {row.traysDelivered} trays
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-slate-500 hover:text-slate-700 transition-colors"
+                                  onClick={() =>
+                                    setEditingTraysId(row.deliveryId)
+                                  }
+                                  title="Edit trays"
+                                  aria-label="Edit trays"
+                                >
+                                  <FiEdit2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <select
+                                className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                value={row.traysDelivered ?? ""}
+                                disabled={savingTraysId === row.deliveryId}
+                                onChange={(e) =>
+                                  handleSelectDeliveredTrays(
+                                    row.customerId,
+                                    row.deliveryId,
+                                    e.target.value,
+                                  )
+                                }
+                              >
+                                <option value="" disabled>
+                                  Select trays
+                                </option>
+                                {TRAY_OPTIONS.map((trayCount) => (
+                                  <option key={trayCount} value={trayCount}>
+                                    {trayCount} trays
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
