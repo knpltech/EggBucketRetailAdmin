@@ -5,7 +5,7 @@ import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
-const TRAY_OPTIONS = Array.from({ length: 28 }, (_, idx) => idx + 3);
+const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
 
 const Report = () => {
   const [data, setData] = useState([]);
@@ -167,7 +167,7 @@ const Report = () => {
     if (!customerId || !deliveryId || !traysValue) return;
 
     const trays = Number(traysValue);
-    if (!Number.isInteger(trays) || trays < 3 || trays > 30) return;
+    if (!Number.isInteger(trays) || trays < 1 || trays > 10) return;
 
     const previousTrays =
       data
@@ -662,7 +662,9 @@ const Report = () => {
                             editingTraysId !== row.deliveryId ? (
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-700">
-                                  {row.traysDelivered} trays
+                                  {row.traysDelivered >= 10
+                                    ? "10+ trays"
+                                    : `${row.traysDelivered} trays`}
                                 </span>
                                 <button
                                   type="button"
@@ -679,7 +681,13 @@ const Report = () => {
                             ) : (
                               <select
                                 className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                value={row.traysDelivered ?? ""}
+                                value={
+                                  row.traysDelivered === null
+                                    ? ""
+                                    : row.traysDelivered >= 10
+                                      ? 10
+                                      : row.traysDelivered
+                                }
                                 disabled={savingTraysId === row.deliveryId}
                                 onChange={(e) =>
                                   handleSelectDeliveredTrays(
@@ -694,7 +702,9 @@ const Report = () => {
                                 </option>
                                 {TRAY_OPTIONS.map((trayCount) => (
                                   <option key={trayCount} value={trayCount}>
-                                    {trayCount} trays
+                                    {trayCount >= 10
+                                      ? "10+ trays"
+                                      : `${trayCount} trays`}
                                   </option>
                                 ))}
                               </select>

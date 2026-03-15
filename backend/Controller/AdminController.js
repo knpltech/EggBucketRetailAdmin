@@ -1186,10 +1186,10 @@ const saveDeliveredTrays = async (req, res) => {
     }
 
     const trays = Number(traysDelivered);
-    if (!Number.isInteger(trays) || trays < 3 || trays > 30) {
+    if (!Number.isInteger(trays) || trays < 1 || trays > 10) {
       return res
         .status(400)
-        .json({ message: "Trays must be an integer between 3 and 30" });
+        .json({ message: "Trays must be an integer between 1 and 10" });
     }
 
     const db = getFirestore();

@@ -13,7 +13,7 @@ import {
 } from "react-icons/fi";
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
-const TRAY_OPTIONS = Array.from({ length: 28 }, (_, idx) => idx + 3);
+const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
 
 // Component to display information of particular customer
 const Customer = () => {
@@ -191,7 +191,7 @@ const Customer = () => {
     if (!customer?.id || !traysValue) return;
 
     const trays = Number(traysValue);
-    if (!Number.isInteger(trays) || trays < 3 || trays > 30) return;
+    if (!Number.isInteger(trays) || trays < 1 || trays > 10) return;
 
     const previousTrays =
       deliveries.find((delivery) => delivery.id === deliveryId)
@@ -555,7 +555,9 @@ const Customer = () => {
                                   editingTraysId !== delivery.id ? (
                                     <div className="flex items-center gap-2 justify-end">
                                       <p className="text-sm text-gray-700 text-right">
-                                        {delivery.traysDelivered} trays
+                                        {delivery.traysDelivered >= 10
+                                          ? "10+ trays"
+                                          : `${delivery.traysDelivered} trays`}
                                       </p>
                                       <button
                                         type="button"
@@ -572,7 +574,13 @@ const Customer = () => {
                                   ) : (
                                     <select
                                       className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                      value={delivery.traysDelivered ?? ""}
+                                      value={
+                                        delivery.traysDelivered === null
+                                          ? ""
+                                          : delivery.traysDelivered >= 10
+                                            ? 10
+                                            : delivery.traysDelivered
+                                      }
                                       disabled={savingTraysId === delivery.id}
                                       onChange={(e) =>
                                         handleSelectDeliveredTrays(
@@ -589,7 +597,9 @@ const Customer = () => {
                                           key={trayCount}
                                           value={trayCount}
                                         >
-                                          {trayCount} trays
+                                          {trayCount >= 10
+                                            ? "10+ trays"
+                                            : `${trayCount} trays`}
                                         </option>
                                       ))}
                                     </select>
