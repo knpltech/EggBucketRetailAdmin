@@ -8,13 +8,14 @@ export default function AdminViewDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("loggedIn");
     localStorage.removeItem("userType");
+    localStorage.removeItem("authToken");
     navigate("/");
   };
 
   const navItems = [
     { label: "About", path: "/admin-view/about" },
     { label: "Customer Info", path: "/admin-view/customerView" },
-   
+
     { label: "View Personnel", path: "/admin-view/personalView" },
     { label: "Report", path: "/admin-view/reportView" },
     { label: "Analytics", path: "/admin-view/analyticsView" },

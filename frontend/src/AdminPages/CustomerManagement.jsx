@@ -288,7 +288,7 @@ export default function CustomerManagement() {
             <option value={1}>1 Delivery (Last 7 Days)</option>
             <option value={2}>2 Deliveries (Last 7 Days)</option>
             <option value={3}>3 Deliveries (Last 7 Days)</option>
-            <option value={4}>4+ Deliveries (Last 7 Days)</option>
+            <option value={4}>4 & 4+ (Last 7 Days)</option>
           </select>
         </div>
       )}

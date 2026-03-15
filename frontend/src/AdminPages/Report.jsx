@@ -4,7 +4,7 @@ import { saveAs } from "file-saver";
 import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 
-const CHECK_REASONS = ["Price Mismatch", "Stock available", "Timing Issue"];
+const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = Array.from({ length: 28 }, (_, idx) => idx + 3);
 
 const Report = () => {

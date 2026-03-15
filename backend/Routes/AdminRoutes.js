@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+import { authenticateToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -40,6 +41,8 @@ import {
 
 // Customer routes
 router.route("/login").post(login);
+router.use(authenticateToken);
+
 router.route("/user-info").get(userInfo);
 router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);

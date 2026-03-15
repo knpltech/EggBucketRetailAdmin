@@ -5,6 +5,7 @@ import { getStorage } from "firebase-admin/storage";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
+import { signAuthToken } from "../utils/jwt.js";
 
 // Handles user login with username, password, and role
 const login = async (req, res) => {
@@ -20,7 +21,12 @@ const login = async (req, res) => {
     const userData = doc.data();
 
     if (userData.username === username && userData.password === password) {
-      return res.status(200).json({ message: "Login successful" });
+      const token = signAuthToken({ role, username });
+      return res.status(200).json({
+        message: "Login successful",
+        token,
+        role,
+      });
     }
 
     return res.status(401).json({ message: "Invalid username or password" });
@@ -623,7 +629,7 @@ const getAllCustomerDeliveries = async (req, res) => {
                 ...data,
                 deliveryMan,
               };
-            })
+            }),
           );
         }
 
@@ -979,9 +985,7 @@ const recalculateAllCategories = async (req, res) => {
       const batch = docs.slice(i, i + BATCH_SIZE);
 
       const results = await Promise.all(
-        batch.map((doc) =>
-          autoAssignCategoryForCustomer(doc.id)
-        )
+        batch.map((doc) => autoAssignCategoryForCustomer(doc.id)),
       );
 
       updated += results.filter(Boolean).length;
@@ -991,7 +995,6 @@ const recalculateAllCategories = async (req, res) => {
       message: "Recalculation completed",
       updated,
     });
-
   } catch (err) {
     console.error("Recalculate error:", err);
 
@@ -1061,13 +1064,12 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
           ...doc.data(),
           deliveries,
         };
-      })
+      }),
     );
 
     return res.status(200).json({
       customers: customersWithDeliveries,
     });
-
   } catch (err) {
     console.error("Range API error:", err);
 
@@ -1164,7 +1166,6 @@ const getCustomersByDeliveryCount = async (req, res) => {
     });
 
     return res.status(200).json(result);
-
   } catch (error) {
     console.error("getCustomersByDeliveryCount error:", error);
 
@@ -1173,8 +1174,6 @@ const getCustomersByDeliveryCount = async (req, res) => {
     });
   }
 };
-
-
 
 //  for storing the Checked Reasonn and Delivery Quantity
 
@@ -1238,9 +1237,9 @@ const saveCheckedReason = async (req, res) => {
     const { customerId, deliveryId, reason } = req.body;
 
     const allowedReasons = [
-      "Price Mismatch",
-      "Stock available",
-      "Timing Issue",
+      "PRICE MISMATCH",
+      "STOCK AVAILABLE",
+      "OTHER VENDOR",
     ];
 
     if (!customerId || !deliveryId || !reason) {
