@@ -12,7 +12,7 @@ import {
   FiEdit2,
 } from "react-icons/fi";
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
-const CHECK_REASONS = ["Price Mismatch", "Stock available", "Timing Issue"];
+const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = Array.from({ length: 28 }, (_, idx) => idx + 3);
 
 // Component to display information of particular customer
@@ -383,7 +383,7 @@ const Customer = () => {
                         year: "numeric",
                         month: "long",
                         day: "numeric",
-                      }
+                      },
                     )}
                   </p>
                 </div>
@@ -454,7 +454,7 @@ const Customer = () => {
                   <ul className="divide-y divide-gray-200">
                     {deliveries.map((delivery, index) => {
                       const deliveryDate = new Date(
-                        delivery.timestamp._seconds * 1000
+                        delivery.timestamp._seconds * 1000,
                       );
                       return (
                         <li

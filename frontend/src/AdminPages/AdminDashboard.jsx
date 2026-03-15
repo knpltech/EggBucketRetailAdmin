@@ -8,6 +8,7 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("loggedIn");
     localStorage.removeItem("userType");
+    localStorage.removeItem("authToken");
     navigate("/");
   };
 

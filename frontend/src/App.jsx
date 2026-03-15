@@ -20,13 +20,37 @@ import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
 import CustomerManagement from "./AdminPages/CustomerManagement";
+
+function ProtectedRoute({ allowedRoles, children }) {
+  const isLoggedIn = localStorage.getItem("loggedIn") === "true";
+  const authToken = localStorage.getItem("authToken");
+  const userType = localStorage.getItem("userType");
+
+  if (!isLoggedIn || !authToken) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (allowedRoles?.length && !allowedRoles.includes(userType)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Login />} />
 
       {/*Admin Routes*/}
-      <Route path="/admin" element={<AdminDashboard />}>
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      >
         {/*Admin dashboard for navigation */}
         <Route
           index
@@ -48,14 +72,21 @@ function App() {
         <Route path="customer-info/:id" element={<Customer />} />
         <Route path="report" element={<Report />} />
         <Route path="analytics" element={<Analytics />} />
-        <Route path="customer-management" element={ <CustomerManagement/>} />
+        <Route path="customer-management" element={<CustomerManagement />} />
         <Route
           path="customer-map-for-delivery"
           element={<CustomerMapForDelivery />}
         />
       </Route>
 
-      <Route path="/admin-view" element={<AdminViewDashboard />}>
+      <Route
+        path="/admin-view"
+        element={
+          <ProtectedRoute allowedRoles={["admin-view", "admin"]}>
+            <AdminViewDashboard />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<AboutVPage />} />
         <Route path="customerView" element={<CustomerView />} />
         <Route path="personalView" element={<PersonnelView />} />
@@ -63,7 +94,6 @@ function App() {
         <Route path="analyticsView" element={<AnalyticsView />} />
         <Route path="about" element={<AboutVPage />} />
       </Route>
-
     </Routes>
   );
 }
