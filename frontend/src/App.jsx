@@ -20,6 +20,8 @@ import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
 import CustomerManagement from "./AdminPages/CustomerManagement";
+import CustomerManagementV from "./Admin-View/cutM";
+import CustomerMapV from "./Admin-View/customerMapV";
 
 function ProtectedRoute({ allowedRoles, children }) {
   const isLoggedIn = localStorage.getItem("loggedIn") === "true";
@@ -93,6 +95,8 @@ function App() {
         <Route path="reportView" element={<ReportView />} />
         <Route path="analyticsView" element={<AnalyticsView />} />
         <Route path="about" element={<AboutVPage />} />
+        <Route path="cutM_V" element={<CustomerManagementV />} />
+         <Route path="cutstomerMapView" element={<CustomerMapV/>} />
       </Route>
     </Routes>
   );
