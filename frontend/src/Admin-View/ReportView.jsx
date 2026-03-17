@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from "react";
-import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 const ReportV = () => {
@@ -22,8 +20,6 @@ const ReportV = () => {
 
   const [selectedDate, setSelectedDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [startRange, setStartRange] = useState("");
-  const [endRange, setEndRange] = useState("");
 
   const formatStatus = (status) => {
     if (status === "reached") return "CHECKED";
@@ -194,76 +190,6 @@ const ReportV = () => {
 
   const statusCounts = getStatusCounts();
 
-  const downloadSummaryExcel = async () => {
-    if (!startRange || !endRange) {
-      alert("Select Start & End Date");
-      return;
-    }
-
-    if (new Date(startRange) > new Date(endRange)) {
-      alert("Invalid date range");
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `${ADMIN_PATH}/all-deliveries-range?start=${startRange}&end=${endRange}`,
-      );
-
-      const json = await res.json();
-      const customers = json.customers || [];
-
-      const sheetData = [
-        [
-          "Date",
-          "Customer ID",
-          "Customer Name",
-          "Creation Time",
-          "Zone",
-          "Delivery Agent Name",
-          "Status",
-        ],
-      ];
-
-      customers.forEach((customer) => {
-        customer.deliveries.forEach((delivery) => {
-          const resolvedZone = zones.includes(customer.zone)
-            ? customer.zone
-            : "UNASSIGNED";
-
-          sheetData.push([
-            delivery.id,
-            customer.custid,
-            customer.name,
-            // customer.formatTime(createdAt),
-            formatTime(delivery.timestamp),
-            resolvedZone,
-            delivery.deliveryMan?.name || "Not Assigned",
-            delivery.type || "not delivered",
-          ]);
-        });
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet(sheetData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Detailed Report");
-
-      const buffer = XLSX.write(wb, {
-        type: "array",
-        bookType: "xlsx",
-      });
-
-      saveAs(
-        new Blob([buffer], {
-          type: "application/octet-stream",
-        }),
-        `delivery_report_${startRange}_to_${endRange}.xlsx`,
-      );
-    } catch {
-      alert("Excel generation failed");
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-lg">
@@ -392,46 +318,6 @@ const ReportV = () => {
                 ))}
               </select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 xl:w-auto w-full">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-gray-600">
-                Start Date
-              </label>
-              <input
-                type="date"
-                max={today}
-                value={startRange}
-                onChange={(e) => setStartRange(e.target.value)}
-                className="w-full border px-3 py-2.5 rounded-lg shadow-sm"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-gray-600">
-                End Date
-              </label>
-              <input
-                type="date"
-                max={today}
-                value={endRange}
-                onChange={(e) => setEndRange(e.target.value)}
-                className="w-full border px-3 py-2.5 rounded-lg shadow-sm"
-              />
-            </div>
-
-            <button
-              disabled={!startRange || !endRange || !data.length}
-              onClick={downloadSummaryExcel}
-              className={`w-full sm:self-end px-5 py-2.5 rounded-lg shadow text-white ${
-                !startRange || !endRange || !data.length
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              Download Excel
-            </button>
           </div>
         </div>
 
