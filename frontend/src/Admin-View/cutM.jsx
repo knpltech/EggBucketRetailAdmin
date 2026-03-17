@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { FiUsers } from "react-icons/fi";
-import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 // TABS
@@ -26,7 +24,6 @@ export default function CustomerManagementV() {
   const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
-  const canDownloadExcel = activeTab !== "ALL";
 
   // ================= LOAD =================
 
@@ -163,33 +160,6 @@ export default function CustomerManagementV() {
     }
   };
 
-  // ================= EXCEL =================
-
-  const downloadExcel = () => {
-    if (!canDownloadExcel) return;
-
-    const data = filtered.map((c) => ({
-      "Customer ID": c.custid || c.id,
-      Name: getName(c),
-      Zone: c.zone || "",
-      Category: c.category || "RETENTION",
-      Remarks: c.latestRemark || "-",
-      Paid: c.paid ? "Yes" : "No",
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(data);
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, activeTab);
-
-    const buf = XLSX.write(wb, {
-      bookType: "xlsx",
-      type: "array",
-    });
-
-    saveAs(new Blob([buf]), `${activeTab}.xlsx`);
-  };
-
   // ================= UI =================
 
   return (
@@ -216,15 +186,6 @@ export default function CustomerManagementV() {
             <option value="date">Created Date</option>
             {!isAll && <option value="remarks">Remarks A-Z</option>}
           </select>
-
-          {canDownloadExcel && (
-            <button
-              onClick={downloadExcel}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg"
-            >
-              Download {activeTab}
-            </button>
-          )}
 
           <button
             disabled={recalculating}
