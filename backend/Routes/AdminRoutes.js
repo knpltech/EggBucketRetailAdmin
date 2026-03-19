@@ -29,7 +29,7 @@ import {
   updateCustomerMeta,
   addZone,
   getZones,
-  getAnalyticsLast7,
+  getAnalyticsLast8,
   recalculateAllCategories,
   saveCheckedReason,
   resetAllCheckedReasons,
@@ -56,7 +56,8 @@ router.post("/customer/delivery-reason/reset-all", resetAllCheckedReasons);
 router.post("/customer/delivery-trays", saveDeliveredTrays);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
-router.get("/analytics/last7", getAnalyticsLast7);
+
+router.get("/analytics/last8", getAnalyticsLast8);
 router.post("/customer/recalculate", recalculateAllCategories);
 router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);

@@ -4,7 +4,7 @@ import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import { FiUsers, FiTruck, FiPackage } from "react-icons/fi";
 
-const AnalyticsView = () => {
+const SupAnalytics = () => {
   const [allCustomers, setAllCustomers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -271,4 +271,4 @@ const AnalyticsView = () => {
   );
 };
 
-export default AnalyticsView;
+export default SupAnalytics;

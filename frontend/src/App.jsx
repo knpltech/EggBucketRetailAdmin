@@ -22,6 +22,15 @@ import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
 import CustomerManagement from "./AdminPages/CustomerManagement";
 import CustomerManagementV from "./Admin-View/cutM";
 import CustomerMapV from "./Admin-View/customerMapV";
+import SupervisorDashboard from "./Supervisor/SupervisorDashboard";
+import AboutSPage from "./Supervisor/sup.about";
+import SupCustomerInfo from "./Supervisor/sup.customerInfo";
+
+import SupPersonnelList from "./Supervisor/sup.PersonalList";
+import SupReport from "./Supervisor/sup.report";
+import SupAnalytics from "./Supervisor/sup.analytics";
+import SupCustomerManagement from "./Supervisor/sup.customerManagement";
+import SupcustomerMap from "./Supervisor/sup.customerMap";
 
 function ProtectedRoute({ allowedRoles, children }) {
   const isLoggedIn = localStorage.getItem("loggedIn") === "true";
@@ -48,7 +57,7 @@ function App() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute allowedRoles={["admin", "supervisor"]}>
+          <ProtectedRoute allowedRoles={["admin"]}>
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -84,7 +93,7 @@ function App() {
       <Route
         path="/admin-view"
         element={
-          <ProtectedRoute allowedRoles={["admin-view", "admin"]}>
+          <ProtectedRoute allowedRoles={["admin-view"]}>
             <AdminViewDashboard />
           </ProtectedRoute>
         }
@@ -96,7 +105,24 @@ function App() {
         <Route path="analyticsView" element={<AnalyticsView />} />
         <Route path="about" element={<AboutVPage />} />
         <Route path="cutM_V" element={<CustomerManagementV />} />
-         <Route path="cutstomerMapView" element={<CustomerMapV/>} />
+        <Route path="cutstomerMapView" element={<CustomerMapV />} />
+      </Route>
+
+      <Route
+        path="/supervisor"
+        element={
+          <ProtectedRoute allowedRoles={["supervisor"]}>
+            <SupervisorDashboard />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<AboutSPage />} />
+        <Route path="customers" element={<SupCustomerInfo />} />
+        <Route path="personnel" element={<SupPersonnelList />} />
+        <Route path="report" element={<SupReport />} />
+        <Route path="analytics" element={<SupAnalytics />} />
+        <Route path="customer-management" element={<SupCustomerManagement />} />
+        <Route path="customer-map" element={<SupcustomerMap />} />
       </Route>
     </Routes>
   );
