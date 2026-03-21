@@ -232,6 +232,7 @@ const Report = () => {
         deliveryId: delivery?.id || "",
         custid: customer.custid,
         name: customer.name,
+        customerCreatedAt: customer.createdAt || null,
         zone: resolvedZone,
         deliveryMan: delivery?.deliveryMan || null,
         status: delivery?.type || "not delivered",
@@ -275,6 +276,21 @@ const Report = () => {
     // SORT BY CUSTOMER NAME
     if (sortBy === "customer") {
       temp.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    }
+
+    // SORT BY CUSTOMER CREATED DATE (Newest First)
+    if (sortBy === "createdAt") {
+      temp.sort((a, b) => {
+        const aTime = parseTimestamp(a.customerCreatedAt)?.getTime();
+        const bTime = parseTimestamp(b.customerCreatedAt)?.getTime();
+
+        // Keep rows with missing/invalid created date at the bottom.
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+
+        return bTime - aTime;
+      });
     }
 
     // SORT BY DELIVERY TIME (Oldest First)
@@ -495,6 +511,7 @@ const Report = () => {
                 className="w-full border px-4 py-2.5 rounded-lg shadow-sm"
               >
                 <option value="customer">Customer Name (A-Z)</option>
+                <option value="createdAt">Created Date</option>
                 <option value="time">Delivery Creation Time</option>
               </select>
             </div>
