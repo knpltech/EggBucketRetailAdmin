@@ -7,6 +7,49 @@ import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
 
+const DELIVERY_REASON_MAP = {
+  price_mismatch: "Price Mismatch",
+  stock_available: "Stock Available",
+  other_vendor: "Other Vendor",
+};
+
+const normalizeReasonLabel = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const normalized = raw.toLowerCase().replace(/\s+/g, "_");
+
+  if (DELIVERY_REASON_MAP[normalized]) {
+    return DELIVERY_REASON_MAP[normalized];
+  }
+
+  return raw
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+};
+
+const getStatusAndReasonFromType = (type, checkReason = "") => {
+  const normalizedType = String(type || "")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedType === "delivered") {
+    return { status: "Delivered", reason: "" };
+  }
+
+  if (DELIVERY_REASON_MAP[normalizedType]) {
+    return { status: "Checked", reason: DELIVERY_REASON_MAP[normalizedType] };
+  }
+
+  // Legacy support for older docs using type=reached + checkReason.
+  if (normalizedType === "reached") {
+    return { status: "Checked", reason: normalizeReasonLabel(checkReason) };
+  }
+
+  return { status: "Pending", reason: "" };
+};
+
 // Handles user login with username, password, and role
 const login = async (req, res) => {
   const { username, password, role } = req.body;
@@ -503,6 +546,10 @@ const getUserDeliveries = async (req, res) => {
     for (const doc of deliveriesSnapshot.docs) {
       const data = doc.data();
       const deliveredByUID = data.deliveredBy;
+      const { status, reason } = getStatusAndReasonFromType(
+        data.type,
+        data.checkReason,
+      );
 
       let deliveryMan = null;
 
@@ -525,6 +572,8 @@ const getUserDeliveries = async (req, res) => {
         deliveredBy: deliveredByUID,
         timestamp: data.timestamp,
         type: data.type,
+        status,
+        reason,
         checkReason: data.checkReason || "",
         traysDelivered:
           typeof data.traysDelivered === "number" ? data.traysDelivered : null,
@@ -576,6 +625,10 @@ const getAllCustomerDeliveries = async (req, res) => {
 
           if (deliveryDoc.exists) {
             const data = deliveryDoc.data();
+            const { status, reason } = getStatusAndReasonFromType(
+              data.type,
+              data.checkReason,
+            );
             let deliveryMan = null;
 
             if (data.deliveredBy) {
@@ -597,6 +650,8 @@ const getAllCustomerDeliveries = async (req, res) => {
               {
                 id: deliveryDoc.id,
                 ...data,
+                status,
+                reason,
                 deliveryMan,
               },
             ];
@@ -607,6 +662,10 @@ const getAllCustomerDeliveries = async (req, res) => {
           deliveries = await Promise.all(
             deliveriesSnap.docs.map(async (d) => {
               const data = d.data();
+              const { status, reason } = getStatusAndReasonFromType(
+                data.type,
+                data.checkReason,
+              );
               let deliveryMan = null;
 
               if (data.deliveredBy) {
@@ -627,6 +686,8 @@ const getAllCustomerDeliveries = async (req, res) => {
               return {
                 id: d.id,
                 ...data,
+                status,
+                reason,
                 deliveryMan,
               };
             }),
@@ -1395,6 +1456,10 @@ const getLatestRemarks = async (req, res) => {
       const customerId = doc.ref.parent.parent.id;
       const data = doc.data();
       const docId = doc.id; // date string like "2026-03-10"
+      const { status, reason } = getStatusAndReasonFromType(
+        data.type,
+        data.checkReason,
+      );
 
       // Initialize array
       if (!customerDeliveries[customerId]) {
@@ -1403,13 +1468,13 @@ const getLatestRemarks = async (req, res) => {
 
       // Keep only deliveries that have remark data
       if (
-        (data.type === "reached" && data.checkReason) ||
-        (data.type === "delivered" && typeof data.traysDelivered === "number")
+        (status === "Checked" && reason) ||
+        (status === "Delivered" && typeof data.traysDelivered === "number")
       ) {
         customerDeliveries[customerId].push({
           docId,
-          type: data.type,
-          checkReason: data.checkReason,
+          status,
+          reason,
           traysDelivered: data.traysDelivered,
         });
       }
@@ -1429,10 +1494,10 @@ const getLatestRemarks = async (req, res) => {
         continue;
       }
 
-      if (latest.type === "reached" && latest.checkReason) {
-        remarks[customerId] = latest.checkReason;
+      if (latest.status === "Checked" && latest.reason) {
+        remarks[customerId] = latest.reason;
       } else if (
-        latest.type === "delivered" &&
+        latest.status === "Delivered" &&
         typeof latest.traysDelivered === "number"
       ) {
         remarks[customerId] = `${latest.traysDelivered} trays`;
