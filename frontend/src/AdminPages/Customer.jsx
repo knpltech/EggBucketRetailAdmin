@@ -14,6 +14,37 @@ import {
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
+const CHECKED_TYPES = ["reached", "price_mismatch", "stock_available", "other_vendor"];
+
+const getDeliveryStatusKey = (delivery) => {
+  const apiStatus = String(delivery?.status || "")
+    .trim()
+    .toLowerCase();
+
+  if (["delivered", "checked", "pending"].includes(apiStatus)) {
+    return apiStatus;
+  }
+
+  const type = String(delivery?.type || "")
+    .trim()
+    .toLowerCase();
+
+  if (type === "delivered") return "delivered";
+  if (CHECKED_TYPES.includes(type)) return "checked";
+
+  return "pending";
+};
+
+const getDeliveryStatusLabel = (delivery) => {
+  const key = getDeliveryStatusKey(delivery);
+
+  if (key === "delivered") return "Delivered";
+  if (key === "checked") return "Checked";
+
+  return "Pending";
+};
+
+const getDeliveryReason = (delivery) => delivery?.reason || delivery?.checkReason || "";
 
 // Component to display information of particular customer
 const Customer = () => {
@@ -69,11 +100,8 @@ const Customer = () => {
         Time: time,
         "Delivered By": delivery.deliveryMan?.name || "N/A",
         Phone: delivery.deliveryMan?.phone || "N/A",
-        Status:
-          delivery.type === "reached"
-            ? "CHECKED"
-            : delivery.type?.toUpperCase() || "UNKNOWN",
-        "Checked Reason": delivery.checkReason || "",
+        Status: getDeliveryStatusLabel(delivery),
+        "Checked Reason": getDeliveryReason(delivery),
         "Trays Delivered": delivery.traysDelivered ?? "",
       };
     });
@@ -456,6 +484,11 @@ const Customer = () => {
                       const deliveryDate = new Date(
                         delivery.timestamp._seconds * 1000,
                       );
+                      const statusKey = getDeliveryStatusKey(delivery);
+                      const canEditReason =
+                        String(delivery.type || "")
+                          .trim()
+                          .toLowerCase() === "reached";
                       return (
                         <li
                           key={index}
@@ -465,9 +498,9 @@ const Customer = () => {
                             <div className="flex items-center">
                               <div
                                 className={`flex-shrink-0 h-3 w-3 rounded-full ${
-                                  delivery.type === "delivered"
+                                  statusKey === "delivered"
                                     ? "bg-green-500"
-                                    : delivery.type === "reached"
+                                    : statusKey === "checked"
                                       ? "bg-yellow-500"
                                       : "bg-gray-400"
                                 }`}
@@ -494,21 +527,23 @@ const Customer = () => {
                             <div className="mt-2 sm:mt-0 sm:min-w-[220px] flex flex-col sm:items-end">
                               <span
                                 className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  delivery.type === "delivered"
+                                  statusKey === "delivered"
                                     ? "bg-green-100 text-green-800"
-                                    : delivery.type === "reached"
+                                    : statusKey === "checked"
                                       ? "bg-yellow-100 text-yellow-800"
                                       : "bg-gray-100 text-gray-800"
                                 }`}
                               >
-                                {delivery.type === "reached"
-                                  ? "CHECKED"
-                                  : delivery.type.toUpperCase()}
+                                {getDeliveryStatusLabel(delivery)}
                               </span>
-                              {delivery.type === "reached" && (
+                              {statusKey === "checked" && (
                                 <div className="mt-2 self-end">
-                                  {delivery.checkReason &&
-                                  editingReasonId !== delivery.id ? (
+                                  {!canEditReason ? (
+                                    <p className="text-sm text-gray-700 text-right">
+                                      {getDeliveryReason(delivery) || "-"}
+                                    </p>
+                                  ) : delivery.checkReason &&
+                                    editingReasonId !== delivery.id ? (
                                     <div className="flex items-center gap-2 justify-end">
                                       <p className="text-sm text-gray-700 text-right">
                                         {delivery.checkReason}
