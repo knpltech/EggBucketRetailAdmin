@@ -757,7 +757,7 @@ const addCustomer = async (req, res) => {
       location,
       category: "RETENTION",
       zone: "UNASSIGNED",
-      paid: false,
+      priority: "LOW",
       remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
@@ -845,7 +845,7 @@ const getCustomerMapStatus = async (req, res) => {
 
 const updateCustomerMeta = async (req, res) => {
   try {
-    const { id, category, paid, remarks, zone } = req.body;
+    const { id, category, remarks, zone } = req.body;
 
     if (!id) {
       return res.status(400).json({ message: "Customer ID is required" });
@@ -870,9 +870,6 @@ const updateCustomerMeta = async (req, res) => {
     if (zone !== undefined) {
       updateData.zone = zone;
     }
-
-    // ✅ PAID
-    if (paid !== undefined) updateData.paid = paid;
 
     // ✅ REMARKS
     if (remarks !== undefined) updateData.remarks = remarks;
@@ -952,7 +949,7 @@ const getAnalyticsLast8 = async (req, res) => {
         const c = doc.data();
 
         // Get ALL deliveries - no timestamp filters needed
-        
+
         const deliveriesSnap = await db
           .collection("customers")
           .doc(doc.id)
@@ -1499,6 +1496,43 @@ const getLatestRemarks = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+const updateCustomerPriority = async (req, res) => {
+  try {
+    const { id, priority } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Customer ID is required" });
+    }
+
+    const normalizedPriority = String(priority || "")
+      .trim()
+      .toUpperCase();
+    const allowed = ["LOW", "MEDIUM", "HIGH"];
+
+    if (!allowed.includes(normalizedPriority)) {
+      return res.status(400).json({ message: "Invalid priority value" });
+    }
+
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(id);
+    const customerSnap = await customerRef.get();
+
+    if (!customerSnap.exists) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    await customerRef.update({ priority: normalizedPriority });
+
+    return res.status(200).json({
+      message: "Priority updated successfully",
+      priority: normalizedPriority,
+    });
+  } catch (err) {
+    console.error("updateCustomerPriority error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
 export {
   login,
   userInfo,
@@ -1520,6 +1554,7 @@ export {
   addCustomer,
   getCustomerMapStatus,
   updateCustomerMeta,
+  updateCustomerPriority,
   addZone,
   getZones,
   getAnalyticsLast8,
