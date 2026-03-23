@@ -1,6 +1,7 @@
 // ./src/components/Analytics.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+
 import { ADMIN_PATH } from "../constant";
 import { FiUsers, FiTruck, FiPackage } from "react-icons/fi";
 
@@ -47,21 +48,29 @@ const SupAnalytics = () => {
     setCustomers(sorted);
   };
 
+  // Helper: Format date to YYYY-MM-DD in LOCAL timezone (not UTC)
+  const formatDateLocal = (d) => {
+    return (
+      d.getFullYear() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
+  };
+
   // UI: compute last 8 days statuses (including today) for each customer
   const computeLast7Days = (deliveries) => {
     const result = [];
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
     for (let i = 7; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
 
-      const found = deliveries.find((entry) => {
-        const t = new Date(entry.timestamp._seconds * 1000);
-        t.setHours(0, 0, 0, 0);
-        return t.getTime() === d.getTime();
-      });
+      const dateStr = formatDateLocal(d);
+
+      const found = deliveries.find((entry) => entry.id === dateStr);
 
       result.push({
         type: found ? found.type : null,
@@ -76,15 +85,25 @@ const SupAnalytics = () => {
     let bg = "";
     let text = "";
 
-    if (type === "delivered") {
+    const normalizedType = String(type || "")
+      .trim()
+      .toLowerCase();
+
+    if (normalizedType === "delivered") {
       bg = "#0F9D58"; // green
       text = "DELIVERED";
-    } else if (type === "reached") {
+    } else if (
+      normalizedType === "reached" ||
+      normalizedType === "price_mismatch" ||
+      normalizedType === "stock_available" ||
+      normalizedType === "other_vendor"
+    ) {
+      // All checked types (reached + reason codes)
       bg = "#FB8C00"; // orange-yellow
       text = "CHECKED";
     } else {
       bg = "#FF3B30"; // bright red
-      text = "NOT REACHED";
+      text = "PENDING";
     }
 
     return (
@@ -101,6 +120,9 @@ const SupAnalytics = () => {
       </div>
     );
   };
+
+
+
 
   // Small helpers for the UI
   const skeletonRows = Array.from({ length: 8 });
@@ -189,8 +211,7 @@ const SupAnalytics = () => {
           <span className="w-4 h-4 bg-[#FB8C00] rounded-full"></span> Checked
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> Not
-          Reached
+          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> PENDING
         </div>
       </div>
 
@@ -270,5 +291,7 @@ const SupAnalytics = () => {
     </div>
   );
 };
+
+
 
 export default SupAnalytics;

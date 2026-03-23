@@ -21,6 +21,7 @@ export default function SupCustomerManagement() {
   const [sortBy, setSortBy] = useState("name");
 
   const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
+
   const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
@@ -141,6 +142,7 @@ export default function SupCustomerManagement() {
     return list;
   }, [customers, activeTab, sortBy]);
 
+  // ================= ACTIONS =================
   const recalculateAll = async () => {
     if (!window.confirm("Recalculate all customer categories?")) return;
 
@@ -160,6 +162,7 @@ export default function SupCustomerManagement() {
     }
   };
 
+  
   // ================= UI =================
 
   return (

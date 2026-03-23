@@ -4,6 +4,12 @@ import { ADMIN_PATH } from "../constant";
 
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
+const CHECKED_TYPES = [
+  "reached",
+  "price_mismatch",
+  "stock_available",
+  "other_vendor",
+];
 
 const SupReport = () => {
   const [data, setData] = useState([]);
@@ -29,9 +35,33 @@ const SupReport = () => {
   const [selectedDate, setSelectedDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const formatStatus = (status) => {
-    if (status === "reached") return "CHECKED";
-    return status?.toUpperCase() || "NOT DELIVERED";
+  const getStatusKey = (delivery) => {
+    const apiStatus = String(delivery?.status || "")
+      .trim()
+      .toLowerCase();
+
+    if (["delivered", "checked", "pending"].includes(apiStatus)) {
+      return apiStatus;
+    }
+
+    const type = String(delivery?.type || "")
+      .trim()
+      .toLowerCase();
+
+    if (type === "delivered") return "delivered";
+    if (CHECKED_TYPES.includes(type)) return "checked";
+
+    return "pending";
+  };
+
+  const getStatusLabel = (statusKey) => {
+    if (statusKey === "delivered") return "Delivered";
+    if (statusKey === "checked") return "Checked";
+    return "Pending";
+  };
+
+  const getDeliveryReason = (delivery) => {
+    return delivery?.reason || delivery?.checkReason || "";
   };
 
   const parseTimestamp = (value) => {
@@ -219,6 +249,11 @@ const SupReport = () => {
   useEffect(() => {
     const result = data.map((customer) => {
       const delivery = customer.deliveries?.[0];
+      const statusKey = getStatusKey(delivery);
+      const canEditReason =
+        String(delivery?.type || "")
+          .trim()
+          .toLowerCase() === "reached";
       const resolvedZone = zones.includes(customer.zone)
         ? customer.zone
         : "UNASSIGNED";
@@ -231,7 +266,10 @@ const SupReport = () => {
         customerCreatedAt: customer.createdAt || null,
         zone: resolvedZone,
         deliveryMan: delivery?.deliveryMan || null,
-        status: delivery?.type || "not delivered",
+        statusKey,
+        statusLabel: getStatusLabel(statusKey),
+        reason: getDeliveryReason(delivery),
+        canEditReason,
         createdAt: delivery?.timestamp || null,
         checkReason: delivery?.checkReason || "",
         traysDelivered:
@@ -259,7 +297,7 @@ const SupReport = () => {
 
     // STATUS FILTER
     if (statusFilter !== "all") {
-      temp = temp.filter((d) => d.status === statusFilter);
+      temp = temp.filter((d) => d.statusKey === statusFilter);
     }
 
     // AGENT FILTER
@@ -311,7 +349,7 @@ const SupReport = () => {
     switch (status) {
       case "delivered":
         return "bg-green-100 text-green-800 border border-green-300";
-      case "reached":
+      case "checked":
         return "bg-yellow-100 text-yellow-800 border border-yellow-300";
       default:
         return "bg-red-100 text-red-800 border border-red-300";
@@ -320,12 +358,10 @@ const SupReport = () => {
 
   const getStatusCounts = () => ({
     all: filteredDeliveries.length,
-    delivered: filteredDeliveries.filter((d) => d.status === "delivered")
+    delivered: filteredDeliveries.filter((d) => d.statusKey === "delivered")
       .length,
-    reached: filteredDeliveries.filter((d) => d.status === "reached").length,
-    "not delivered": filteredDeliveries.filter(
-      (d) => d.status === "not delivered",
-    ).length,
+    checked: filteredDeliveries.filter((d) => d.statusKey === "checked").length,
+    pending: filteredDeliveries.filter((d) => d.statusKey === "pending").length,
   });
 
   const statusCounts = getStatusCounts();
@@ -387,13 +423,13 @@ const SupReport = () => {
               color: "bg-green-100 text-green-800",
             },
             {
-              value: "reached",
+              value: "checked",
               label: "Checked",
               color: "bg-yellow-100 text-yellow-800",
             },
             {
-              value: "not delivered",
-              label: "Not Delivered",
+              value: "pending",
+              label: "Pending",
               color: "bg-red-100 text-red-800",
             },
           ].map((s) => (
@@ -507,16 +543,20 @@ const SupReport = () => {
                       <div className="flex flex-col items-start gap-1.5">
                         <span
                           className={`inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                            row.status,
+                            row.statusKey,
                           )}`}
                         >
-                          {formatStatus(row.status)}
+                          {row.statusLabel}
                         </span>
 
-                        {row.status === "reached" && (
+                        {row.statusKey === "checked" && (
                           <div>
-                            {row.checkReason &&
-                            editingReasonId !== row.deliveryId ? (
+                            {!row.canEditReason ? (
+                              <span className="text-sm text-gray-700 items-center">
+                                {row.reason || "-"}
+                              </span>
+                            ) : row.checkReason &&
+                              editingReasonId !== row.deliveryId ? (
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-700 items-center">
                                   {row.checkReason}
@@ -559,7 +599,7 @@ const SupReport = () => {
                           </div>
                         )}
 
-                        {row.status === "delivered" && (
+                        {row.statusKey === "delivered" && (
                           <div>
                             {row.traysDelivered !== null &&
                             editingTraysId !== row.deliveryId ? (
@@ -632,5 +672,8 @@ const SupReport = () => {
     </div>
   );
 };
+
+
+
 
 export default SupReport;

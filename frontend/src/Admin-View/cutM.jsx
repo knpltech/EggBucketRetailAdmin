@@ -141,6 +141,7 @@ export default function CustomerManagementV() {
     return list;
   }, [customers, activeTab, sortBy]);
 
+  // ================= ACTIONS =================
   const recalculateAll = async () => {
     if (!window.confirm("Recalculate all customer categories?")) return;
 
