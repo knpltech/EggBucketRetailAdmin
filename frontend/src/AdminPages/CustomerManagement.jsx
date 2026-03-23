@@ -104,7 +104,6 @@ export default function CustomerManagement() {
     loadCustomCustomers();
   }, [activeTab, deliveryCountFilter]);
 
-
   // ================= FILTER =================
 
   const filtered = useMemo(() => {
@@ -180,7 +179,22 @@ export default function CustomerManagement() {
         priority: nextPriority,
       });
 
-      await loadCustomers();
+      if (activeTab === "CUSTOMIZE") {
+        const res = await axios.get(
+          `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`,
+        );
+
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setCustomers(
+          rows.map((row) => ({
+            ...row,
+            priority: normalizePriority(row.priority),
+          })),
+        );
+      } else {
+        await loadCustomers();
+      }
+
       await loadRemarks();
     } catch (err) {
       console.error("Priority update error:", err);

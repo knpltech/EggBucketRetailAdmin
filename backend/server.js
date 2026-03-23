@@ -14,7 +14,7 @@ const env = {
     process.env.FRONTEND_ORIGIN ||
     "https://egg-bucket-retail-admin.vercel.app",
   // // for testing locally
-// 'http://localhost:5174',
+// 'http://localhost:5173',
 };
 
 initializeFirebaseAdmin();
