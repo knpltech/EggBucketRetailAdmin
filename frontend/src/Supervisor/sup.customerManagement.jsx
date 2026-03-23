@@ -244,7 +244,7 @@ export default function SupCustomerManagement() {
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
               {isAll && <th className="p-3">Category</th>}
-              {isAll && <th className="p-3">Paid</th>}
+              <th className="p-3">Priority</th>
               {!isAll && <th className="p-3">Remarks</th>}
             </tr>
           </thead>
@@ -268,19 +268,17 @@ export default function SupCustomerManagement() {
                 {isAll && (
                   <>
                     <td className="p-3">{c.category || "RETENTION"}</td>
-                    <td className="p-3">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          c.paid
-                            ? "bg-green-600 text-white"
-                            : "bg-red-500 text-white"
-                        }`}
-                      >
-                        {c.paid ? "PAID" : "UNPAID"}
-                      </span>
-                    </td>
                   </>
                 )}
+
+                <td className="p-3">
+                  <span
+                    className="px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getPriorityColor(c.priority) }}
+                  >
+                    {normalizePriority(c.priority)}
+                  </span>
+                </td>
 
                 {!isAll && (
                   <td className="p-3 text-left">{c.latestRemark || "-"}</td>
@@ -296,6 +294,27 @@ export default function SupCustomerManagement() {
 
 function getName(c) {
   return c.name || c.customerName || "Unknown";
+}
+
+function normalizePriority(value) {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+
+  if (raw === "MEDIUM" || raw === "HIGH") {
+    return raw;
+  }
+
+  return "LOW";
+}
+
+function getPriorityColor(value) {
+  const priority = normalizePriority(value);
+
+  if (priority === "MEDIUM") return "#FB8C00";
+  if (priority === "HIGH") return "#0F9D58";
+
+  return "#FF3B30";
 }
 
 function getImage(c) {

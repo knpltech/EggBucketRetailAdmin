@@ -385,7 +385,7 @@ const Analytics = () => {
           <span className="w-4 h-4 bg-[#FB8C00] rounded-full"></span> Checked
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> PENDING
+          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> Pending
         </div>
       </div>
 

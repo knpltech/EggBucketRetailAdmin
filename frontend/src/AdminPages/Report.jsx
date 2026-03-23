@@ -398,6 +398,7 @@ const Report = () => {
           "Zone",
           "Delivery Agent Name",
           "Status",
+          "Remarks",
         ],
       ];
 
@@ -406,6 +407,14 @@ const Report = () => {
           const resolvedZone = zones.includes(customer.zone)
             ? customer.zone
             : "UNASSIGNED";
+          const remarks =
+            getStatusKey(delivery) === "delivered"
+              ? typeof delivery?.traysDelivered === "number"
+                ? delivery.traysDelivered >= 10
+                  ? "10+ trays"
+                  : `${delivery.traysDelivered} trays`
+                : ""
+              : getDeliveryReason(delivery);
 
           sheetData.push([
             delivery.id,
@@ -416,6 +425,7 @@ const Report = () => {
             resolvedZone,
             delivery.deliveryMan?.name || "Not Assigned",
             getStatusLabel(getStatusKey(delivery)),
+            remarks || "-",
           ]);
         });
       });

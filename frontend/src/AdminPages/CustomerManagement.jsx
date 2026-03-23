@@ -24,7 +24,7 @@ export default function CustomerManagement() {
 
   const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
 
-  const [payingId, setPayingId] = useState(null);
+  const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
 
   const [recalculating, setRecalculating] = useState(false);
 
@@ -35,7 +35,13 @@ export default function CustomerManagement() {
 
   const loadCustomers = async () => {
     const res = await axios.get(`${ADMIN_PATH}/user-info`);
-    setCustomers(Array.isArray(res.data) ? res.data : []);
+    const rows = Array.isArray(res.data) ? res.data : [];
+    setCustomers(
+      rows.map((c) => ({
+        ...c,
+        priority: normalizePriority(c.priority),
+      })),
+    );
   };
 
   const loadRemarks = async () => {
@@ -80,7 +86,13 @@ export default function CustomerManagement() {
           `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`,
         );
 
-        setCustomers(Array.isArray(res.data) ? res.data : []);
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setCustomers(
+          rows.map((c) => ({
+            ...c,
+            priority: normalizePriority(c.priority),
+          })),
+        );
       } catch (err) {
         console.error("Customize fetch error:", err);
       } finally {
@@ -149,21 +161,31 @@ export default function CustomerManagement() {
   }, [customers, activeTab, sortBy]);
 
   // ================= ACTIONS =================
-  const markPaidOnce = async (c) => {
-    if (c.paid || payingId === c.id) return;
+  const updatePriority = async (c) => {
+    if (!c?.id || updatingPriorityId === c.id) return;
+
+    const currentPriority = normalizePriority(c.priority);
+    const nextPriority =
+      currentPriority === "LOW"
+        ? "MEDIUM"
+        : currentPriority === "MEDIUM"
+          ? "HIGH"
+          : "LOW";
 
     try {
-      setPayingId(c.id);
+      setUpdatingPriorityId(c.id);
 
-      await axios.post(`${ADMIN_PATH}/customer/status`, {
+      await axios.post(`${ADMIN_PATH}/customer/priority`, {
         id: c.id,
-        paid: true,
+        priority: nextPriority,
       });
 
       await loadCustomers();
-      loadRemarks();
+      await loadRemarks();
+    } catch (err) {
+      console.error("Priority update error:", err);
     } finally {
-      setPayingId(null);
+      setUpdatingPriorityId(null);
     }
   };
 
@@ -196,8 +218,8 @@ export default function CustomerManagement() {
       Name: getName(c),
       Zone: c.zone || "",
       Category: c.category || "RETENTION",
+      Priority: normalizePriority(c.priority),
       Remarks: c.latestRemark || "-",
-      Paid: c.paid ? "Yes" : "No",
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -303,7 +325,7 @@ export default function CustomerManagement() {
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
               {isAll && <th className="p-3">Category</th>}
-              {isAll && <th className="p-3">Paid</th>}
+              <th className="p-3">Priority</th>
               {!isAll && <th className="p-3">Remarks</th>}
             </tr>
           </thead>
@@ -327,21 +349,19 @@ export default function CustomerManagement() {
                 {isAll && (
                   <>
                     <td className="p-3">{c.category || "RETENTION"}</td>
-                    <td className="p-3">
-                      <button
-                        disabled={c.paid || payingId === c.id}
-                        onClick={() => markPaidOnce(c)}
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          c.paid
-                            ? "bg-green-600 text-white"
-                            : "bg-red-500 text-white"
-                        }`}
-                      >
-                        {c.paid ? "PAID" : "UNPAID"}
-                      </button>
-                    </td>
                   </>
                 )}
+
+                <td className="p-3">
+                  <button
+                    disabled={updatingPriorityId === c.id}
+                    onClick={() => updatePriority(c)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${updatingPriorityId === c.id ? "opacity-70" : ""}`}
+                    style={{ backgroundColor: getPriorityColor(c.priority) }}
+                  >
+                    {normalizePriority(c.priority)}
+                  </button>
+                </td>
 
                 {!isAll && (
                   <td className="p-3 text-left">{c.latestRemark || "-"}</td>
@@ -357,6 +377,27 @@ export default function CustomerManagement() {
 
 function getName(c) {
   return c.name || c.customerName || "Unknown";
+}
+
+function normalizePriority(value) {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+
+  if (raw === "MEDIUM" || raw === "HIGH") {
+    return raw;
+  }
+
+  return "LOW";
+}
+
+function getPriorityColor(value) {
+  const priority = normalizePriority(value);
+
+  if (priority === "MEDIUM") return "#FB8C00";
+  if (priority === "HIGH") return "#0F9D58";
+
+  return "#FF3B30";
 }
 
 function getImage(c) {
