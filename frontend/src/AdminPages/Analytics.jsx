@@ -53,21 +53,29 @@ const Analytics = () => {
     setCustomers(sorted);
   };
 
+  // Helper: Format date to YYYY-MM-DD in LOCAL timezone (not UTC)
+  const formatDateLocal = (d) => {
+    return (
+      d.getFullYear() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
+  };
+
   // UI: compute last 8 days statuses (including today) for each customer
   const computeLast7Days = (deliveries) => {
     const result = [];
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
     for (let i = 7; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
 
-      const found = deliveries.find((entry) => {
-        const t = new Date(entry.timestamp._seconds * 1000);
-        t.setHours(0, 0, 0, 0);
-        return t.getTime() === d.getTime();
-      });
+      const dateStr = formatDateLocal(d);
+
+      const found = deliveries.find((entry) => entry.id === dateStr);
 
       result.push({
         type: found ? found.type : null,
@@ -82,15 +90,25 @@ const Analytics = () => {
     let bg = "";
     let text = "";
 
-    if (type === "delivered") {
+    const normalizedType = String(type || "")
+      .trim()
+      .toLowerCase();
+
+    if (normalizedType === "delivered") {
       bg = "#0F9D58"; // green
       text = "DELIVERED";
-    } else if (type === "reached") {
+    } else if (
+      normalizedType === "reached" ||
+      normalizedType === "price_mismatch" ||
+      normalizedType === "stock_available" ||
+      normalizedType === "other_vendor"
+    ) {
+      // All checked types (reached + reason codes)
       bg = "#FB8C00"; // orange-yellow
       text = "CHECKED";
     } else {
       bg = "#FF3B30"; // bright red
-      text = "NOT REACHED";
+      text = "PENDING";
     }
 
     return (
@@ -114,9 +132,15 @@ const Analytics = () => {
     const s = (type || "").toString().trim().toLowerCase();
 
     if (s === "delivered") return "DELIVERED ";
-    if (s === "reached") return "CHECKED ";
+    if (
+      s === "reached" ||
+      s === "price_mismatch" ||
+      s === "stock_available" ||
+      s === "other_vendor"
+    )
+      return "CHECKED ";
 
-    return "NOT REACHED ";
+    return "PENDING ";
   };
 
   // Build date list between startDate and endDate (inclusive) — used for calendar columns
@@ -163,14 +187,15 @@ const Analytics = () => {
       const row = [c.custid || "", c.name || "", c.zone || "UNASSIGNED"];
 
       dateList.forEach((day) => {
-        // find delivery on that exact day
-        const found = (c.deliveries || []).find((entry) => {
-          const t = new Date(entry.timestamp._seconds * 1000);
-          t.setHours(0, 0, 0, 0);
-          return t.getTime() === day.getTime();
-        });
+        // Convert day to YYYY-MM-DD format using LOCAL time (not UTC)
+        const dateStr = formatDateLocal(day);
 
-        row.push(found ? statusShort(found.type) : "NOT REACHED"); // fill missing as N R ❌
+        // Find delivery with matching document ID (date string)
+        const found = (c.deliveries || []).find(
+          (entry) => entry.id === dateStr,
+        );
+
+        row.push(found ? statusShort(found.type) : "PENDING"); // fill missing as N R ❌
       });
 
       aoa.push(row);
@@ -227,7 +252,7 @@ const Analytics = () => {
                 patternType: "solid",
                 fgColor: { rgb: "FFFFF4E5" },
               }; // very light orange
-            } else if (text.includes("not reached") || text.includes("❌")) {
+            } else if (text.includes("PENDING") || text.includes("❌")) {
               cell.s.fill = {
                 patternType: "solid",
                 fgColor: { rgb: "FFFEECEC" },
@@ -360,8 +385,7 @@ const Analytics = () => {
           <span className="w-4 h-4 bg-[#FB8C00] rounded-full"></span> Checked
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> Not
-          Reached
+          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> PENDING
         </div>
       </div>
 

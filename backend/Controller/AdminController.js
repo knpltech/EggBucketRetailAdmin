@@ -928,7 +928,7 @@ const getZones = async (req, res) => {
 };
 
 const getAnalyticsLast8 = async (req, res) => {
-  const cacheKey = "analytics:last8";
+  const cacheKey = "analytics:last8:v9";
 
   // Cache first
   const cached = cache.get(cacheKey);
@@ -938,18 +938,6 @@ const getAnalyticsLast8 = async (req, res) => {
 
   try {
     const db = getFirestore();
-
-    // Today 00:00
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // 7 days ago (with today makes total 8 days)
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 7);
-
-    // End of today to avoid pulling future-dated records.
-    const endOfToday = new Date(today);
-    endOfToday.setHours(23, 59, 59, 999);
 
     // Get customers
     const customersSnap = await db.collection("customers").get();
@@ -963,19 +951,18 @@ const getAnalyticsLast8 = async (req, res) => {
       customersSnap.docs.map(async (doc) => {
         const c = doc.data();
 
-        // Get only last 8 days deliveries (including today)
+        // Get ALL deliveries - no timestamp filters needed
+        
         const deliveriesSnap = await db
           .collection("customers")
           .doc(doc.id)
           .collection("deliveries")
-          .where("timestamp", ">=", sevenDaysAgo)
-          .where("timestamp", "<=", endOfToday)
           .get();
 
         const deliveries = deliveriesSnap.docs.map((d) => {
           const data = d.data();
           return {
-            timestamp: data.timestamp,
+            id: d.id, // Document ID is the date string (YYYY-MM-DD)
             type: data.type,
           };
         });
