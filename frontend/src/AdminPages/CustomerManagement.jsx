@@ -15,6 +15,13 @@ const TABS = [
   "CUSTOMIZE",
 ];
 
+const CHECKED_TYPES = [
+  "reached",
+  "price_mismatch",
+  "stock_available",
+  "other_vendor",
+];
+
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,23 +47,36 @@ export default function CustomerManagement() {
       rows.map((c) => ({
         ...c,
         priority: normalizePriority(c.priority),
+        latestStatus: "Pending",
+        latestRemark: "-",
       })),
     );
   };
 
-  const loadRemarks = async () => {
+  const loadLatestMeta = async () => {
     try {
-      const res = await axios.get(`${ADMIN_PATH}/customer/latest-remarks`);
-      const remarksMap = res.data || {};
+      const today = new Date();
+      const todayDate = today.toISOString().split("T")[0];
+
+      const [remarksRes, deliveriesRes] = await Promise.all([
+        axios.get(`${ADMIN_PATH}/customer/latest-remarks`),
+        axios.get(`${ADMIN_PATH}/all-deliveries?date=${todayDate}`),
+      ]);
+
+      const remarksMap = remarksRes.data || {};
+      const statusMap = buildLatestStatusMap(
+        deliveriesRes.data?.customers || [],
+      );
 
       setCustomers((prev) =>
         prev.map((c) => ({
           ...c,
           latestRemark: remarksMap[c.id] || "-",
+          latestStatus: statusMap[c.id] || "Pending",
         })),
       );
     } catch (err) {
-      console.error("Error loading remarks:", err);
+      console.error("Error loading latest customer meta:", err);
     }
   };
 
@@ -68,7 +88,7 @@ export default function CustomerManagement() {
       setLoading(true);
       await loadCustomers();
       setLoading(false);
-      loadRemarks();
+      loadLatestMeta();
     };
 
     init();
@@ -91,6 +111,8 @@ export default function CustomerManagement() {
           rows.map((c) => ({
             ...c,
             priority: normalizePriority(c.priority),
+            latestStatus: "Pending",
+            latestRemark: "-",
           })),
         );
       } catch (err) {
@@ -98,7 +120,7 @@ export default function CustomerManagement() {
       } finally {
         setLoading(false);
       }
-      loadRemarks();
+      loadLatestMeta();
     };
 
     loadCustomCustomers();
@@ -195,7 +217,7 @@ export default function CustomerManagement() {
         await loadCustomers();
       }
 
-      await loadRemarks();
+      await loadLatestMeta();
     } catch (err) {
       console.error("Priority update error:", err);
     } finally {
@@ -212,7 +234,7 @@ export default function CustomerManagement() {
       await axios.post(`${ADMIN_PATH}/customer/recalculate`);
 
       await loadCustomers();
-      loadRemarks();
+      loadLatestMeta();
 
       alert("Categories recalculated");
     } catch {
@@ -233,6 +255,7 @@ export default function CustomerManagement() {
       Zone: c.zone || "",
       Category: c.category || "RETENTION",
       Priority: normalizePriority(c.priority),
+      Status: normalizeStatus(c.latestStatus),
       Remarks: c.latestRemark || "-",
     }));
 
@@ -340,7 +363,8 @@ export default function CustomerManagement() {
               <th className="p-3">Zone</th>
               {isAll && <th className="p-3">Category</th>}
               <th className="p-3">Priority</th>
-              {!isAll && <th className="p-3">Remarks</th>}
+              <th className="p-3">Status</th>
+              <th className="p-3">Remarks</th>
             </tr>
           </thead>
 
@@ -377,9 +401,15 @@ export default function CustomerManagement() {
                   </button>
                 </td>
 
-                {!isAll && (
-                  <td className="p-3 text-left">{c.latestRemark || "-"}</td>
-                )}
+                <td className="p-3">
+                  <span
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(c.latestStatus)}`}
+                  >
+                    {normalizeStatus(c.latestStatus)}
+                  </span>
+                </td>
+
+                <td className="p-3 text-left">{c.latestRemark || "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -405,6 +435,17 @@ function normalizePriority(value) {
   return "LOW";
 }
 
+function normalizeStatus(value) {
+  const key = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (key === "delivered") return "Delivered";
+  if (key === "checked") return "Checked";
+
+  return "Pending";
+}
+
 function getPriorityColor(value) {
   const priority = normalizePriority(value);
 
@@ -412,6 +453,101 @@ function getPriorityColor(value) {
   if (priority === "HIGH") return "#0F9D58";
 
   return "#FF3B30";
+}
+
+function getStatusColor(value) {
+  const status = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  switch (status) {
+    case "delivered":
+      return "bg-green-100 text-green-800 border border-green-300";
+    case "checked":
+      return "bg-yellow-100 text-yellow-800 border border-yellow-300";
+    default:
+      return "bg-red-100 text-red-800 border border-red-300";
+  }
+}
+
+function getStatusKey(delivery) {
+  const apiStatus = String(delivery?.status || "")
+    .trim()
+    .toLowerCase();
+
+  if (["delivered", "checked", "pending"].includes(apiStatus)) {
+    return apiStatus;
+  }
+
+  const type = String(delivery?.type || "")
+    .trim()
+    .toLowerCase();
+
+  if (type === "delivered") return "delivered";
+  if (CHECKED_TYPES.includes(type)) return "checked";
+
+  return "pending";
+}
+
+function parseTimestampMs(value) {
+  if (!value) return 0;
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate().getTime();
+  }
+
+  if (typeof value === "number") {
+    return value < 1e12 ? value * 1000 : value;
+  }
+
+  if (typeof value === "string") {
+    const date = Date.parse(value);
+    return Number.isNaN(date) ? 0 : date;
+  }
+
+  if (typeof value === "object") {
+    const seconds = value.seconds ?? value._seconds;
+    const nanoseconds = value.nanoseconds ?? value._nanoseconds ?? 0;
+
+    if (typeof seconds === "number") {
+      return seconds * 1000 + Math.floor(nanoseconds / 1e6);
+    }
+  }
+
+  return 0;
+}
+
+function getDeliveryTimeMs(delivery) {
+  const timeFromTimestamp = parseTimestampMs(delivery?.timestamp);
+  if (timeFromTimestamp > 0) return timeFromTimestamp;
+
+  const fromDocId = parseTimestampMs(delivery?.id);
+  return fromDocId > 0 ? fromDocId : 0;
+}
+
+function buildLatestStatusMap(customersWithDeliveries) {
+  const statusMap = {};
+
+  customersWithDeliveries.forEach((customer) => {
+    const deliveries = Array.isArray(customer?.deliveries)
+      ? customer.deliveries
+      : [];
+
+    if (!deliveries.length) {
+      statusMap[customer.id] = "Pending";
+      return;
+    }
+
+    const latestDelivery = deliveries.reduce((latest, current) => {
+      return getDeliveryTimeMs(current) > getDeliveryTimeMs(latest)
+        ? current
+        : latest;
+    }, deliveries[0]);
+
+    statusMap[customer.id] = normalizeStatus(getStatusKey(latestDelivery));
+  });
+
+  return statusMap;
 }
 
 function getImage(c) {
