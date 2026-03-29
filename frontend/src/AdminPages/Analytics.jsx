@@ -113,15 +113,37 @@ const Analytics = () => {
 
     return (
       <div
-        className="mx-auto my-1 rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-2"
+        className="mx-auto my-0.5 rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5"
         style={{
           backgroundColor: bg,
           color: "white",
-          width: "68px",
-          minHeight: "26px",
+          width: "70px",
+          minHeight: "24px",
         }}
       >
         {text}
+      </div>
+    );
+  };
+
+  const getPriorityPill = (priority) => {
+    const value = normalizePriority(priority);
+
+    let bg = "#EF4444";
+    if (value === "HIGH") bg = "#16A34A";
+    if (value === "MEDIUM") bg = "#F59E0B";
+
+    return (
+      <div
+        className="mx-auto my-0.5 rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2"
+        style={{
+          backgroundColor: bg,
+          color: "white",
+          width: "64px",
+          minHeight: "24px",
+        }}
+      >
+        {value}
       </div>
     );
   };
@@ -141,6 +163,14 @@ const Analytics = () => {
       return "CHECKED ";
 
     return "PENDING ";
+  };
+
+  const normalizePriority = (priority) => {
+    const p = String(priority || "LOW")
+      .trim()
+      .toUpperCase();
+    if (p === "HIGH" || p === "MEDIUM" || p === "LOW") return p;
+    return "LOW";
   };
 
   // Build date list between startDate and endDate (inclusive) — used for calendar columns
@@ -174,6 +204,7 @@ const Analytics = () => {
       "Customer ID",
       "Name",
       "Zone",
+      "Priority",
       ...dateList.map(
         (d) =>
           `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}`,
@@ -184,7 +215,12 @@ const Analytics = () => {
     const aoa = [header];
 
     customers.forEach((c) => {
-      const row = [c.custid || "", c.name || "", c.zone || "UNASSIGNED"];
+      const row = [
+        c.custid || "",
+        c.name || "",
+        c.zone || "UNASSIGNED",
+        normalizePriority(c.priority),
+      ];
 
       dateList.forEach((day) => {
         // Convert day to YYYY-MM-DD format using LOCAL time (not UTC)
@@ -209,59 +245,10 @@ const Analytics = () => {
       { wch: 14 }, // Customer ID
       { wch: 36 }, // Name - made wider for long names
       { wch: 18 }, // zone
+      { wch: 14 }, // priority
       ...dateList.map(() => ({ wch: 12 })),
     ];
     ws["!cols"] = cols;
-
-    const range = XLSX.utils.decode_range(ws["!ref"]);
-    for (let R = range.s.r; R <= range.e.r; ++R) {
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const cell_address = { c: C, r: R };
-        const cell_ref = XLSX.utils.encode_cell(cell_address);
-        const cell = ws[cell_ref];
-        if (!cell) continue;
-
-        if (cell.v !== undefined && typeof cell.v !== "string") {
-          cell.v = String(cell.v);
-        }
-
-        cell.s = cell.s || {};
-        cell.s.alignment = { horizontal: "center", vertical: "center" };
-        // border on all cells
-        cell.s.border = {
-          top: { style: "thin", color: { rgb: "FFCCCCCC" } },
-          bottom: { style: "thin", color: { rgb: "FFCCCCCC" } },
-          left: { style: "thin", color: { rgb: "FFCCCCCC" } },
-          right: { style: "thin", color: { rgb: "FFCCCCCC" } },
-        };
-
-        // header row styling (bold)
-        if (R === 0) {
-          cell.s.font = { bold: true, sz: 12 };
-          cell.s.fill = { patternType: "solid", fgColor: { rgb: "FFF3F4F6" } };
-        } else {
-          if (C >= 3) {
-            const text = (cell.v || "").toString().toLowerCase();
-            if (text.includes("delivered") || text.includes("✅")) {
-              cell.s.fill = {
-                patternType: "solid",
-                fgColor: { rgb: "FFDFF7E0" },
-              }; // very light green
-            } else if (text.includes("checked") || text.includes("➡")) {
-              cell.s.fill = {
-                patternType: "solid",
-                fgColor: { rgb: "FFFFF4E5" },
-              }; // very light orange
-            } else if (text.includes("PENDING") || text.includes("❌")) {
-              cell.s.fill = {
-                patternType: "solid",
-                fgColor: { rgb: "FFFEECEC" },
-              }; // very light red
-            }
-          }
-        }
-      }
-    }
 
     // create workbook and append sheet
     const wb = XLSX.utils.book_new();
@@ -271,7 +258,6 @@ const Analytics = () => {
     const wbout = XLSX.write(wb, {
       bookType: "xlsx",
       type: "array",
-      cellStyles: true,
     });
     const blob = new Blob([wbout], { type: "application/octet-stream" });
     saveAs(blob, `analytics_${startDate}_to_${endDate}.xlsx`);
@@ -298,12 +284,14 @@ const Analytics = () => {
     totalCustomers === 0 ? 0 : (totalDeliveries / totalCustomers).toFixed(1);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 px-2 py-5 md:px-3 md:py-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Analytics (Last 8 Days)</h1>
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Analytics (Last 8 Days)
+        </h1>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="font-medium text-gray-700">Sort by:</label>
           <select
             value={sortOption}
@@ -377,7 +365,7 @@ const Analytics = () => {
       </div>
 
       {/* LEGEND */}
-      <div className="flex gap-6 mb-4 text-sm">
+      <div className="mb-4 flex flex-wrap gap-6 text-sm">
         <div className="flex items-center gap-2">
           <span className="w-4 h-4 bg-[#0F9D58] rounded-full"></span> Delivered
         </div>
@@ -390,17 +378,31 @@ const Analytics = () => {
       </div>
 
       {/* TABLE */}
-      <div className="overflow-hidden bg-white rounded-lg shadow">
+      <div className="-mx-1 md:-mx-2 w-[calc(100%+0.5rem)] md:w-[calc(100%+1rem)] overflow-x-auto rounded-xl bg-white shadow ring-1 ring-gray-100">
         <table className="w-full table-fixed text-xs">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 text-left font-semibold w-[56px]">Image</th>
-              <th className="p-2 text-left font-semibold w-[84px]">Cust Id</th>
-              <th className="p-2 text-left font-semibold w-[196px]">Name</th>
-              <th className="p-2 text-left font-semibold w-[168px]">Zone</th>
+              <th className="px-2 py-2 text-left font-semibold w-[52px]">
+                Image
+              </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[76px]">
+                Cust Id
+              </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[148px]">
+                Name
+              </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
+                Zone
+              </th>
+              <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
+                Priority
+              </th>
 
               {last7DaysHeader.map((d, i) => (
-                <th key={i} className="p-1 text-center font-semibold">
+                <th
+                  key={i}
+                  className="px-0.5 py-2 text-center font-semibold min-w-[66px]"
+                >
                   {d.label}
                   <br />
                   <span className="text-gray-500 text-[10px]">{d.date}</span>
@@ -412,31 +414,38 @@ const Analytics = () => {
           <tbody>
             {loading
               ? skeletonRows.map((_, idx) => (
-                  <tr key={idx} className="border-t">
-                    <td className="p-2">
+                  <tr key={idx} className="border-t border-gray-200">
+                    <td className="px-2 py-2">
                       <div className="w-10 h-10 bg-gray-300 rounded-full animate-pulse"></div>
                     </td>
-                    <td className="p-2">
+                    <td className="px-1.5 py-2">
                       <div className="w-14 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
-                    <td className="p-2">
-                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+                    <td className="px-1.5 py-2 text-center align-middle">
+                      <div className="mx-auto w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
                     {/* Zone */}
-                    <td className="p-2">
+                    <td className="px-1.5 py-2">
+                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+                    </td>
+                    {/* Priority */}
+                    <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
 
                     {[...Array(8)].map((_, i) => (
-                      <td key={i} className="p-1 text-center">
+                      <td key={i} className="px-1 py-2 text-center">
                         <div className="w-14 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                       </td>
                     ))}
                   </tr>
                 ))
               : customers.map((c) => (
-                  <tr key={c.id} className="border-t hover:bg-gray-50">
-                    <td className="p-2">
+                  <tr
+                    key={c.id}
+                    className="border-t border-gray-200 hover:bg-gray-50"
+                  >
+                    <td className="px-2 py-2">
                       <img
                         src={c.imageUrl}
                         alt={c.name}
@@ -444,16 +453,21 @@ const Analytics = () => {
                       />
                     </td>
 
-                    <td className="p-2 font-medium truncate">{c.custid}</td>
-                    <td className="p-2 font-bold text-[13px] whitespace-normal break-words leading-5">
+                    <td className="px-1.5 py-2 font-medium truncate">
+                      {c.custid}
+                    </td>
+                    <td className="px-1.5 py-2 font-bold text-[13px] leading-4 whitespace-normal break-words">
                       {c.name}
                     </td>
-                    <td className="p-2 font-bold text-gray-700 text-[13px] whitespace-normal break-words leading-5">
+                    <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                       {c.zone || "UNASSIGNED"}
+                    </td>
+                    <td className="px-1.5 py-2 text-center align-middle">
+                      {getPriorityPill(c.priority)}
                     </td>
 
                     {c.last7.map((d, index) => (
-                      <td key={index} className="px-2 py-2 text-center">
+                      <td key={index} className="px-1 py-2 text-center">
                         {getStatusPill(d.type)}
                       </td>
                     ))}

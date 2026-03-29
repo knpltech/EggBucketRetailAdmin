@@ -36,7 +36,7 @@ export default function CustomerManagement() {
   const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
-  const canDownloadExcel = activeTab !== "ALL";
+  const canDownloadExcel = true;
 
   // ================= LOAD =================
 

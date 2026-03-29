@@ -971,6 +971,7 @@ const getAnalyticsLast8 = async (req, res) => {
           imageUrl: c.imageUrl || "",
           createdAt: c.createdAt,
           zone: c.zone || "UNASSIGNED",
+          priority: c.priority || "LOW",
           deliveries,
         };
       }),
