@@ -1523,6 +1523,18 @@ const updateCustomerPriority = async (req, res) => {
 
     await customerRef.update({ priority: normalizedPriority });
 
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const analyticsKeys = keys.filter((k) => k.startsWith("analytics:last8"));
+      if (analyticsKeys.length) {
+        cache.del(analyticsKeys);
+      } else {
+        cache.del("analytics:last8:v9");
+      }
+    } catch (cacheErr) {
+      console.warn("Failed to clear analytics cache:", cacheErr);
+    }
+
     return res.status(200).json({
       message: "Priority updated successfully",
       priority: normalizedPriority,

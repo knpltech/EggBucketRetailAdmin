@@ -1,5 +1,5 @@
 // ./src/components/Analytics.jsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -12,20 +12,57 @@ const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [sortOption, setSortOption] = useState("name");
 
+  const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
+
   // Date range state for export
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  useEffect(() => {
-    loadAnalyticsOnce();
+  const normalizePriority = useCallback((priority) => {
+    const p = String(priority || "LOW")
+      .trim()
+      .toUpperCase();
+    if (p === "HIGH" || p === "MEDIUM" || p === "LOW") return p;
+    return "LOW";
   }, []);
 
-  useEffect(() => {
-    applySorting(sortOption);
-  }, [sortOption, allCustomers]);
+  // Helper: Format date to YYYY-MM-DD in LOCAL timezone (not UTC)
+  const formatDateLocal = useCallback((d) => {
+    return (
+      d.getFullYear() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
+  }, []);
+
+  // UI: compute last 8 days statuses (including today) for each customer
+  const computeLast7Days = useCallback(
+    (deliveries) => {
+      const result = [];
+      const today = new Date();
+
+      for (let i = 7; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+
+        const dateStr = formatDateLocal(d);
+
+        const found = deliveries.find((entry) => entry.id === dateStr);
+
+        result.push({
+          type: found ? found.type : null,
+          date: d,
+        });
+      }
+      return result;
+    },
+    [formatDateLocal],
+  );
 
   // Load all customers + deliveries only once
-  const loadAnalyticsOnce = async () => {
+  const loadAnalyticsOnce = useCallback(async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/analytics/last8`);
 
@@ -43,61 +80,41 @@ const Analytics = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [computeLast7Days]);
 
-  const applySorting = (option) => {
-    let sorted = [...allCustomers];
-    if (option === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
-    if (option === "createdAt")
-      sorted.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
-    if (option === "priority") {
-      const rank = (p) => {
-        const v = normalizePriority(p);
-        if (v === "HIGH") return 0;
-        if (v === "MEDIUM") return 1;
-        return 2;
-      };
+  const applySorting = useCallback(
+    (option) => {
+      let sorted = [...allCustomers];
+      if (option === "name")
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+      if (option === "createdAt")
+        sorted.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+      if (option === "priority") {
+        const rank = (p) => {
+          const v = normalizePriority(p);
+          if (v === "HIGH") return 0;
+          if (v === "MEDIUM") return 1;
+          return 2;
+        };
 
-      sorted.sort((a, b) => {
-        const diff = rank(a.priority) - rank(b.priority);
-        if (diff !== 0) return diff;
-        return String(a.name || "").localeCompare(String(b.name || ""));
-      });
-    }
-    setCustomers(sorted);
-  };
+        sorted.sort((a, b) => {
+          const diff = rank(a.priority) - rank(b.priority);
+          if (diff !== 0) return diff;
+          return String(a.name || "").localeCompare(String(b.name || ""));
+        });
+      }
+      setCustomers(sorted);
+    },
+    [allCustomers, normalizePriority],
+  );
 
-  // Helper: Format date to YYYY-MM-DD in LOCAL timezone (not UTC)
-  const formatDateLocal = (d) => {
-    return (
-      d.getFullYear() +
-      "-" +
-      String(d.getMonth() + 1).padStart(2, "0") +
-      "-" +
-      String(d.getDate()).padStart(2, "0")
-    );
-  };
+  useEffect(() => {
+    loadAnalyticsOnce();
+  }, [loadAnalyticsOnce]);
 
-  // UI: compute last 8 days statuses (including today) for each customer
-  const computeLast7Days = (deliveries) => {
-    const result = [];
-    const today = new Date();
-
-    for (let i = 7; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-
-      const dateStr = formatDateLocal(d);
-
-      const found = deliveries.find((entry) => entry.id === dateStr);
-
-      result.push({
-        type: found ? found.type : null,
-        date: d,
-      });
-    }
-    return result;
-  };
+  useEffect(() => {
+    applySorting(sortOption);
+  }, [sortOption, applySorting]);
 
   // UI PILL
   const getStatusPill = (type) => {
@@ -140,25 +157,65 @@ const Analytics = () => {
     );
   };
 
-  const getPriorityPill = (priority) => {
-    const value = normalizePriority(priority);
+  const updatePriority = async (customer) => {
+    if (!customer?.id || updatingPriorityId === customer.id) return;
+
+    const currentPriority = normalizePriority(customer.priority);
+    const nextPriority =
+      currentPriority === "LOW"
+        ? "MEDIUM"
+        : currentPriority === "MEDIUM"
+          ? "HIGH"
+          : "LOW";
+
+    try {
+      setUpdatingPriorityId(customer.id);
+
+      await axios.post(`${ADMIN_PATH}/customer/priority`, {
+        id: customer.id,
+        priority: nextPriority,
+      });
+
+      setAllCustomers((prev) =>
+        prev.map((c) =>
+          c.id === customer.id ? { ...c, priority: nextPriority } : c,
+        ),
+      );
+    } catch (err) {
+      console.error("Priority update error:", err);
+      alert("Failed to update priority");
+    } finally {
+      setUpdatingPriorityId(null);
+    }
+  };
+
+  const getPriorityButton = (customer) => {
+    const value = normalizePriority(customer?.priority);
 
     let bg = "#EF4444";
     if (value === "HIGH") bg = "#16A34A";
     if (value === "MEDIUM") bg = "#F59E0B";
 
+    const disabled = updatingPriorityId === customer?.id;
+
     return (
-      <div
-        className="mx-auto my-0.5 rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2"
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => updatePriority(customer)}
+        className={`mx-auto my-0.5 rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2 ${
+          disabled ? "opacity-70 cursor-not-allowed" : "hover:opacity-90"
+        }`}
         style={{
           backgroundColor: bg,
           color: "white",
           width: "64px",
           minHeight: "24px",
         }}
+        title="Click to change priority"
       >
         {value}
-      </div>
+      </button>
     );
   };
 
@@ -177,14 +234,6 @@ const Analytics = () => {
       return "CHECKED ";
 
     return "PENDING ";
-  };
-
-  const normalizePriority = (priority) => {
-    const p = String(priority || "LOW")
-      .trim()
-      .toUpperCase();
-    if (p === "HIGH" || p === "MEDIUM" || p === "LOW") return p;
-    return "LOW";
   };
 
   // Build date list between startDate and endDate (inclusive) — used for calendar columns
@@ -478,7 +527,7 @@ const Analytics = () => {
                       {c.zone || "UNASSIGNED"}
                     </td>
                     <td className="px-1.5 py-2 text-center align-middle">
-                      {getPriorityPill(c.priority)}
+                      {getPriorityButton(c)}
                     </td>
 
                     {c.last7.map((d, index) => (
