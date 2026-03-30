@@ -25,6 +25,13 @@ const SupReport = () => {
   const [sortBy, setSortBy] = useState("customer");
   const [selectedAgent, setSelectedAgent] = useState("all");
 
+  const formatTrayLabel = (value) => {
+    const trays = Number(value);
+    if (!Number.isFinite(trays) || trays < 1) return "";
+    if (trays >= 10) return "10+ trays";
+    return trays === 1 ? "1 tray" : `${trays} trays`;
+  };
+
   const getToday = () => {
     const d = new Date();
     return d.toISOString().split("T")[0];
@@ -605,9 +612,7 @@ const SupReport = () => {
                             editingTraysId !== row.deliveryId ? (
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-700">
-                                  {row.traysDelivered >= 10
-                                    ? "10+ trays"
-                                    : `${row.traysDelivered} trays`}
+                                  {formatTrayLabel(row.traysDelivered)}
                                 </span>
                                 <button
                                   type="button"
@@ -645,9 +650,7 @@ const SupReport = () => {
                                 </option>
                                 {TRAY_OPTIONS.map((trayCount) => (
                                   <option key={trayCount} value={trayCount}>
-                                    {trayCount >= 10
-                                      ? "10+ trays"
-                                      : `${trayCount} trays`}
+                                    {formatTrayLabel(trayCount)}
                                   </option>
                                 ))}
                               </select>

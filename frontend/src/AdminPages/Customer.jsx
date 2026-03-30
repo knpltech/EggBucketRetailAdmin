@@ -14,7 +14,12 @@ import {
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
-const CHECKED_TYPES = ["reached", "price_mismatch", "stock_available", "other_vendor"];
+const CHECKED_TYPES = [
+  "reached",
+  "price_mismatch",
+  "stock_available",
+  "other_vendor",
+];
 
 const getDeliveryStatusKey = (delivery) => {
   const apiStatus = String(delivery?.status || "")
@@ -44,7 +49,8 @@ const getDeliveryStatusLabel = (delivery) => {
   return "Pending";
 };
 
-const getDeliveryReason = (delivery) => delivery?.reason || delivery?.checkReason || "";
+const getDeliveryReason = (delivery) =>
+  delivery?.reason || delivery?.checkReason || "";
 
 // Component to display information of particular customer
 const Customer = () => {
@@ -63,6 +69,13 @@ const Customer = () => {
   const [editingTraysId, setEditingTraysId] = useState("");
   const [reasonError, setReasonError] = useState("");
   const [isResettingAllReasons, setIsResettingAllReasons] = useState(false);
+
+  const formatTrayLabel = (value) => {
+    const trays = Number(value);
+    if (!Number.isFinite(trays) || trays < 1) return "";
+    if (trays >= 10) return "10+ trays";
+    return trays === 1 ? "1 tray" : `${trays} trays`;
+  };
 
   // Fetch details of customer and deliveries using customer id
   useEffect(() => {
@@ -590,9 +603,9 @@ const Customer = () => {
                                   editingTraysId !== delivery.id ? (
                                     <div className="flex items-center gap-2 justify-end">
                                       <p className="text-sm text-gray-700 text-right">
-                                        {delivery.traysDelivered >= 10
-                                          ? "10+ trays"
-                                          : `${delivery.traysDelivered} trays`}
+                                        {formatTrayLabel(
+                                          delivery.traysDelivered,
+                                        )}
                                       </p>
                                       <button
                                         type="button"
@@ -632,9 +645,7 @@ const Customer = () => {
                                           key={trayCount}
                                           value={trayCount}
                                         >
-                                          {trayCount >= 10
-                                            ? "10+ trays"
-                                            : `${trayCount} trays`}
+                                          {formatTrayLabel(trayCount)}
                                         </option>
                                       ))}
                                     </select>

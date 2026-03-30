@@ -114,6 +114,19 @@ export default function CustomerManagementV() {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
+    } else if (sortBy === "priority") {
+      const rank = (p) => {
+        const v = normalizePriority(p);
+        if (v === "HIGH") return 0;
+        if (v === "MEDIUM") return 1;
+        return 2;
+      };
+
+      list.sort((a, b) => {
+        const diff = rank(a.priority) - rank(b.priority);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
         (c) => c.latestRemark && c.latestRemark !== "-",
@@ -185,6 +198,7 @@ export default function CustomerManagementV() {
           >
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
+            <option value="priority">Priority</option>
             {!isAll && <option value="remarks">Remarks A-Z</option>}
           </select>
 
