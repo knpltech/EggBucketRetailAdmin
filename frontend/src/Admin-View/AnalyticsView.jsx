@@ -44,6 +44,20 @@ const AnalyticsView = () => {
     if (option === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
     if (option === "createdAt")
       sorted.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    if (option === "priority") {
+      const rank = (p) => {
+        const v = normalizePriority(p);
+        if (v === "HIGH") return 0;
+        if (v === "MEDIUM") return 1;
+        return 2;
+      };
+
+      sorted.sort((a, b) => {
+        const diff = rank(a.priority) - rank(b.priority);
+        if (diff !== 0) return diff;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+    }
     setCustomers(sorted);
   };
 
@@ -107,17 +121,48 @@ const AnalyticsView = () => {
 
     return (
       <div
-        className="mx-auto my-1 rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-2"
+        className="mx-auto my-0.5 rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5"
         style={{
           backgroundColor: bg,
           color: "white",
-          width: "68px",
-          minHeight: "26px",
+          width: "70px",
+          minHeight: "24px",
         }}
       >
         {text}
       </div>
     );
+  };
+
+  const getPriorityPill = (priority) => {
+    const value = normalizePriority(priority);
+
+    let bg = "#EF4444";
+    if (value === "HIGH") bg = "#16A34A";
+    if (value === "MEDIUM") bg = "#F59E0B";
+
+    return (
+      <div
+        className="mx-auto my-0.5 rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2"
+        style={{
+          backgroundColor: bg,
+          color: "white",
+          width: "64px",
+          minHeight: "24px",
+        }}
+      >
+        {value}
+      </div>
+    );
+  };
+
+
+  const normalizePriority = (priority) => {
+    const p = String(priority || "LOW")
+      .trim()
+      .toUpperCase();
+    if (p === "HIGH" || p === "MEDIUM" || p === "LOW") return p;
+    return "LOW";
   };
 
   // Small helpers for the UI
@@ -141,12 +186,14 @@ const AnalyticsView = () => {
     totalCustomers === 0 ? 0 : (totalDeliveries / totalCustomers).toFixed(1);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 px-2 py-5 md:px-3 md:py-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Analytics (Last 8 Days)</h1>
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Analytics (Last 8 Days)
+        </h1>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="font-medium text-gray-700">Sort by:</label>
           <select
             value={sortOption}
@@ -155,6 +202,7 @@ const AnalyticsView = () => {
           >
             <option value="name">Customer Name</option>
             <option value="createdAt">Created Date</option>
+            <option value="priority">Priority</option>
           </select>
         </div>
       </div>
@@ -199,7 +247,7 @@ const AnalyticsView = () => {
       </div>
 
       {/* LEGEND */}
-      <div className="flex gap-6 mb-4 text-sm">
+      <div className="mb-4 flex flex-wrap gap-6 text-sm">
         <div className="flex items-center gap-2">
           <span className="w-4 h-4 bg-[#0F9D58] rounded-full"></span> Delivered
         </div>
@@ -207,22 +255,36 @@ const AnalyticsView = () => {
           <span className="w-4 h-4 bg-[#FB8C00] rounded-full"></span> Checked
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> PENDING
+          <span className="w-4 h-4 bg-[#FF3B30] rounded-full"></span> Pending
         </div>
       </div>
 
       {/* TABLE */}
-      <div className="overflow-hidden bg-white rounded-lg shadow">
+      <div className="-mx-1 md:-mx-2 w-[calc(100%+0.5rem)] md:w-[calc(100%+1rem)] overflow-x-auto rounded-xl bg-white shadow ring-1 ring-gray-100">
         <table className="w-full table-fixed text-xs">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 text-left font-semibold w-[56px]">Image</th>
-              <th className="p-2 text-left font-semibold w-[84px]">Cust Id</th>
-              <th className="p-2 text-left font-semibold w-[196px]">Name</th>
-              <th className="p-2 text-left font-semibold w-[168px]">Zone</th>
+              <th className="px-2 py-2 text-left font-semibold w-[52px]">
+                Image
+              </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[76px]">
+                Cust Id
+              </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[148px]">
+                Name
+              </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
+                Zone
+              </th>
+              <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
+                Priority
+              </th>
 
               {last7DaysHeader.map((d, i) => (
-                <th key={i} className="p-1 text-center font-semibold">
+                <th
+                  key={i}
+                  className="px-0.5 py-2 text-center font-semibold min-w-[66px]"
+                >
                   {d.label}
                   <br />
                   <span className="text-gray-500 text-[10px]">{d.date}</span>
@@ -234,31 +296,38 @@ const AnalyticsView = () => {
           <tbody>
             {loading
               ? skeletonRows.map((_, idx) => (
-                  <tr key={idx} className="border-t">
-                    <td className="p-2">
+                  <tr key={idx} className="border-t border-gray-200">
+                    <td className="px-2 py-2">
                       <div className="w-10 h-10 bg-gray-300 rounded-full animate-pulse"></div>
                     </td>
-                    <td className="p-2">
+                    <td className="px-1.5 py-2">
                       <div className="w-14 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
-                    <td className="p-2">
-                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+                    <td className="px-1.5 py-2 text-center align-middle">
+                      <div className="mx-auto w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
                     {/* Zone */}
-                    <td className="p-2">
+                    <td className="px-1.5 py-2">
+                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+                    </td>
+                    {/* Priority */}
+                    <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
 
                     {[...Array(8)].map((_, i) => (
-                      <td key={i} className="p-1 text-center">
+                      <td key={i} className="px-1 py-2 text-center">
                         <div className="w-14 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                       </td>
                     ))}
                   </tr>
                 ))
               : customers.map((c) => (
-                  <tr key={c.id} className="border-t hover:bg-gray-50">
-                    <td className="p-2">
+                  <tr
+                    key={c.id}
+                    className="border-t border-gray-200 hover:bg-gray-50"
+                  >
+                    <td className="px-2 py-2">
                       <img
                         src={c.imageUrl}
                         alt={c.name}
@@ -266,16 +335,21 @@ const AnalyticsView = () => {
                       />
                     </td>
 
-                    <td className="p-2 font-medium truncate">{c.custid}</td>
-                    <td className="p-2 font-bold text-[13px] whitespace-normal break-words leading-5">
+                    <td className="px-1.5 py-2 font-medium truncate">
+                      {c.custid}
+                    </td>
+                    <td className="px-1.5 py-2 font-bold text-[13px] leading-4 whitespace-normal break-words">
                       {c.name}
                     </td>
-                    <td className="p-2 font-bold text-gray-700 text-[13px] whitespace-normal break-words leading-5">
+                    <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                       {c.zone || "UNASSIGNED"}
+                    </td>
+                    <td className="px-1.5 py-2 text-center align-middle">
+                      {getPriorityPill(c.priority)}
                     </td>
 
                     {c.last7.map((d, index) => (
-                      <td key={index} className="px-2 py-2 text-center">
+                      <td key={index} className="px-1 py-2 text-center">
                         {getStatusPill(d.type)}
                       </td>
                     ))}
@@ -287,5 +361,7 @@ const AnalyticsView = () => {
     </div>
   );
 };
+
+
 
 export default AnalyticsView;

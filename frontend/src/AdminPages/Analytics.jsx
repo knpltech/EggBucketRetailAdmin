@@ -50,6 +50,20 @@ const Analytics = () => {
     if (option === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
     if (option === "createdAt")
       sorted.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    if (option === "priority") {
+      const rank = (p) => {
+        const v = normalizePriority(p);
+        if (v === "HIGH") return 0;
+        if (v === "MEDIUM") return 1;
+        return 2;
+      };
+
+      sorted.sort((a, b) => {
+        const diff = rank(a.priority) - rank(b.priority);
+        if (diff !== 0) return diff;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+    }
     setCustomers(sorted);
   };
 
@@ -300,6 +314,7 @@ const Analytics = () => {
           >
             <option value="name">Customer Name</option>
             <option value="createdAt">Created Date</option>
+            <option value="priority">Priority</option>
           </select>
 
           <input
