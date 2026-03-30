@@ -1139,17 +1139,11 @@ const getCustomersByDeliveryCount = async (req, res) => {
       return res.status(400).json({ message: "Invalid count value" });
     }
 
-    // Today start
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Yesterday
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    // 7 days before yesterday
-    const sevenDaysAgo = new Date(yesterday);
-    sevenDaysAgo.setDate(yesterday.getDate() - 6);
+    // Last 7 days (including today): from start of day 6 days ago -> now.
+    const rangeEnd = new Date();
+    const rangeStart = new Date(rangeEnd);
+    rangeStart.setDate(rangeEnd.getDate() - 6);
+    rangeStart.setHours(0, 0, 0, 0);
 
     //  Get all customers
     const customersSnap = await db.collection("customers").get();
@@ -1171,10 +1165,14 @@ const getCustomersByDeliveryCount = async (req, res) => {
         ? data.timestamp.toDate()
         : new Date(data.timestamp);
 
+      if (!(deliveryDate instanceof Date) || Number.isNaN(deliveryDate.getTime())) {
+        return;
+      }
+
       // Only count delivered and within range
       if (
-        deliveryDate >= sevenDaysAgo &&
-        deliveryDate <= yesterday &&
+        deliveryDate >= rangeStart &&
+        deliveryDate <= rangeEnd &&
         data.type === "delivered"
       ) {
         if (!deliveryMap[customerId]) {
