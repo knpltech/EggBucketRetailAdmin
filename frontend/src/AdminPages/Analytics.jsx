@@ -13,6 +13,9 @@ const Analytics = () => {
   const [sortOption, setSortOption] = useState("name");
 
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
+  const [updatingTodayId, setUpdatingTodayId] = useState(null);
+
+  const todayDate = new Date().toISOString().slice(0, 10);
 
   // Date range state for export
   const [startDate, setStartDate] = useState("");
@@ -217,6 +220,97 @@ const Analytics = () => {
         {value}
       </button>
     );
+  };
+
+  const getTodayEffectiveStatus = (customer) => {
+    const override = customer?.todayOverride;
+
+    const overrideDate = override?.date
+      ? String(override.date).slice(0, 10)
+      : null;
+
+    if (!override || overrideDate !== todayDate) {
+      return "ON";
+    }
+
+    const status = String(override.status || "")
+      .trim()
+      .toUpperCase();
+
+    return status === "OFF" ? "OFF" : "ON";
+  };
+
+  const toggleTodayDelivery = async (customer) => {
+    if (!customer?.id || updatingTodayId === customer.id) return;
+
+    const current = getTodayEffectiveStatus(customer);
+    const nextStatus = current === "ON" ? "OFF" : "ON";
+
+    const previousOverride = customer.todayOverride;
+    const optimisticOverride = {
+      date: todayDate,
+      status: nextStatus,
+    };
+
+    // Optimistic UI update
+    setAllCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id
+          ? { ...row, todayOverride: optimisticOverride }
+          : row,
+      ),
+    );
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id
+          ? { ...row, todayOverride: optimisticOverride }
+          : row,
+      ),
+    );
+
+    try {
+      setUpdatingTodayId(customer.id);
+
+      const res = await axios.post(`${ADMIN_PATH}/customer/toggle-delivery`, {
+        id: customer.id,
+        status: nextStatus,
+      });
+
+      const saved = res?.data?.todayOverride;
+      if (saved?.date && saved?.status) {
+        setAllCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row,
+          ),
+        );
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("Today delivery toggle error:", err);
+      alert("Failed to update delivery plan");
+
+      // Revert on failure
+      setAllCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id
+            ? { ...row, todayOverride: previousOverride }
+            : row,
+        ),
+      );
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id
+            ? { ...row, todayOverride: previousOverride }
+            : row,
+        ),
+      );
+    } finally {
+      setUpdatingTodayId(null);
+    }
   };
 
   // Helper: short status strings (what will go into XLSX cells)
@@ -458,6 +552,9 @@ const Analytics = () => {
               <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
                 Zone
               </th>
+              <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
+                Delivery Plan
+              </th>
               <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
                 Priority
               </th>
@@ -492,6 +589,12 @@ const Analytics = () => {
                     <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
+
+                    {/* Delivery Plan */}
+                    <td className="px-1.5 py-2">
+                      <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
+                    </td>
+
                     {/* Priority */}
                     <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
@@ -526,6 +629,35 @@ const Analytics = () => {
                     <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                       {c.zone || "UNASSIGNED"}
                     </td>
+                    <td className="px-1.5 py-2 text-center align-middle">
+                      {(() => {
+                        const effective = getTodayEffectiveStatus(c);
+                        const isOn = effective === "ON";
+                        const isUpdating = updatingTodayId === c.id;
+
+                        return (
+                          <label
+                            className={`relative inline-flex items-center ${
+                              isUpdating
+                                ? "opacity-70 cursor-not-allowed"
+                                : "cursor-pointer"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={isOn}
+                              disabled={isUpdating}
+                              onChange={() => toggleTodayDelivery(c)}
+                              aria-label={isOn ? "Today: ON" : "Today: OFF"}
+                            />
+                            <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+                            <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
+                          </label>
+                        );
+                      })()}
+                    </td>
+
                     <td className="px-1.5 py-2 text-center align-middle">
                       {getPriorityButton(c)}
                     </td>

@@ -927,7 +927,7 @@ const getZones = async (req, res) => {
 };
 
 const getAnalyticsLast8 = async (req, res) => {
-  const cacheKey = "analytics:last8:v9";
+  const cacheKey = "analytics:last8:v10";
 
   // Cache first
   const cached = cache.get(cacheKey);
@@ -974,6 +974,7 @@ const getAnalyticsLast8 = async (req, res) => {
           createdAt: c.createdAt,
           zone: c.zone || "UNASSIGNED",
           priority: c.priority || "LOW",
+          todayOverride: c.todayOverride || null,
           deliveries,
         };
       }),
@@ -1578,6 +1579,19 @@ const toggleTodayDelivery = async (req, res) => {
     };
 
     await customerRef.update({ todayOverride });
+
+    // Analytics endpoint is cached; clear it so UI reflects persisted state.
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const analyticsKeys = keys.filter((k) => k.startsWith("analytics:last8"));
+      if (analyticsKeys.length) {
+        cache.del(analyticsKeys);
+      } else {
+        cache.del("analytics:last8:v10");
+      }
+    } catch (cacheErr) {
+      console.warn("Failed to clear analytics cache:", cacheErr);
+    }
 
     return res.status(200).json({
       message: "Today delivery status updated",
