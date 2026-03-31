@@ -7,6 +7,8 @@ import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
 
+const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+
 const DELIVERY_REASON_MAP = {
   price_mismatch: "Price Mismatch",
   stock_available: "Stock Available",
@@ -1544,6 +1546,48 @@ const updateCustomerPriority = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+const toggleTodayDelivery = async (req, res) => {
+  try {
+    const { id, status } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Customer ID is required" });
+    }
+
+    const normalizedStatus = String(status || "")
+      .trim()
+      .toUpperCase();
+    const allowed = ["ON", "OFF"];
+
+    if (!allowed.includes(normalizedStatus)) {
+      return res.status(400).json({ message: "Status must be ON or OFF" });
+    }
+
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(id);
+    const customerSnap = await customerRef.get();
+
+    if (!customerSnap.exists) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    const todayOverride = {
+      date: getTodayDateString(),
+      status: normalizedStatus,
+    };
+
+    await customerRef.update({ todayOverride });
+
+    return res.status(200).json({
+      message: "Today delivery status updated",
+      todayOverride,
+    });
+  } catch (err) {
+    console.error("toggleTodayDelivery error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
 export {
   login,
   userInfo,
@@ -1566,6 +1610,7 @@ export {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPriority,
+  toggleTodayDelivery,
   addZone,
   getZones,
   getAnalyticsLast8,

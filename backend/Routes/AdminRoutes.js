@@ -38,6 +38,7 @@ import {
   getAllCustomerDeliveriesRange,
   getCustomersByDeliveryCount,
   getLatestRemarks,
+  toggleTodayDelivery,
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -56,6 +57,7 @@ router.post("/customer/priority", updateCustomerPriority);
 router.post("/customer/delivery-reason", saveCheckedReason);
 router.post("/customer/delivery-reason/reset-all", resetAllCheckedReasons);
 router.post("/customer/delivery-trays", saveDeliveredTrays);
+router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
 

@@ -32,11 +32,14 @@ export default function CustomerManagement() {
   const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
 
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
+  const [updatingTodayId, setUpdatingTodayId] = useState(null);
 
   const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
   const canDownloadExcel = true;
+
+  const todayDate = new Date().toISOString().slice(0, 10);
 
   // ================= LOAD =================
 
@@ -149,6 +152,9 @@ export default function CustomerManagement() {
       list = customers.filter((c) => c.category === activeTab);
     }
 
+    // Never sort state arrays in-place (Array.sort mutates)
+    list = Array.isArray(list) ? [...list] : [];
+
     // SORT
     if (sortBy === "name") {
       list.sort((a, b) =>
@@ -254,6 +260,77 @@ export default function CustomerManagement() {
       alert("Failed to recalculate");
     } finally {
       setRecalculating(false);
+    }
+  };
+
+  const getTodayEffectiveStatus = (customer) => {
+    const override = customer?.todayOverride;
+
+    const overrideDate = override?.date
+      ? String(override.date).slice(0, 10)
+      : null;
+
+    if (!override || overrideDate !== todayDate) {
+      return "ON";
+    }
+
+    const status = String(override.status || "")
+      .trim()
+      .toUpperCase();
+
+    return status === "OFF" ? "OFF" : "ON";
+  };
+
+  const toggleTodayDelivery = async (customer) => {
+    if (!customer?.id || updatingTodayId === customer.id) return;
+
+    const current = getTodayEffectiveStatus(customer);
+    const nextStatus = current === "ON" ? "OFF" : "ON";
+
+    const previousOverride = customer.todayOverride;
+    const optimisticOverride = {
+      date: todayDate,
+      status: nextStatus,
+    };
+
+    // Optimistic UI: update only this customer's button immediately.
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id
+          ? { ...row, todayOverride: optimisticOverride }
+          : row,
+      ),
+    );
+
+    try {
+      setUpdatingTodayId(customer.id);
+
+      const res = await axios.post(`${ADMIN_PATH}/customer/toggle-delivery`, {
+        id: customer.id,
+        status: nextStatus,
+      });
+
+      const saved = res?.data?.todayOverride;
+      if (saved?.date && saved?.status) {
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("Today delivery toggle error:", err);
+
+      // Revert if server write failed.
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id
+            ? { ...row, todayOverride: previousOverride }
+            : row,
+        ),
+      );
+    } finally {
+      setUpdatingTodayId(null);
     }
   };
 
@@ -376,6 +453,7 @@ export default function CustomerManagement() {
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
               {isAll && <th className="p-3">Category</th>}
+              {isAll && <th className="p-3">Delivery Plan</th>}
               <th className="p-3">Priority</th>
               <th className="p-3">Status</th>
               <th className="p-3">Remarks</th>
@@ -402,6 +480,37 @@ export default function CustomerManagement() {
                   <>
                     <td className="p-3">{c.category || "RETENTION"}</td>
                   </>
+                )}
+
+                {isAll && (
+                  <td className="p-3">
+                    {(() => {
+                      const effective = getTodayEffectiveStatus(c);
+                      const isOn = effective === "ON";
+                      const isUpdating = updatingTodayId === c.id;
+
+                      return (
+                        <label
+                          className={`relative inline-flex items-center ${
+                            isUpdating
+                              ? "opacity-70 cursor-not-allowed"
+                              : "cursor-pointer"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={isOn}
+                            disabled={isUpdating}
+                            onChange={() => toggleTodayDelivery(c)}
+                            aria-label={isOn ? "Today: ON" : "Today: OFF"}
+                          />
+                          <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
+                        </label>
+                      );
+                    })()}
+                  </td>
                 )}
 
                 <td className="p-3">
