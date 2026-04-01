@@ -552,12 +552,13 @@ const Analytics = () => {
               <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
                 Zone
               </th>
+                <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
+                Priority
+              </th>
               <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
                 Delivery Plan
               </th>
-              <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
-                Priority
-              </th>
+            
 
               {last7DaysHeader.map((d, i) => (
                 <th
@@ -589,17 +590,16 @@ const Analytics = () => {
                     <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
-
+                     {/* Priority */}
+                    <td className="px-1.5 py-2">
+                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
+                  </td>
                     {/* Delivery Plan */}
                     <td className="px-1.5 py-2">
                       <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                     </td>
 
-                    {/* Priority */}
-                    <td className="px-1.5 py-2">
-                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
-                    </td>
-
+                 
                     {[...Array(8)].map((_, i) => (
                       <td key={i} className="px-1 py-2 text-center">
                         <div className="w-14 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
@@ -629,7 +629,11 @@ const Analytics = () => {
                     <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                       {c.zone || "UNASSIGNED"}
                     </td>
+                    
                     <td className="px-1.5 py-2 text-center align-middle">
+                      {getPriorityButton(c)}
+                  </td>
+                  <td className="px-1.5 py-2 text-center align-middle">
                       {(() => {
                         const effective = getTodayEffectiveStatus(c);
                         const isOn = effective === "ON";
@@ -656,10 +660,6 @@ const Analytics = () => {
                           </label>
                         );
                       })()}
-                    </td>
-
-                    <td className="px-1.5 py-2 text-center align-middle">
-                      {getPriorityButton(c)}
                     </td>
 
                     {c.last7.map((d, index) => (
