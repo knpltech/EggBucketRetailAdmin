@@ -453,7 +453,7 @@ export default function CustomerManagement() {
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
               {isAll && <th className="p-3">Category</th>}
-              {isAll && <th className="p-3">Delivery Plan</th>}
+              <th className="p-3">Delivery Plan</th>
               <th className="p-3">Priority</th>
               <th className="p-3">Status</th>
               <th className="p-3">Remarks</th>
@@ -482,36 +482,34 @@ export default function CustomerManagement() {
                   </>
                 )}
 
-                {isAll && (
-                  <td className="p-3">
-                    {(() => {
-                      const effective = getTodayEffectiveStatus(c);
-                      const isOn = effective === "ON";
-                      const isUpdating = updatingTodayId === c.id;
+                <td className="p-3">
+                  {(() => {
+                    const effective = getTodayEffectiveStatus(c);
+                    const isOn = effective === "ON";
+                    const isUpdating = updatingTodayId === c.id;
 
-                      return (
-                        <label
-                          className={`relative inline-flex items-center ${
-                            isUpdating
-                              ? "opacity-70 cursor-not-allowed"
-                              : "cursor-pointer"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={isOn}
-                            disabled={isUpdating}
-                            onChange={() => toggleTodayDelivery(c)}
-                            aria-label={isOn ? "Today: ON" : "Today: OFF"}
-                          />
-                          <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
-                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
-                        </label>
-                      );
-                    })()}
-                  </td>
-                )}
+                    return (
+                      <label
+                        className={`relative inline-flex items-center ${
+                          isUpdating
+                            ? "opacity-70 cursor-not-allowed"
+                            : "cursor-pointer"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={isOn}
+                          disabled={isUpdating}
+                          onChange={() => toggleTodayDelivery(c)}
+                          aria-label={isOn ? "Today: ON" : "Today: OFF"}
+                        />
+                        <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
+                      </label>
+                    );
+                  })()}
+                </td>
 
                 <td className="p-3">
                   <button
