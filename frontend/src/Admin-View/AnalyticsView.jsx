@@ -47,9 +47,9 @@ const AnalyticsView = () => {
     if (option === "priority") {
       const rank = (p) => {
         const v = normalizePriority(p);
-        if (v === "HIGH") return 0;
-        if (v === "MEDIUM") return 1;
-        return 2;
+        const n = getPriorityNumber(v);
+        // Higher P number = higher priority (sort first)
+        return 7 - n;
       };
 
       sorted.sort((a, b) => {
@@ -137,9 +137,10 @@ const AnalyticsView = () => {
   const getPriorityPill = (priority) => {
     const value = normalizePriority(priority);
 
+    const n = getPriorityNumber(value);
     let bg = "#EF4444";
-    if (value === "HIGH") bg = "#16A34A";
-    if (value === "MEDIUM") bg = "#F59E0B";
+    if (n >= 3 && n <= 4) bg = "#F59E0B";
+    if (n >= 5) bg = "#16A34A";
 
     return (
       <div
@@ -158,11 +159,20 @@ const AnalyticsView = () => {
 
 
   const normalizePriority = (priority) => {
-    const p = String(priority || "LOW")
+    const p = String(priority ?? "")
       .trim()
       .toUpperCase();
-    if (p === "HIGH" || p === "MEDIUM" || p === "LOW") return p;
-    return "LOW";
+
+    if (!p) return "P0";
+    if (/^P[0-7]$/.test(p)) return p;
+    if (/^[0-7]$/.test(p)) return `P${p}`;
+    return "P0";
+  };
+
+  const getPriorityNumber = (value) => {
+    const normalized = normalizePriority(value);
+    const n = Number(String(normalized).slice(1));
+    return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
   };
 
   // Small helpers for the UI
