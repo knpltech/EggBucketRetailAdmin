@@ -163,9 +163,9 @@ export default function CustomerManagement() {
     } else if (sortBy === "priority") {
       const rank = (p) => {
         const v = normalizePriority(p);
-        if (v === "HIGH") return 0;
-        if (v === "MEDIUM") return 1;
-        return 2;
+        const n = getPriorityNumber(v);
+        // Higher P number = higher priority (sort first)
+        return 7 - n;
       };
 
       list.sort((a, b) => {
@@ -205,40 +205,44 @@ export default function CustomerManagement() {
     if (!c?.id || updatingPriorityId === c.id) return;
 
     const currentPriority = normalizePriority(c.priority);
-    const nextPriority =
-      currentPriority === "LOW"
-        ? "MEDIUM"
-        : currentPriority === "MEDIUM"
-          ? "HIGH"
-          : "LOW";
+    const nextPriority = getNextPriority(currentPriority);
+
+    const previousPriority = currentPriority;
+
+    // Optimistic UI: update only this row, no full refetch.
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === c.id ? { ...row, priority: nextPriority } : row,
+      ),
+    );
 
     try {
       setUpdatingPriorityId(c.id);
 
-      await axios.post(`${ADMIN_PATH}/customer/priority`, {
+      const res = await axios.post(`${ADMIN_PATH}/customer/priority`, {
         id: c.id,
         priority: nextPriority,
       });
 
-      if (activeTab === "CUSTOMIZE") {
-        const res = await axios.get(
-          `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`,
+      const savedPriority = res?.data?.priority;
+      if (savedPriority) {
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === c.id
+              ? { ...row, priority: normalizePriority(savedPriority) }
+              : row,
+          ),
         );
-
-        const rows = Array.isArray(res.data) ? res.data : [];
-        setCustomers(
-          rows.map((row) => ({
-            ...row,
-            priority: normalizePriority(row.priority),
-          })),
-        );
-      } else {
-        await loadCustomers();
       }
-
-      await loadLatestMeta();
     } catch (err) {
       console.error("Priority update error:", err);
+
+      // Revert optimistic update if server write failed.
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === c.id ? { ...row, priority: previousPriority } : row,
+        ),
+      );
     } finally {
       setUpdatingPriorityId(null);
     }
@@ -545,15 +549,19 @@ function getName(c) {
 }
 
 function normalizePriority(value) {
-  const raw = String(value || "")
+  const raw = String(value ?? "")
     .trim()
     .toUpperCase();
 
-  if (raw === "MEDIUM" || raw === "HIGH") {
-    return raw;
-  }
+  if (!raw) return "P0";
 
-  return "LOW";
+  // New format
+  if (/^P[0-7]$/.test(raw)) return raw;
+
+  // Allow sending numbers 0-7
+  if (/^[0-7]$/.test(raw)) return `P${raw}`;
+
+  return "P0";
 }
 
 function normalizeStatus(value) {
@@ -570,10 +578,24 @@ function normalizeStatus(value) {
 function getPriorityColor(value) {
   const priority = normalizePriority(value);
 
-  if (priority === "MEDIUM") return "#FB8C00";
-  if (priority === "HIGH") return "#0F9D58";
+  const n = getPriorityNumber(priority);
 
-  return "#FF3B30";
+  // P0/P1/P2 = red, P3/P4 = orange, P5/P6/P7 = green
+  if (n <= 2) return "#FF3B30";
+  if (n <= 4) return "#FB8C00";
+  return "#0F9D58";
+}
+
+function getPriorityNumber(value) {
+  const normalized = normalizePriority(value);
+  const n = Number(String(normalized).slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
+}
+
+function getNextPriority(currentPriority) {
+  const n = getPriorityNumber(currentPriority);
+  const next = (n + 1) % 8;
+  return `P${next}`;
 }
 
 function getStatusColor(value) {

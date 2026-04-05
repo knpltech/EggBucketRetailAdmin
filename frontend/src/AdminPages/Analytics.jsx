@@ -22,12 +22,33 @@ const Analytics = () => {
   const [endDate, setEndDate] = useState("");
 
   const normalizePriority = useCallback((priority) => {
-    const p = String(priority || "LOW")
+    const p = String(priority ?? "")
       .trim()
       .toUpperCase();
-    if (p === "HIGH" || p === "MEDIUM" || p === "LOW") return p;
-    return "LOW";
+
+    if (!p) return "P0";
+    if (/^P[0-7]$/.test(p)) return p;
+    if (/^[0-7]$/.test(p)) return `P${p}`;
+    return "P0";
   }, []);
+
+  const getPriorityNumber = useCallback(
+    (value) => {
+      const normalized = normalizePriority(value);
+      const n = Number(String(normalized).slice(1));
+      return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
+    },
+    [normalizePriority],
+  );
+
+  const getNextPriority = useCallback(
+    (currentPriority) => {
+      const n = getPriorityNumber(currentPriority);
+      const next = (n + 1) % 8;
+      return `P${next}`;
+    },
+    [getPriorityNumber],
+  );
 
   // Helper: Format date to YYYY-MM-DD in LOCAL timezone (not UTC)
   const formatDateLocal = useCallback((d) => {
@@ -95,9 +116,9 @@ const Analytics = () => {
       if (option === "priority") {
         const rank = (p) => {
           const v = normalizePriority(p);
-          if (v === "HIGH") return 0;
-          if (v === "MEDIUM") return 1;
-          return 2;
+          const n = getPriorityNumber(v);
+          // Higher P number = higher priority (sort first)
+          return 7 - n;
         };
 
         sorted.sort((a, b) => {
@@ -108,7 +129,7 @@ const Analytics = () => {
       }
       setCustomers(sorted);
     },
-    [allCustomers, normalizePriority],
+    [allCustomers, normalizePriority, getPriorityNumber],
   );
 
   useEffect(() => {
@@ -164,12 +185,7 @@ const Analytics = () => {
     if (!customer?.id || updatingPriorityId === customer.id) return;
 
     const currentPriority = normalizePriority(customer.priority);
-    const nextPriority =
-      currentPriority === "LOW"
-        ? "MEDIUM"
-        : currentPriority === "MEDIUM"
-          ? "HIGH"
-          : "LOW";
+    const nextPriority = getNextPriority(currentPriority);
 
     try {
       setUpdatingPriorityId(customer.id);
@@ -195,9 +211,10 @@ const Analytics = () => {
   const getPriorityButton = (customer) => {
     const value = normalizePriority(customer?.priority);
 
+    const n = getPriorityNumber(value);
     let bg = "#EF4444";
-    if (value === "HIGH") bg = "#16A34A";
-    if (value === "MEDIUM") bg = "#F59E0B";
+    if (n >= 3 && n <= 4) bg = "#F59E0B";
+    if (n >= 5) bg = "#16A34A";
 
     const disabled = updatingPriorityId === customer?.id;
 

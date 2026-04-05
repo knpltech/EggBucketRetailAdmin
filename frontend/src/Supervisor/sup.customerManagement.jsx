@@ -118,9 +118,9 @@ export default function SupCustomerManagement() {
     } else if (sortBy === "priority") {
       const rank = (p) => {
         const v = normalizePriority(p);
-        if (v === "HIGH") return 0;
-        if (v === "MEDIUM") return 1;
-        return 2;
+        const n = getPriorityNumber(v);
+        // Higher P number = higher priority (sort first)
+        return 7 - n;
       };
 
       list.sort((a, b) => {
@@ -311,24 +311,32 @@ function getName(c) {
 }
 
 function normalizePriority(value) {
-  const raw = String(value || "")
+  const raw = String(value ?? "")
     .trim()
     .toUpperCase();
 
-  if (raw === "MEDIUM" || raw === "HIGH") {
-    return raw;
-  }
+  if (!raw) return "P0";
 
-  return "LOW";
+  if (/^P[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `P${raw}`;
+
+  return "P0";
 }
 
 function getPriorityColor(value) {
   const priority = normalizePriority(value);
 
-  if (priority === "MEDIUM") return "#FB8C00";
-  if (priority === "HIGH") return "#0F9D58";
+  const n = getPriorityNumber(priority);
 
-  return "#FF3B30";
+  if (n <= 2) return "#FF3B30";
+  if (n <= 4) return "#FB8C00";
+  return "#0F9D58";
+}
+
+function getPriorityNumber(value) {
+  const normalized = normalizePriority(value);
+  const n = Number(String(normalized).slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
 }
 
 function getImage(c) {

@@ -9,6 +9,19 @@ import { signAuthToken } from "../utils/jwt.js";
 
 const getTodayDateString = () => new Date().toISOString().slice(0, 10);
 
+const normalizeCustomerPriority = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "P0";
+
+  if (/^P[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `P${raw}`;
+
+  return "P0";
+};
+
 const DELIVERY_REASON_MAP = {
   price_mismatch: "Price Mismatch",
   stock_available: "Stock Available",
@@ -101,6 +114,7 @@ const userInfo = async (req, res) => {
       customers.push({
         id: doc.id,
         ...customerData,
+        priority: normalizeCustomerPriority(customerData?.priority),
       });
     }
 
@@ -124,7 +138,12 @@ const specificUser = async (req, res) => {
       return res.status(404).json({ error: "Customer not found" });
     }
 
-    res.status(200).json({ id: userDoc.id, ...userDoc.data() });
+    const data = userDoc.data() || {};
+    res.status(200).json({
+      id: userDoc.id,
+      ...data,
+      priority: normalizeCustomerPriority(data?.priority),
+    });
   } catch (error) {
     console.error("Error fetching customer:", error);
     res.status(500).json({ error: "Failed to fetch customer data" });
@@ -759,7 +778,7 @@ const addCustomer = async (req, res) => {
       location,
       category: "RETENTION",
       zone: "UNASSIGNED",
-      priority: "LOW",
+      priority: "P0",
       remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
@@ -973,7 +992,7 @@ const getAnalyticsLast8 = async (req, res) => {
           imageUrl: c.imageUrl || "",
           createdAt: c.createdAt,
           zone: c.zone || "UNASSIGNED",
-          priority: c.priority || "LOW",
+          priority: normalizeCustomerPriority(c.priority),
           todayOverride: c.todayOverride || null,
           deliveries,
         };
@@ -1113,9 +1132,11 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
           };
         });
 
+        const customerData = doc.data() || {};
         return {
           id: doc.id,
-          ...doc.data(),
+          ...customerData,
+          priority: normalizeCustomerPriority(customerData?.priority),
           deliveries,
         };
       }),
@@ -1209,9 +1230,11 @@ const getCustomersByDeliveryCount = async (req, res) => {
       }
 
       if (shouldInclude) {
+        const data = doc.data() || {};
         result.push({
           id: customerId,
-          ...doc.data(),
+          ...data,
+          priority: normalizeCustomerPriority(data?.priority),
           deliveryCount,
         });
       }
@@ -1507,12 +1530,19 @@ const updateCustomerPriority = async (req, res) => {
       return res.status(400).json({ message: "Customer ID is required" });
     }
 
-    const normalizedPriority = String(priority || "")
+    if (priority === undefined || priority === null) {
+      return res.status(400).json({ message: "Priority is required" });
+    }
+
+    const raw = String(priority ?? "")
       .trim()
       .toUpperCase();
-    const allowed = ["LOW", "MEDIUM", "HIGH"];
 
-    if (!allowed.includes(normalizedPriority)) {
+    // Only accept new priority system.
+    const normalizedPriority =
+      /^P[0-7]$/.test(raw) ? raw : /^[0-7]$/.test(raw) ? `P${raw}` : null;
+
+    if (!normalizedPriority) {
       return res.status(400).json({ message: "Invalid priority value" });
     }
 
