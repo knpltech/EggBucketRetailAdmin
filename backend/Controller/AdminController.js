@@ -776,7 +776,6 @@ const addCustomer = async (req, res) => {
       createdby,
       custid,
       location,
-      category: "RETENTION",
       zone: "UNASSIGNED",
       priority: "P0",
       remarks: "",
@@ -866,7 +865,7 @@ const getCustomerMapStatus = async (req, res) => {
 
 const updateCustomerMeta = async (req, res) => {
   try {
-    const { id, category, remarks, zone } = req.body;
+    const { id, remarks, zone } = req.body;
 
     if (!id) {
       return res.status(400).json({ message: "Customer ID is required" });
@@ -881,11 +880,6 @@ const updateCustomerMeta = async (req, res) => {
     }
 
     const updateData = {};
-
-    // ✅ CATEGORY — allow change anytime
-    if (category !== undefined) {
-      updateData.category = category;
-    }
 
     // ✅ ZONE — allow change anytime
     if (zone !== undefined) {
@@ -1008,74 +1002,6 @@ const getAnalyticsLast8 = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-//  Auto assign category for ONE customer
-const autoAssignCategoryForCustomer = async (customerId) => {
-  const db = getFirestore();
-
-  const fourteenDaysAgo = new Date();
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-  fourteenDaysAgo.setHours(0, 0, 0, 0);
-
-  const customerRef = db.collection("customers").doc(customerId);
-
-  const snap = await customerRef
-    .collection("deliveries")
-    .where("timestamp", ">=", fourteenDaysAgo)
-    .where("type", "==", "delivered")
-    .select("timestamp")
-    .get();
-
-  const count = snap.size;
-
-  let category = "RETENTION";
-
-  if (count >= 5) {
-    category = "REGULAR";
-  } else if (count >= 2) {
-    category = "FOLLOW-UP";
-  }
-
-  await customerRef.update({ category });
-
-  return category;
-};
-const recalculateAllCategories = async (req, res) => {
-  try {
-    const db = getFirestore();
-
-    const customersSnap = await db.collection("customers").get();
-
-    if (customersSnap.empty) {
-      return res.json({ message: "No customers found" });
-    }
-
-    const BATCH_SIZE = 25;
-    let updated = 0;
-
-    const docs = customersSnap.docs;
-
-    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-      const batch = docs.slice(i, i + BATCH_SIZE);
-
-      const results = await Promise.all(
-        batch.map((doc) => autoAssignCategoryForCustomer(doc.id)),
-      );
-
-      updated += results.filter(Boolean).length;
-    }
-
-    return res.status(200).json({
-      message: "Recalculation completed",
-      updated,
-    });
-  } catch (err) {
-    console.error("Recalculate error:", err);
-
-    return res.status(500).json({
-      message: "Failed to recalculate categories",
-    });
-  }
-};
 // Get deliveries between date range (For Excel)
 const getAllCustomerDeliveriesRange = async (req, res) => {
   const { start, end } = req.query;
@@ -1151,6 +1077,86 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
     return res.status(500).json({
       message: "Server error",
     });
+  }
+};
+
+// Delivery-days segmentation (D0..D7): customers with exactly N delivered-days in last 7 days.
+// GET /customer/delivery-days?days=0..7
+const getCustomersByDeliveryDays = async (req, res) => {
+  try {
+    const db = getFirestore();
+
+    const days = Number(req.query.days);
+    if (!Number.isFinite(days) || days < 0 || days > 7) {
+      return res.status(400).json({ message: "days must be 0..7" });
+    }
+
+    const rangeEnd = new Date();
+    const rangeStart = new Date(rangeEnd);
+    rangeStart.setDate(rangeEnd.getDate() - 6);
+    rangeStart.setHours(0, 0, 0, 0);
+
+    const customersSnap = await db.collection("customers").get();
+    if (customersSnap.empty) {
+      return res.status(200).json([]);
+    }
+
+    const deliveriesSnap = await db.collectionGroup("deliveries").get();
+
+    const deliveredDaysByCustomer = new Map();
+
+    deliveriesSnap.forEach((doc) => {
+      const data = doc.data() || {};
+      if (String(data.type || "").trim().toLowerCase() !== "delivered") {
+        return;
+      }
+
+      const deliveryDate = data.timestamp?.toDate
+        ? data.timestamp.toDate()
+        : new Date(data.timestamp);
+
+      if (
+        !(deliveryDate instanceof Date) ||
+        Number.isNaN(deliveryDate.getTime()) ||
+        deliveryDate < rangeStart ||
+        deliveryDate > rangeEnd
+      ) {
+        return;
+      }
+
+      const customerId = doc.ref.parent.parent.id;
+      const dayKey = deliveryDate.toISOString().slice(0, 10);
+
+      let set = deliveredDaysByCustomer.get(customerId);
+      if (!set) {
+        set = new Set();
+        deliveredDaysByCustomer.set(customerId, set);
+      }
+
+      set.add(dayKey);
+    });
+
+    const result = [];
+
+    customersSnap.forEach((doc) => {
+      const customerId = doc.id;
+      const set = deliveredDaysByCustomer.get(customerId);
+      const deliveryCount = set ? set.size : 0;
+      if (deliveryCount !== days) return;
+
+      const data = doc.data() || {};
+      result.push({
+        id: customerId,
+        ...data,
+        priority: normalizeCustomerPriority(data?.priority),
+        deliveryCount,
+      });
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("getCustomersByDeliveryDays error:", error);
+    return res.status(500).json({ message: "Failed to fetch customers" });
   }
 };
 
@@ -1658,9 +1664,8 @@ export {
   addZone,
   getZones,
   getAnalyticsLast8,
-  recalculateAllCategories,
-  autoAssignCategoryForCustomer,
   getAllCustomerDeliveriesRange,
+  getCustomersByDeliveryDays,
   getCustomersByDeliveryCount,
   saveCheckedReason,
   resetAllCheckedReasons,
