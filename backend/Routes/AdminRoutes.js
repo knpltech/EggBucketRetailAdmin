@@ -31,7 +31,7 @@ import {
   addZone,
   getZones,
   getAnalyticsLast8,
-  recalculateAllCategories,
+  getCustomersByDeliveryDays,
   saveCheckedReason,
   resetAllCheckedReasons,
   saveDeliveredTrays,
@@ -62,9 +62,9 @@ router.post("/zones/add", addZone);
 router.get("/zones", getZones);
 
 router.get("/analytics/last8", getAnalyticsLast8);
-router.post("/customer/recalculate", recalculateAllCategories);
 router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
-router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
+router.get("/customer/delivery-days", getCustomersByDeliveryDays);
+router.get("/customer/by-delivery-count",getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
 
 // Delivery partner related routes

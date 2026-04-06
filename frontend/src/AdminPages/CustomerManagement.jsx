@@ -9,10 +9,14 @@ import { ADMIN_PATH } from "../constant";
 const TABS = [
   "ALL",
   "ONBOARDING",
-  "REGULAR",
-  "FOLLOW-UP",
-  "RETENTION",
-  "CUSTOMIZE",
+  "D0",
+  "D1",
+  "D2",
+  "D3",
+  "D4",
+  "D5",
+  "D6",
+  "D7",
 ];
 
 const CHECKED_TYPES = [
@@ -29,12 +33,8 @@ export default function CustomerManagement() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
 
-  const [deliveryCountFilter, setDeliveryCountFilter] = useState(0);
-
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
-
-  const [recalculating, setRecalculating] = useState(false);
 
   const isAll = activeTab === "ALL";
   const canDownloadExcel = true;
@@ -83,51 +83,41 @@ export default function CustomerManagement() {
     }
   };
 
-  // Load normal tabs
+  // Load customers based on active tab.
   useEffect(() => {
-    if (activeTab === "CUSTOMIZE") return;
-
     const init = async () => {
       setLoading(true);
-      await loadCustomers();
-      setLoading(false);
+
+      try {
+        const isDTab = /^D[0-7]$/.test(activeTab);
+
+        if (isDTab) {
+          const days = Number(activeTab.slice(1));
+          const res = await axios.get(
+            `${ADMIN_PATH}/customer/delivery-days?days=${days}`,
+          );
+
+          const rows = Array.isArray(res.data) ? res.data : [];
+          setCustomers(
+            rows.map((c) => ({
+              ...c,
+              priority: normalizePriority(c.priority),
+              latestStatus: "Pending",
+              latestRemark: "-",
+            })),
+          );
+        } else {
+          await loadCustomers();
+        }
+      } finally {
+        setLoading(false);
+      }
+
       loadLatestMeta();
     };
 
     init();
   }, [activeTab]);
-
-  // Load CUSTOMIZE tab
-  useEffect(() => {
-    if (activeTab !== "CUSTOMIZE") return;
-
-    const loadCustomCustomers = async () => {
-      try {
-        setLoading(true);
-
-        const res = await axios.get(
-          `${ADMIN_PATH}/customer/by-delivery-count?count=${deliveryCountFilter}`,
-        );
-
-        const rows = Array.isArray(res.data) ? res.data : [];
-        setCustomers(
-          rows.map((c) => ({
-            ...c,
-            priority: normalizePriority(c.priority),
-            latestStatus: "Pending",
-            latestRemark: "-",
-          })),
-        );
-      } catch (err) {
-        console.error("Customize fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-      loadLatestMeta();
-    };
-
-    loadCustomCustomers();
-  }, [activeTab, deliveryCountFilter]);
 
   // ================= FILTER =================
 
@@ -146,10 +136,9 @@ export default function CustomerManagement() {
           c.zone === null ||
           c.zone === "UNASSIGNED",
       );
-    } else if (activeTab === "CUSTOMIZE") {
-      list = customers;
     } else {
-      list = customers.filter((c) => c.category === activeTab);
+      // D0..D7 tabs are served directly from the API.
+      list = customers;
     }
 
     // Never sort state arrays in-place (Array.sort mutates)
@@ -248,25 +237,6 @@ export default function CustomerManagement() {
     }
   };
 
-  const recalculateAll = async () => {
-    if (!window.confirm("Recalculate all customer categories?")) return;
-
-    try {
-      setRecalculating(true);
-
-      await axios.post(`${ADMIN_PATH}/customer/recalculate`);
-
-      await loadCustomers();
-      loadLatestMeta();
-
-      alert("Categories recalculated");
-    } catch {
-      alert("Failed to recalculate");
-    } finally {
-      setRecalculating(false);
-    }
-  };
-
   const getTodayEffectiveStatus = (customer) => {
     const override = customer?.todayOverride;
 
@@ -347,7 +317,6 @@ export default function CustomerManagement() {
       "Customer ID": c.custid || c.id,
       Name: getName(c),
       Zone: c.zone || "",
-      Category: c.category || "RETENTION",
       Priority: normalizePriority(c.priority),
       Status: normalizeStatus(c.latestStatus),
       Remarks: c.latestRemark || "-",
@@ -403,15 +372,6 @@ export default function CustomerManagement() {
             </button>
           )}
 
-          <button
-            disabled={recalculating}
-            onClick={recalculateAll}
-            className={`px-4 py-2 rounded-lg text-white ${
-              recalculating ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600"
-            }`}
-          >
-            {recalculating ? "Recalculating..." : "Recalculate"}
-          </button>
         </div>
       </div>
 
@@ -430,23 +390,6 @@ export default function CustomerManagement() {
         ))}
       </div>
 
-      {/* CUSTOMIZE DROPDOWN */}
-      {activeTab === "CUSTOMIZE" && (
-        <div className="mb-4">
-          <select
-            value={deliveryCountFilter}
-            onChange={(e) => setDeliveryCountFilter(Number(e.target.value))}
-            className="border rounded-lg px-4 py-2"
-          >
-            <option value={0}>0 Deliveries (Last 7 Days)</option>
-            <option value={1}>1 Delivery (Last 7 Days)</option>
-            <option value={2}>2 Deliveries (Last 7 Days)</option>
-            <option value={3}>3 Deliveries (Last 7 Days)</option>
-            <option value={4}>4 & 4+ (Last 7 Days)</option>
-          </select>
-        </div>
-      )}
-
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-sm text-center border-collapse">
@@ -456,7 +399,6 @@ export default function CustomerManagement() {
               <th className="p-3">Customer ID</th>
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
-              {isAll && <th className="p-3">Category</th>}
               <th className="p-3">Delivery Plan</th>
               <th className="p-3">Priority</th>
               <th className="p-3">Status</th>
@@ -479,12 +421,6 @@ export default function CustomerManagement() {
                 <td className="p-3 font-medium text-gray-700">
                   {c.zone || "UNASSIGNED"}
                 </td>
-
-                {isAll && (
-                  <>
-                    <td className="p-3">{c.category || "RETENTION"}</td>
-                  </>
-                )}
 
                 <td className="p-3">
                   {(() => {
