@@ -557,9 +557,6 @@ const Analytics = () => {
         <table className="w-full table-fixed text-xs">
           <thead className="bg-gray-100">
             <tr>
-              <th className="px-2 py-2 text-left font-semibold w-[52px]">
-                Image
-              </th>
               <th className="px-1.5 py-2 text-left font-semibold w-[76px]">
                 Cust Id
               </th>
@@ -594,9 +591,7 @@ const Analytics = () => {
             {loading
               ? skeletonRows.map((_, idx) => (
                   <tr key={idx} className="border-t border-gray-200">
-                    <td className="px-2 py-2">
-                      <div className="w-10 h-10 bg-gray-300 rounded-full animate-pulse"></div>
-                    </td>
+                  
                     <td className="px-1.5 py-2">
                       <div className="w-14 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
@@ -629,13 +624,7 @@ const Analytics = () => {
                     key={c.id}
                     className="border-t border-gray-200 hover:bg-gray-50"
                   >
-                    <td className="px-2 py-2">
-                      <img
-                        src={c.imageUrl}
-                        alt={c.name}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                    </td>
+                  
 
                     <td className="px-1.5 py-2 font-medium truncate">
                       {c.custid}
