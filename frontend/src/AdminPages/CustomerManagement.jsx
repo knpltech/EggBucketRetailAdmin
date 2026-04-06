@@ -395,7 +395,6 @@ export default function CustomerManagement() {
         <table className="w-full text-sm text-center border-collapse">
           <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="p-3">Image</th>
               <th className="p-3">Customer ID</th>
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
@@ -409,13 +408,6 @@ export default function CustomerManagement() {
           <tbody>
             {filtered.map((c) => (
               <tr key={c.id} className="border-t">
-                <td className="p-3">
-                  <img
-                    src={getImage(c)}
-                    className="w-10 h-10 rounded-full object-cover mx-auto"
-                    alt=""
-                  />
-                </td>
                 <td className="p-3 font-medium">{c.custid || c.id}</td>
                 <td className="p-3 font-medium">{getName(c)}</td>
                 <td className="p-3 font-medium text-gray-700">
@@ -629,6 +621,4 @@ function buildLatestStatusMap(customersWithDeliveries) {
   return statusMap;
 }
 
-function getImage(c) {
-  return c.imageUrl || c.image || "https://via.placeholder.com/48";
-}
+
