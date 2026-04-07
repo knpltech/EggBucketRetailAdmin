@@ -7,7 +7,31 @@ import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
 
-const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+const INDIA_TZ = "Asia/Kolkata";
+
+const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch (e) {
+    // fall through
+  }
+
+  // Fallback: keep legacy behavior (UTC) if Intl/timeZone formatting is unavailable.
+  return new Date().toISOString().slice(0, 10);
+};
+
+const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
 const normalizeCustomerPriority = (value) => {
   const raw = String(value ?? "")
@@ -1545,8 +1569,11 @@ const updateCustomerPriority = async (req, res) => {
       .toUpperCase();
 
     // Only accept new priority system.
-    const normalizedPriority =
-      /^P[0-7]$/.test(raw) ? raw : /^[0-7]$/.test(raw) ? `P${raw}` : null;
+    const normalizedPriority = /^P[0-7]$/.test(raw)
+      ? raw
+      : /^[0-7]$/.test(raw)
+        ? `P${raw}`
+        : null;
 
     if (!normalizedPriority) {
       return res.status(400).json({ message: "Invalid priority value" });
@@ -1580,6 +1607,77 @@ const updateCustomerPriority = async (req, res) => {
     });
   } catch (err) {
     console.error("updateCustomerPriority error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Save skip delivery config per customer
+// POST /customer/skip-config
+// Body: { id, type: "MANUAL"|"AUTO", days: number, startDate: "YYYY-MM-DD"|null }
+// Note: For AUTO, startDate is always set to "today" (Asia/Kolkata) on the server.
+const saveSkipConfig = async (req, res) => {
+  try {
+    const { id, type, days } = req.body || {};
+
+    const customerId = String(id || "").trim();
+    if (!customerId) {
+      return res.status(400).json({ message: "Customer id is required" });
+    }
+
+    const normalizedType = String(type || "")
+      .trim()
+      .toUpperCase();
+    if (!["MANUAL", "AUTO"].includes(normalizedType)) {
+      return res.status(400).json({
+        message: "Invalid type. Expected MANUAL or AUTO",
+      });
+    }
+
+    let normalizedDays = Number(days);
+    if (!Number.isFinite(normalizedDays)) normalizedDays = 0;
+    normalizedDays = Math.floor(normalizedDays);
+    if (normalizedDays < 0) normalizedDays = 0;
+    if (normalizedDays > 6) normalizedDays = 6;
+
+    const skipConfig =
+      normalizedType === "MANUAL"
+        ? { type: "MANUAL", days: 0, startDate: null }
+        : {
+            type: "AUTO",
+            days: normalizedDays,
+            startDate: getTodayDateString(),
+          };
+
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(customerId);
+    const customerSnap = await customerRef.get();
+
+    if (!customerSnap.exists) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    await customerRef.update({ skipConfig });
+
+    // Invalidate caches that depend on customer meta.
+    try {
+      cache.del("analytics:last8:v10");
+      cache.del("customerMapStatus:today");
+      const allDeliveriesKeys = cache
+        .keys()
+        .filter((key) => key.startsWith("allCustomerDeliveries"));
+      if (allDeliveriesKeys.length > 0) {
+        cache.del(allDeliveriesKeys);
+      }
+    } catch (cacheErr) {
+      console.warn("skip-config cache invalidation error:", cacheErr);
+    }
+
+    return res.status(200).json({
+      message: "Skip config saved",
+      skipConfig,
+    });
+  } catch (err) {
+    console.error("saveSkipConfig error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -1660,6 +1758,7 @@ export {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPriority,
+  saveSkipConfig,
   toggleTodayDelivery,
   addZone,
   getZones,
