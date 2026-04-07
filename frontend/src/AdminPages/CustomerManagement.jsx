@@ -35,11 +35,12 @@ export default function CustomerManagement() {
 
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
+  const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
   const isAll = activeTab === "ALL";
   const canDownloadExcel = true;
 
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
   // ================= LOAD =================
 
@@ -58,8 +59,7 @@ export default function CustomerManagement() {
 
   const loadLatestMeta = async () => {
     try {
-      const today = new Date();
-      const todayDate = today.toISOString().split("T")[0];
+      const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
       const [remarksRes, deliveriesRes] = await Promise.all([
         axios.get(`${ADMIN_PATH}/customer/latest-remarks`),
@@ -82,6 +82,15 @@ export default function CustomerManagement() {
       console.error("Error loading latest customer meta:", err);
     }
   };
+
+  // Optional UX: auto-refresh the derived status/remarks every 30s.
+  useEffect(() => {
+    const t = setInterval(() => {
+      loadLatestMeta();
+    }, 30000);
+
+    return () => clearInterval(t);
+  }, []);
 
   // Load customers based on active tab.
   useEffect(() => {
@@ -308,6 +317,70 @@ export default function CustomerManagement() {
     }
   };
 
+  const getSkipSelectValue = (customer) => {
+    const cfg = customer?.skipConfig;
+
+    if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") {
+      return "MANUAL";
+    }
+
+    const days = clampDays0to6(cfg.days);
+    return `AUTO:${days}`;
+  };
+
+  const updateSkipConfig = async (customer, selectedValue) => {
+    if (!customer?.id || updatingSkipId === customer.id) return;
+
+    const previousConfig = customer.skipConfig;
+    const today = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+
+    let nextConfig = { type: "MANUAL", days: 0, startDate: null };
+
+    if (String(selectedValue || "").toUpperCase() !== "MANUAL") {
+      const parts = String(selectedValue).split(":");
+      const days = clampDays0to6(parts[1]);
+      nextConfig = { type: "AUTO", days, startDate: today };
+    }
+
+    // Optimistic UI
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id ? { ...row, skipConfig: nextConfig } : row,
+      ),
+    );
+
+    try {
+      setUpdatingSkipId(customer.id);
+
+      const res = await axios.post(`${ADMIN_PATH}/customer/skip-config`, {
+        id: customer.id,
+        type: nextConfig.type,
+        days: nextConfig.days,
+        startDate: nextConfig.startDate,
+      });
+
+      const saved = res?.data?.skipConfig;
+      if (saved && typeof saved === "object") {
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, skipConfig: saved } : row,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("Skip config update error:", err);
+
+      // Revert if server write failed.
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id ? { ...row, skipConfig: previousConfig } : row,
+        ),
+      );
+    } finally {
+      setUpdatingSkipId(null);
+    }
+  };
+
   // ================= EXCEL =================
 
   const downloadExcel = () => {
@@ -371,7 +444,6 @@ export default function CustomerManagement() {
               Download {activeTab}
             </button>
           )}
-
         </div>
       </div>
 
@@ -399,6 +471,7 @@ export default function CustomerManagement() {
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
               <th className="p-3">Delivery Plan</th>
+              <th className="p-3">Skip</th>
               <th className="p-3">Priority</th>
               <th className="p-3">Status</th>
               <th className="p-3">Remarks</th>
@@ -439,6 +512,33 @@ export default function CustomerManagement() {
                         <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
                         <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
                       </label>
+                    );
+                  })()}
+                </td>
+
+                <td className="p-3">
+                  {(() => {
+                    const isUpdating = updatingSkipId === c.id;
+                    return (
+                      <div className="flex items-center justify-center">
+                        <select
+                          value={getSkipSelectValue(c)}
+                          disabled={isUpdating}
+                          onChange={(e) => updateSkipConfig(c, e.target.value)}
+                          className={`border rounded-lg px-3 py-2 ${
+                            isUpdating ? "opacity-70 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          <option value="MANUAL">Manual Override</option>
+                          <option value="AUTO:0">0 Days</option>
+                          <option value="AUTO:1">1 Days</option>
+                          <option value="AUTO:2">2 Days</option>
+                          <option value="AUTO:3">3 Days</option>
+                          <option value="AUTO:4">4 Days</option>
+                          <option value="AUTO:5">5 Days</option>
+                          <option value="AUTO:6">6 Days</option>
+                        </select>
+                      </div>
                     );
                   })()}
                 </td>
@@ -621,4 +721,33 @@ function buildLatestStatusMap(customersWithDeliveries) {
   return statusMap;
 }
 
+function getDateStringInTimeZone(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
 
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+
+    if (year && month && day) return `${year}-${month}-${day}`;
+    // eslint-disable-next-line no-unused-vars
+  } catch (error) {
+    // fall through
+  }
+
+  return new Date().toISOString().slice(0, 10);
+}
+
+function clampDays0to6(value) {
+  let n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  n = Math.floor(n);
+  if (n < 0) return 0;
+  if (n > 6) return 6;
+  return n;
+}

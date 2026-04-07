@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 
 import adminRouter from "./Routes/AdminRoutes.js";
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
+import { startSkipDeliveryCron } from "./jobs/skipDeliveryCron.js";
 
 dotenv.config();
 
@@ -12,12 +13,11 @@ const env = {
   frontendOrigins:
     process.env.FRONTEND_ORIGINS ||
     process.env.FRONTEND_ORIGIN ||
-    "https://egg-bucket-retail-admin.vercel.app",
-  // // for testing locally
-// 'http://localhost:5173',
+    "https://egg-bucket-retail-admin.vercel.app,http://localhost:5173",
 };
 
 initializeFirebaseAdmin();
+startSkipDeliveryCron();
 
 const app = express();
 // Enable CORS - support multiple origins via FRONTEND_ORIGINS (comma-separated)

@@ -15,7 +15,8 @@ const Analytics = () => {
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
 
-  const todayDate = new Date().toISOString().slice(0, 10);
+  // Use Asia/Kolkata date so it matches backend todayOverride.date.
+  const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
   // Date range state for export
   const [startDate, setStartDate] = useState("");
@@ -681,5 +682,28 @@ const Analytics = () => {
     </div>
   );
 };
+
+function getDateStringInTimeZone(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+
+    if (year && month && day) return `${year}-${month}-${day}`;
+  // eslint-disable-next-line no-unused-vars
+  } catch (err) {
+    // fall through
+  }
+
+  // Fallback (UTC)
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default Analytics;
