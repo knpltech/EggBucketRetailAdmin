@@ -5,26 +5,44 @@ import { authenticateToken } from "../middleware/authMiddleware.js";
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// import different function from AdminController.js
+// import login from AuthController
+import { login } from "../Controller/AuthController.js";
+
+// import customer info functions from CustomerInfoController
 import {
-  login,
   userInfo,
   specificUser,
-  deleteCustomer,
-  updateCustomer,
-  addDeliveryPartner,
-  addSalesPerson,
-  getSalesPartners,
-  getDeliveryPartners,
-  updateDeliveryPartner,
-  updateSalesPartner,
-  deleteDeliveryPartner,
-  deleteSalesPartner,
   getUserDeliveries,
   getAllCustomerDeliveries,
-  toggleDeliveryPerson,
-  toggleSalesPerson,
   addCustomer,
+} from "../Controller/CustomerInfoController.js";
+
+// import customer functions from CustomerController
+import {
+  deleteCustomer,
+  updateCustomer,
+} from "../Controller/CustomerController.js";
+
+// import delivery partner functions from DeliveryPartnerController
+import {
+  addDeliveryPartner,
+  getDeliveryPartners,
+  updateDeliveryPartner,
+  deleteDeliveryPartner,
+  toggleDeliveryPerson,
+} from "../Controller/DeliveryPartnerController.js";
+
+// import sales partner functions from SalesPartnerController
+import {
+  addSalesPerson,
+  getSalesPartners,
+  updateSalesPartner,
+  deleteSalesPartner,
+  toggleSalesPerson,
+} from "../Controller/SalesPartnerController.js";
+
+// import different functions from AdminController.js
+import {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPriority,
@@ -66,7 +84,7 @@ router.get("/zones", getZones);
 router.get("/analytics/last8", getAnalyticsLast8);
 router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
-router.get("/customer/by-delivery-count",getCustomersByDeliveryCount);
+router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
 
 // Delivery partner related routes

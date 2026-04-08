@@ -172,8 +172,53 @@ export const runSkipDeliveryJobOnce = async () => {
       autoDetected += 1;
     }
 
+    const existingOverride = data?.todayOverride || null;
+    const existingOverrideDate = existingOverride?.date
+      ? String(existingOverride.date).slice(0, 10)
+      : null;
+
+    // ✅ MANUAL or NO CONFIG: Reset to ON at start of new day
     if (!skipConfig || skipType !== "AUTO") {
+      // ✅ Same-day protection ONLY for MANUAL mode
+      // If already updated today, preserve manual/delivery changes
+      if (existingOverrideDate === today) {
+        if (debugThisDoc) {
+          console.log("[skipDeliveryCron][debug] MANUAL mode: already updated today, skipping", {
+            today,
+            existingOverrideDate,
+          });
+        }
+        continue;  // ← Preserve manual changes for MANUAL customers today
+      }
+
+      if (debugThisDoc) {
+        console.log("[skipDeliveryCron][debug] MANUAL mode: resetting to ON for new day", {
+          today,
+          skipType: skipType || "NO_CONFIG",
+        });
+      }
+
+      batch.update(doc.ref, {
+        todayOverride: {
+          date: today,
+          status: "ON",
+        },
+      });
+
+      batchCount += 1;
+      updated += 1;
+
+      await commitBatchIfNeeded(false);
       continue;
+    }
+
+    // ✅ AUTO mode: Skip logic ALWAYS applies - ignore same-day protection
+    // Manual toggle should NOT override skip behavior
+    if (debugThisDoc) {
+      console.log("[skipDeliveryCron][debug] AUTO mode: recalculating (ignoring same-day changes)", {
+        today,
+        existingOverrideDate,
+      });
     }
 
     const days = clampDays0to6(skipConfig.days);
@@ -199,12 +244,6 @@ export const runSkipDeliveryJobOnce = async () => {
       }
       continue;
     }
-
-    const existingOverride = data?.todayOverride || null;
-
-    const existingOverrideDate = existingOverride?.date
-      ? String(existingOverride.date).slice(0, 10)
-      : null;
 
     eligible += 1;
 
@@ -250,12 +289,12 @@ export const runSkipDeliveryJobOnce = async () => {
       ? String(existingOverride.status).trim().toUpperCase()
       : null;
 
-    // If already correct for today (and not a manual override), avoid redundant writes.
+    // ✅ Optimization: Don't write if already correct for today
+    // (Prevents redundant writes, not same-day protection)
     if (existingOverrideDate === today && existingStatus === status) {
       if (debugThisDoc) {
-        console.log("[skipDeliveryCron][debug] skip: already up-to-date", {
-          existingOverrideDate,
-          existingStatus,
+        console.log("[skipDeliveryCron][debug] AUTO skip: already correct for today", {
+          today,
           status,
         });
       }
@@ -263,7 +302,7 @@ export const runSkipDeliveryJobOnce = async () => {
     }
 
     if (debugThisDoc) {
-      console.log("[skipDeliveryCron][debug] computed", {
+      console.log("[skipDeliveryCron][debug] AUTO skip: computed status", {
         today,
         startDate: startDateStr,
         diffDays,
