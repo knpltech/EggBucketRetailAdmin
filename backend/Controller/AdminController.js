@@ -33,6 +33,76 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
+
+// HELPER: Maintain denormalized last8Days field in customer doc
+
+const updateLast8Days = async (db, customerId, deliveryDate, type) => {
+  try {
+    if (!customerId || !deliveryDate || !type) return;
+
+    const today = getTodayDateString();
+    const eightDaysAgo = new Date();
+    eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
+    eightDaysAgo.setHours(0, 0, 0, 0);
+    const cutoffDateStr = getDateStringInTimeZone(eightDaysAgo, INDIA_TZ);
+
+    const customerRef = db.collection("customers").doc(customerId);
+    const customerSnap = await customerRef.get();
+
+    if (!customerSnap.exists) return;
+
+    const customerData = customerSnap.data();
+    let last8Days = customerData.last8Days || {};
+
+    // Normalize type to status
+    const normalizedType = String(type || "").trim().toLowerCase();
+    let status = "pending";
+    if (normalizedType === "delivered") {
+      status = "delivered";
+    } else if (
+      ["reached", "price_mismatch", "stock_available", "other_vendor"].includes(
+        normalizedType
+      )
+    ) {
+      status = "reached";
+    }
+
+    // Update the specific date entry
+    const dateStr = deliveryDate instanceof Date
+      ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
+      : String(deliveryDate);
+
+    last8Days[dateStr] = status;
+
+    // Remove entries older than 8 days
+    Object.keys(last8Days).forEach((key) => {
+      if (key < cutoffDateStr) {
+        delete last8Days[key];
+      }
+    });
+
+    // Update customer document
+    await customerRef.update({
+      last8Days,
+      last8DaysUpdatedAt: Date.now(),
+    });
+
+    // Invalidate analytics cache
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const analyticsKeys = keys.filter((k) => k.startsWith("analytics:last8"));
+      if (analyticsKeys.length) {
+        cache.del(analyticsKeys);
+      }
+    } catch (cacheErr) {
+      // Silently fail if cache delete fails
+    }
+  } catch (err) {
+    console.error("updateLast8Days error:", err);
+  
+  }
+};
+
 const normalizeCustomerPriority = (priority) => {
   const p = String(priority ?? "")
     .trim()
@@ -215,10 +285,13 @@ const getZones = async (req, res) => {
   }
 };
 
-const getAnalyticsLast8 = async (req, res) => {
-  const cacheKey = "analytics:last8:v10";
 
-  // Cache first
+// OPTIMIZED: Analytics API using lazy denormalization
+// Reads only from customers collection (no subcollection reads!)
+
+const getAnalyticsLast8 = async (req, res) => {
+  const cacheKey = "analytics:last8:v12";
+
   const cached = cache.get(cacheKey);
   if (cached) {
     return res.status(200).json({ customers: cached });
@@ -227,36 +300,93 @@ const getAnalyticsLast8 = async (req, res) => {
   try {
     const db = getFirestore();
 
-    // Get customers
+    // STEP 1: Fetch ALL customers (1 read)
     const customersSnap = await db.collection("customers").get();
-
+// console.log("Customers fetched:", customersSnap.size);
     if (customersSnap.empty) {
       return res.json({ customers: [] });
     }
 
-    // Parallel
+    // STEP 2: Use lazy denormalization
+    // If last8Days doesn't exist, compute it from deliveries and save
     const customers = await Promise.all(
       customersSnap.docs.map(async (doc) => {
         const c = doc.data();
+        const customerId = doc.id;
 
-        // Get ALL deliveries - no timestamp filters needed
+        let last8Days = c.last8Days;
 
-        const deliveriesSnap = await db
-          .collection("customers")
-          .doc(doc.id)
-          .collection("deliveries")
-          .get();
+        // LAZY COMPUTE: If customer doesn't have denormalized data, create it
+        if (!last8Days || Object.keys(last8Days).length === 0) {
+          try {
+            // Fetch deliveries for this customer
+            const deliveriesSnap = await db
+              .collection("customers")
+              .doc(customerId)
+              .collection("deliveries")
+              .get();
 
-        const deliveries = deliveriesSnap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id, // Document ID is the date string (YYYY-MM-DD)
-            type: data.type,
-          };
-        });
+            last8Days = {};
+            const today = getTodayDateString();
+            const eightDaysAgo = new Date();
+            eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
+            eightDaysAgo.setHours(0, 0, 0, 0);
+            const cutoffDateStr = getDateStringInTimeZone(
+              eightDaysAgo,
+              INDIA_TZ
+            );
+
+            // Build last8Days map from deliveries
+            deliveriesSnap.forEach((doc) => {
+              const data = doc.data();
+              const dateStr = doc.id; // YYYY-MM-DD
+              if (dateStr >= cutoffDateStr && dateStr <= today) {
+                const type = String(data.type || "").trim().toLowerCase();
+                if (type === "delivered") {
+                  last8Days[dateStr] = "delivered";
+                } else if (
+                  [
+                    "reached",
+                    "price_mismatch",
+                    "stock_available",
+                    "other_vendor",
+                  ].includes(type)
+                ) {
+                  last8Days[dateStr] = "reached";
+                } else {
+                  last8Days[dateStr] = "pending";
+                }
+              }
+            });
+
+            // Save denormalized field for future use
+            // (Don't wait - fire and forget)
+            db.collection("customers")
+              .doc(customerId)
+              .update({
+                last8Days,
+                last8DaysUpdatedAt: Date.now(),
+              })
+              .catch((err) => {
+                // Silent fail - denorm is optimization only
+              });
+          } catch (err) {
+            console.error(
+              `Could not compute last8Days for ${customerId}:`,
+              err
+            );
+            last8Days = {};
+          }
+        }
+
+        // STEP 3: Convert denormalized last8Days → deliveries array (for frontend compatibility)
+        const deliveries = Object.entries(last8Days || {}).map(([date, type]) => ({
+          id: date,
+          type,
+        }));
 
         return {
-          id: doc.id,
+          id: customerId,
           name: c.name,
           custid: c.custid,
           imageUrl: c.imageUrl || "",
@@ -264,18 +394,18 @@ const getAnalyticsLast8 = async (req, res) => {
           zone: c.zone || "UNASSIGNED",
           priority: normalizeCustomerPriority(c.priority),
           todayOverride: c.todayOverride || null,
-          deliveries,
+          deliveries, 
         };
-      }),
+      })
     );
 
-    // Cache 5 minutes
-    cache.set(cacheKey, customers, 300);
+    // STEP 4: Cache for 30 minutes
+    cache.set(cacheKey, customers, 1800);
 
     return res.status(200).json({ customers });
   } catch (err) {
     console.error("Analytics API error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 // Get deliveries between date range (For Excel)
@@ -577,6 +707,10 @@ const saveDeliveredTrays = async (req, res) => {
 
     await deliveryRef.update({ traysDelivered: trays });
 
+    // 🔄 Update denormalized last8Days
+    const deliveryDate = new Date(deliveryId);
+    await updateLast8Days(db, customerId, deliveryDate, "delivered");
+
     cache.del(`userDeliveries:${customerId}`);
     cache.del("latestRemarks");
     const allDeliveriesKeys = cache
@@ -649,6 +783,9 @@ const saveCheckedReason = async (req, res) => {
       checkReason: reason,
       checkReasonAt: Date.now(),
     });
+
+    // 🔄 Update denormalized last8Days
+    await updateLast8Days(db, customerId, deliveryId, "reached");
 
     // Invalidate caches that may serve stale delivery rows.
     cache.del(`userDeliveries:${customerId}`);

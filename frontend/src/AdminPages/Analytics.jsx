@@ -153,13 +153,8 @@ const Analytics = () => {
     if (normalizedType === "delivered") {
       bg = "#0F9D58"; // green
       text = "DELIVERED";
-    } else if (
-      normalizedType === "reached" ||
-      normalizedType === "price_mismatch" ||
-      normalizedType === "stock_available" ||
-      normalizedType === "other_vendor"
-    ) {
-      // All checked types (reached + reason codes)
+    } else if (normalizedType === "reached" || normalizedType === "checked") {
+      // Backend sends "reached"; "checked" kept for backward compatibility
       bg = "#FB8C00"; // orange-yellow
       text = "CHECKED";
     } else {
@@ -331,19 +326,12 @@ const Analytics = () => {
     }
   };
 
-  // Helper: short status strings (what will go into XLSX cells)
-  // Helper: FULL status strings (what will go into XLSX cells)
+  // Helper: short status strings for XLSX export
   const statusShort = (type) => {
     const s = (type || "").toString().trim().toLowerCase();
 
     if (s === "delivered") return "DELIVERED ";
-    if (
-      s === "reached" ||
-      s === "price_mismatch" ||
-      s === "stock_available" ||
-      s === "other_vendor"
-    )
-      return "CHECKED ";
+    if (s === "reached" || s === "checked") return "CHECKED ";
 
     return "PENDING ";
   };
