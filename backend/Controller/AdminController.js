@@ -33,6 +33,36 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
+const normalizeCustomerPriority = (priority) => {
+  const p = String(priority ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!p) return "P0";
+  if (/^P[0-7]$/.test(p)) return p;
+  if (/^[0-7]$/.test(p)) return `P${p}`;
+  return "P0";
+};
+
+const getStatusAndReasonFromType = (type, checkReason) => {
+  const normalizedType = String(type || "")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedType === "delivered") {
+    return { status: "Delivered", reason: null };
+  } else if (
+    normalizedType === "reached" ||
+    normalizedType === "price_mismatch" ||
+    normalizedType === "stock_available" ||
+    normalizedType === "other_vendor"
+  ) {
+    return { status: "Checked", reason: checkReason || null };
+  } else {
+    return { status: "Pending", reason: null };
+  }
+};
+
 const getCustomerMapStatus = async (req, res) => {
   try {
     const cacheKey = "customerMapStatus:today";
