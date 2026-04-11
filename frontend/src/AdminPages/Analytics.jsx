@@ -107,6 +107,24 @@ const Analytics = () => {
     }
   }, [computeLast7Days]);
 
+  const getTodayEffectiveStatus = useCallback((customer) => {
+    const override = customer?.todayOverride;
+
+    const overrideDate = override?.date
+      ? String(override.date).slice(0, 10)
+      : null;
+
+    if (!override || overrideDate !== todayDate) {
+      return "ON";
+    }
+
+    const status = String(override.status || "")
+      .trim()
+      .toUpperCase();
+
+    return status === "OFF" ? "OFF" : "ON";
+  }, [todayDate]);
+
   const applySorting = useCallback(
     (option) => {
       let sorted = [...allCustomers];
@@ -128,9 +146,20 @@ const Analytics = () => {
           return String(a.name || "").localeCompare(String(b.name || ""));
         });
       }
+      if (option === "zone")
+        sorted.sort((a, b) => (a.zone || "").localeCompare(b.zone || ""));
+      if (option === "status") {
+        sorted.sort((a, b) => {
+          const statusA = getTodayEffectiveStatus(a);
+          const statusB = getTodayEffectiveStatus(b);
+          if (statusA === "ON" && statusB === "OFF") return -1;
+          if (statusA === "OFF" && statusB === "ON") return 1;
+          return String(a.name || "").localeCompare(String(b.name || ""));
+        });
+      }
       setCustomers(sorted);
     },
-    [allCustomers, normalizePriority, getPriorityNumber],
+    [allCustomers, normalizePriority, getPriorityNumber, getTodayEffectiveStatus],
   );
 
   useEffect(() => {
@@ -233,24 +262,6 @@ const Analytics = () => {
         {value}
       </button>
     );
-  };
-
-  const getTodayEffectiveStatus = (customer) => {
-    const override = customer?.todayOverride;
-
-    const overrideDate = override?.date
-      ? String(override.date).slice(0, 10)
-      : null;
-
-    if (!override || overrideDate !== todayDate) {
-      return "ON";
-    }
-
-    const status = String(override.status || "")
-      .trim()
-      .toUpperCase();
-
-    return status === "OFF" ? "OFF" : "ON";
   };
 
   const toggleTodayDelivery = async (customer) => {
@@ -464,6 +475,8 @@ const Analytics = () => {
             <option value="name">Customer Name</option>
             <option value="createdAt">Created Date</option>
             <option value="priority">Priority</option>
+            <option value="zone">Zone </option>
+            <option value="status">Delivery-Plan(ON first)</option>
           </select>
 
           <input
