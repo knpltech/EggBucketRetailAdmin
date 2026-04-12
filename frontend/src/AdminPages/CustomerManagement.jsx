@@ -43,115 +43,93 @@ export default function CustomerManagement() {
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
   // ================= LOAD =================
+  // ⭐ OPTIMIZED: Single API call only, no auto-refresh, no D0-D7 backend calls
 
-  const loadCustomers = async () => {
-    const res = await axios.get(`${ADMIN_PATH}/user-info`);
-    const rows = Array.isArray(res.data) ? res.data : [];
-    setCustomers(
-      rows.map((c) => ({
-        ...c,
-        priority: normalizePriority(c.priority),
-        latestStatus: "Pending",
-        latestRemark: "-",
-      })),
-    );
-  };
-
-  const loadLatestMeta = async () => {
-    try {
-      const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-
-      const [remarksRes, deliveriesRes] = await Promise.all([
-        axios.get(`${ADMIN_PATH}/customer/latest-remarks`),
-        axios.get(`${ADMIN_PATH}/all-deliveries?date=${todayDate}`),
-      ]);
-
-      const remarksMap = remarksRes.data || {};
-      const statusMap = buildLatestStatusMap(
-        deliveriesRes.data?.customers || [],
-      );
-
-      setCustomers((prev) =>
-        prev.map((c) => ({
-          ...c,
-          latestRemark: remarksMap[c.id] || "-",
-          latestStatus: statusMap[c.id] || "Pending",
-        })),
-      );
-    } catch (err) {
-      console.error("Error loading latest customer meta:", err);
-    }
-  };
-
-  // Optional UX: auto-refresh the derived status/remarks every 30s.
   useEffect(() => {
-    const t = setInterval(() => {
-      loadLatestMeta();
-    }, 30000);
-
-    return () => clearInterval(t);
-  }, []);
-
-  // Load customers based on active tab.
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-
+    const loadOnce = async () => {
       try {
-        const isDTab = /^D[0-7]$/.test(activeTab);
-
-        if (isDTab) {
-          const days = Number(activeTab.slice(1));
-          const res = await axios.get(
-            `${ADMIN_PATH}/customer/delivery-days?days=${days}`,
-          );
-
-          const rows = Array.isArray(res.data) ? res.data : [];
-          setCustomers(
-            rows.map((c) => ({
-              ...c,
-              priority: normalizePriority(c.priority),
-              latestStatus: "Pending",
-              latestRemark: "-",
-            })),
-          );
-        } else {
-          await loadCustomers();
-        }
+        setLoading(true);
+        // ⭐ Single API call - reads from /user-info with backend cache
+        const res = await axios.get(`${ADMIN_PATH}/user-info`);
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setCustomers(
+          rows.map((c) => ({
+            ...c,
+            priority: normalizePriority(c.priority),
+          })),
+        );
+      } catch (err) {
+        console.error("Load customers error:", err);
       } finally {
         setLoading(false);
       }
-
-      loadLatestMeta();
     };
 
-    init();
-  }, [activeTab]);
+    loadOnce();
+  }, []); // ⭐ Empty dependency: load ONLY once on mount
+
+  // ⭐ HELPER: Compute delivery count from last 7 days (EXCLUDING today)
+  // Only counts entries where last8Days[date] === "delivered"
+  // Uses Asia/Kolkata timezone to match Firestore keys exactly
+  const getDeliveredCount = (customer) => {
+    const last8Days = customer.last8Days || {};
+    let count = 0;
+
+    const today = new Date();
+
+    // Iterate through last 7 days (i=1 is yesterday, i=2 is 2 days ago, etc.)
+    // i starts at 1 to exclude today, goes to 7 for exactly 7 days back
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+
+      // Use timezone-aware date string (Asia/Kolkata) - matches Firestore key format exactly
+      const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+
+      // Only count if this date has "delivered" status
+      if (last8Days[dateStr] === "delivered") {
+        count++;
+      }
+    }
+
+    return count;
+  };
+
+  // ⭐ HELPER: Get today's status or latest from last8Days
+  const getLatestStatus = (customer) => {
+    const last8Days = customer.last8Days || {};
+    const todayStatus = last8Days[todayDate];
+
+    if (todayStatus === "delivered") return "Delivered";
+    if (todayStatus === "reached") return "Checked";
+    return "Pending";
+  };
 
   // ================= FILTER =================
+  // ⭐ OPTIMIZED: All filtering & sorting happens on frontend, no API calls
 
   const filtered = useMemo(() => {
-    let list = [];
-    // ALL = Business Customers
+    let list = [...customers];
+
+    // Filter by tab
     if (activeTab === "ALL") {
-      list = customers;
-    }
-    // ONBOARDING = Zone Unassigned
-    else if (activeTab === "ONBOARDING") {
-      list = customers.filter(
+      // ALL = Business Customers
+      // eslint-disable-next-line no-self-assign
+      list = list;
+    } else if (activeTab === "ONBOARDING") {
+      // ONBOARDING = Zone Unassigned
+      list = list.filter(
         (c) =>
           !c.zone ||
           c.zone === "" ||
           c.zone === null ||
           c.zone === "UNASSIGNED",
       );
-    } else {
-      // D0..D7 tabs are served directly from the API.
-      list = customers;
+    } else if (/^D[0-7]$/.test(activeTab)) {
+      // ⭐ D0-D7 computed on frontend from last8Days
+      const targetDays = Number(activeTab.slice(1));
+      list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
-
-    // Never sort state arrays in-place (Array.sort mutates)
-    list = Array.isArray(list) ? [...list] : [];
 
     // SORT
     if (sortBy === "name") {
@@ -162,7 +140,6 @@ export default function CustomerManagement() {
       const rank = (p) => {
         const v = normalizePriority(p);
         const n = getPriorityNumber(v);
-        // Higher P number = higher priority (sort first)
         return 7 - n;
       };
 
@@ -196,7 +173,7 @@ export default function CustomerManagement() {
     }
 
     return list;
-  }, [customers, activeTab, sortBy]);
+  }, [customers, activeTab, sortBy, todayDate, getDeliveredCount]);
 
   // ================= ACTIONS =================
   const updatePriority = async (c) => {
@@ -556,9 +533,9 @@ export default function CustomerManagement() {
 
                 <td className="p-3">
                   <span
-                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(c.latestStatus)}`}
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
                   >
-                    {normalizeStatus(c.latestStatus)}
+                    {getLatestStatus(c)}
                   </span>
                 </td>
 
@@ -641,85 +618,9 @@ function getStatusColor(value) {
   }
 }
 
-function getStatusKey(delivery) {
-  const apiStatus = String(delivery?.status || "")
-    .trim()
-    .toLowerCase();
 
-  if (["delivered", "checked", "pending"].includes(apiStatus)) {
-    return apiStatus;
-  }
 
-  const type = String(delivery?.type || "")
-    .trim()
-    .toLowerCase();
 
-  if (type === "delivered") return "delivered";
-  if (CHECKED_TYPES.includes(type)) return "checked";
-
-  return "pending";
-}
-
-function parseTimestampMs(value) {
-  if (!value) return 0;
-
-  if (typeof value?.toDate === "function") {
-    return value.toDate().getTime();
-  }
-
-  if (typeof value === "number") {
-    return value < 1e12 ? value * 1000 : value;
-  }
-
-  if (typeof value === "string") {
-    const date = Date.parse(value);
-    return Number.isNaN(date) ? 0 : date;
-  }
-
-  if (typeof value === "object") {
-    const seconds = value.seconds ?? value._seconds;
-    const nanoseconds = value.nanoseconds ?? value._nanoseconds ?? 0;
-
-    if (typeof seconds === "number") {
-      return seconds * 1000 + Math.floor(nanoseconds / 1e6);
-    }
-  }
-
-  return 0;
-}
-
-function getDeliveryTimeMs(delivery) {
-  const timeFromTimestamp = parseTimestampMs(delivery?.timestamp);
-  if (timeFromTimestamp > 0) return timeFromTimestamp;
-
-  const fromDocId = parseTimestampMs(delivery?.id);
-  return fromDocId > 0 ? fromDocId : 0;
-}
-
-function buildLatestStatusMap(customersWithDeliveries) {
-  const statusMap = {};
-
-  customersWithDeliveries.forEach((customer) => {
-    const deliveries = Array.isArray(customer?.deliveries)
-      ? customer.deliveries
-      : [];
-
-    if (!deliveries.length) {
-      statusMap[customer.id] = "Pending";
-      return;
-    }
-
-    const latestDelivery = deliveries.reduce((latest, current) => {
-      return getDeliveryTimeMs(current) > getDeliveryTimeMs(latest)
-        ? current
-        : latest;
-    }, deliveries[0]);
-
-    statusMap[customer.id] = normalizeStatus(getStatusKey(latestDelivery));
-  });
-
-  return statusMap;
-}
 
 function getDateStringInTimeZone(date, timeZone) {
   try {
