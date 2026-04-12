@@ -69,8 +69,8 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
 
     // Update the specific date entry
     const dateStr = deliveryDate instanceof Date
-      ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
-      : String(deliveryDate);
+        ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
+        : String(deliveryDate);
 
     last8Days[dateStr] = status;
 
@@ -99,7 +99,7 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
     }
   } catch (err) {
     console.error("updateLast8Days error:", err);
-  
+
   }
 };
 
@@ -199,9 +199,6 @@ const getCustomerMapStatus = async (req, res) => {
       });
     }
 
-    // ⏱ Cache for 60 seconds
-    cache.set(cacheKey, result, 60);
-
     return res.status(200).json(result);
   } catch (err) {
     console.error("Customer map status error:", err);
@@ -285,117 +282,53 @@ const getZones = async (req, res) => {
   }
 };
 
-
-// OPTIMIZED: Analytics API using lazy denormalization
-// Reads only from customers collection (no subcollection reads!)
-
 const getAnalyticsLast8 = async (req, res) => {
-  const cacheKey = "analytics:last8:v12";
+  const cacheKey = "analytics:last8:v1";
 
- 
+  // CHECK CACHE FIRST (avoid Firestore read)
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) {
+    return res.status(200).json({ customers: cachedData });
+  }
+
   try {
     const db = getFirestore();
 
-    // STEP 1: Fetch ALL customers (1 read)
+    // ONLY 1 READ: Fetch all customers
     const customersSnap = await db.collection("customers").get();
-// console.log("Customers fetched:", customersSnap.size);
+
     if (customersSnap.empty) {
-      return res.json({ customers: [] });
+      return res.status(200).json({ customers: [] });
     }
 
-    // STEP 2: Use lazy denormalization
-    // If last8Days doesn't exist, compute it from deliveries and save
-    const customers = await Promise.all(
-      customersSnap.docs.map(async (doc) => {
-        const c = doc.data();
-        const customerId = doc.id;
+    // TRANSFORM: Use denormalized last8Days (no subcollection reads!)
+    const customers = customersSnap.docs.map((doc) => {
+      const c = doc.data();
+      const customerId = doc.id;
 
-        let last8Days = c.last8Days;
+      // SAFE DEFAULT: {} is valid (means 0 deliveries in last 8 days)
+      const last8Days = c.last8Days || {};
 
-        // LAZY COMPUTE: If customer doesn't have denormalized data, create it
-        if (!last8Days || Object.keys(last8Days).length === 0) {
-          try {
-            // Fetch deliveries for this customer
-            const deliveriesSnap = await db
-              .collection("customers")
-              .doc(customerId)
-              .collection("deliveries")
-              .get();
+      // Convert to deliveries array for frontend compatibility
+      const deliveries = Object.entries(last8Days).map(([date, type]) => ({
+        id: date,
+        type,
+      }));
 
-            last8Days = {};
-            const today = getTodayDateString();
-            const eightDaysAgo = new Date();
-            eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
-            eightDaysAgo.setHours(0, 0, 0, 0);
-            const cutoffDateStr = getDateStringInTimeZone(
-              eightDaysAgo,
-              INDIA_TZ
-            );
+      return {
+        id: customerId,
+        name: c.name,
+        custid: c.custid,
+        imageUrl: c.imageUrl || "",
+        createdAt: c.createdAt,
+        zone: c.zone || "UNASSIGNED",
+        priority: normalizeCustomerPriority(c.priority),
+        todayOverride: c.todayOverride || null,
+        deliveries,
+      };
+    });
 
-            // Build last8Days map from deliveries
-            deliveriesSnap.forEach((doc) => {
-              const data = doc.data();
-              const dateStr = doc.id; // YYYY-MM-DD
-              if (dateStr >= cutoffDateStr && dateStr <= today) {
-                const type = String(data.type || "").trim().toLowerCase();
-                if (type === "delivered") {
-                  last8Days[dateStr] = "delivered";
-                } else if (
-                  [
-                    "reached",
-                    "price_mismatch",
-                    "stock_available",
-                    "other_vendor",
-                  ].includes(type)
-                ) {
-                  last8Days[dateStr] = "reached";
-                } else {
-                  last8Days[dateStr] = "pending";
-                }
-              }
-            });
-
-            // Save denormalized field for future use
-            // (Don't wait - fire and forget)
-            db.collection("customers")
-              .doc(customerId)
-              .update({
-                last8Days,
-                last8DaysUpdatedAt: Date.now(),
-              })
-              .catch((err) => {
-                // Silent fail - denorm is optimization only
-              });
-          } catch (err) {
-            console.error(
-              `Could not compute last8Days for ${customerId}:`,
-              err
-            );
-            last8Days = {};
-          }
-        }
-
-        // STEP 3: Convert denormalized last8Days → deliveries array (for frontend compatibility)
-        const deliveries = Object.entries(last8Days || {}).map(([date, type]) => ({
-          id: date,
-          type,
-        }));
-
-        return {
-          id: customerId,
-          name: c.name,
-          custid: c.custid,
-          imageUrl: c.imageUrl || "",
-          createdAt: c.createdAt,
-          zone: c.zone || "UNASSIGNED",
-          priority: normalizeCustomerPriority(c.priority),
-          todayOverride: c.todayOverride || null,
-          deliveries, 
-        };
-      })
-    );
-
-    // STEP 4: Cache for 30 minutes
+    // CACHE for 30 minutes
     cache.set(cacheKey, customers, 1800);
 
     return res.status(200).json({ customers });
@@ -482,8 +415,6 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
   }
 };
 
-// Delivery-days segmentation (D0..D7): customers with exactly N delivered-days in last 7 days.
-// GET /customer/delivery-days?days=0..7
 const getCustomersByDeliveryDays = async (req, res) => {
   try {
     const db = getFirestore();
@@ -708,12 +639,9 @@ const saveDeliveredTrays = async (req, res) => {
     await updateLast8Days(db, customerId, deliveryDate, "delivered");
 
     // ⭐ Denormalize to customer document
-    await db
-      .collection("customers")
-      .doc(customerId)
-      .update({
-        latestRemark: "Delivered",
-      });
+    await dbcollection("customers").doc(customerId).update({
+      latestRemark: "Delivered",
+    });
 
     cache.del(`userDeliveries:${customerId}`);
     cache.del("latestRemarks");
@@ -793,12 +721,9 @@ const saveCheckedReason = async (req, res) => {
     await updateLast8Days(db, customerId, deliveryId, "reached");
 
     // ⭐ Denormalize to customer document
-    await db
-      .collection("customers")
-      .doc(customerId)
-      .update({
-        latestRemark: reason,
-      });
+    await db.collection("customers").doc(customerId).update({
+      latestRemark: reason,
+    });
 
     // Invalidate caches that may serve stale delivery rows.
     cache.del(`userDeliveries:${customerId}`);
@@ -1000,13 +925,7 @@ const updateCustomerPriority = async (req, res) => {
     await customerRef.update({ priority: normalizedPriority });
 
     try {
-      const keys = typeof cache.keys === "function" ? cache.keys() : [];
-      const analyticsKeys = keys.filter((k) => k.startsWith("analytics:last8"));
-      if (analyticsKeys.length) {
-        cache.del(analyticsKeys);
-      } else {
-        cache.del("analytics:last8:v9");
-      }
+      cache.del("analytics:last8:v1");
     } catch (cacheErr) {
       console.warn("Failed to clear analytics cache:", cacheErr);
     }
@@ -1162,4 +1081,4 @@ export {
   resetAllCheckedReasons,
   saveDeliveredTrays,
   getLatestRemarks,
-  };
+};
