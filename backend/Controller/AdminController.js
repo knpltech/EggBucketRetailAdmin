@@ -292,11 +292,7 @@ const getZones = async (req, res) => {
 const getAnalyticsLast8 = async (req, res) => {
   const cacheKey = "analytics:last8:v12";
 
-  const cached = cache.get(cacheKey);
-  if (cached) {
-    return res.status(200).json({ customers: cached });
-  }
-
+ 
   try {
     const db = getFirestore();
 
@@ -711,8 +707,17 @@ const saveDeliveredTrays = async (req, res) => {
     const deliveryDate = new Date(deliveryId);
     await updateLast8Days(db, customerId, deliveryDate, "delivered");
 
+    // ⭐ Denormalize to customer document
+    await db
+      .collection("customers")
+      .doc(customerId)
+      .update({
+        latestRemark: "Delivered",
+      });
+
     cache.del(`userDeliveries:${customerId}`);
     cache.del("latestRemarks");
+    cache.del("userInfo"); // ⭐ Invalidate main cache
     const allDeliveriesKeys = cache
       .keys()
       .filter((key) => key.startsWith("allCustomerDeliveries"));
@@ -787,11 +792,20 @@ const saveCheckedReason = async (req, res) => {
     // 🔄 Update denormalized last8Days
     await updateLast8Days(db, customerId, deliveryId, "reached");
 
+    // ⭐ Denormalize to customer document
+    await db
+      .collection("customers")
+      .doc(customerId)
+      .update({
+        latestRemark: reason,
+      });
+
     // Invalidate caches that may serve stale delivery rows.
     cache.del(`userDeliveries:${customerId}`);
     cache.del("allCustomerDeliveries");
     cache.del(`allCustomerDeliveries:${deliveryId}`);
     cache.del("latestRemarks");
+    cache.del("userInfo"); // ⭐ Invalidate main cache
 
     return res.status(200).json({
       message: previousReason
@@ -1148,4 +1162,4 @@ export {
   resetAllCheckedReasons,
   saveDeliveredTrays,
   getLatestRemarks,
-};
+  };
