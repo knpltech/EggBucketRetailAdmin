@@ -105,6 +105,35 @@ export default function CustomerManagement() {
     return "Pending";
   };
 
+  // ⭐ NEW: Display remarks with proper formatting
+  // - If Delivered: show "X tray/trays" only if count > 0
+  // - If Checked: show reason (e.g., "PRICE MISMATCH")
+  // - If Pending: show nothing
+  const getRemarkDisplay = (customer) => {
+    const status = getLatestStatus(customer);
+    const remark = customer.latestRemark || "";
+
+    if (status === "Delivered") {
+      // Extract tray count from "2 trays" format
+      const match = remark.match(/^(\d+)\s+trays?$/i);
+      if (match) {
+        const count = parseInt(match[1], 10);
+        if (count > 0) {
+          return count === 1 ? "1 tray" : `${count} trays`;
+        }
+      }
+      return "";
+    }
+
+    if (status === "Checked") {
+      // Show reason only if it exists
+      return remark && remark !== "-" ? remark : "";
+    }
+
+    // Pending: show nothing
+    return "";
+  };
+
   // ================= FILTER =================
   // ⭐ OPTIMIZED: All filtering & sorting happens on frontend, no API calls
 
@@ -150,17 +179,17 @@ export default function CustomerManagement() {
       });
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
-        (c) => c.latestRemark && c.latestRemark !== "-",
+        (c) => getRemarkDisplay(c) && getRemarkDisplay(c) !== "",
       );
 
       const withoutRemarks = list.filter(
-        (c) => !c.latestRemark || c.latestRemark === "-",
+        (c) => !getRemarkDisplay(c) || getRemarkDisplay(c) === "-",
       );
 
       withRemarks.sort((a, b) =>
-        a.latestRemark
+        getRemarkDisplay(a)
           .toLowerCase()
-          .localeCompare(b.latestRemark.toLowerCase()),
+          .localeCompare(getRemarkDisplay(b).toLowerCase()),
       );
 
       withoutRemarks.sort((a, b) =>
@@ -224,21 +253,32 @@ export default function CustomerManagement() {
   };
 
   const getTodayEffectiveStatus = (customer) => {
+    const last8Days = customer?.last8Days || {};
     const override = customer?.todayOverride;
 
-    const overrideDate = override?.date
-      ? String(override.date).slice(0, 10)
-      : null;
-
-    if (!override || overrideDate !== todayDate) {
-      return "ON";
+    // ✅ PRIORITY 1: Delivery status is primary source of truth
+    // If delivered today, always return OFF (regardless of override)
+    if (last8Days[todayDate] === "delivered") {
+      return "OFF";
     }
 
-    const status = String(override.status || "")
-      .trim()
-      .toUpperCase();
+    // ✅ PRIORITY 2: Manual override (if no delivery status today)
+    if (override) {
+      const overrideDate = override?.date
+        ? String(override.date).slice(0, 10)
+        : null;
 
-    return status === "OFF" ? "OFF" : "ON";
+      // Only use override if it's for TODAY
+      if (overrideDate === todayDate) {
+        const status = String(override.status || "")
+          .trim()
+          .toUpperCase();
+        return status === "OFF" ? "OFF" : "ON";
+      }
+    }
+
+    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
+    return "ON";
   };
 
   const toggleTodayDelivery = async (customer) => {
@@ -369,7 +409,7 @@ export default function CustomerManagement() {
       Zone: c.zone || "",
       Priority: normalizePriority(c.priority),
       Status: normalizeStatus(c.latestStatus),
-      Remarks: c.latestRemark || "-",
+      Remarks: getRemarkDisplay(c),
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -539,7 +579,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                <td className="p-3 text-left">{c.latestRemark || "-"}</td>
+                <td className="p-3 text-left">{getRemarkDisplay(c)}</td>
               </tr>
             ))}
           </tbody>
