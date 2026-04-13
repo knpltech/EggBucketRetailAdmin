@@ -33,7 +33,6 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
-
 // HELPER: Maintain denormalized last8Days field in customer doc
 
 const updateLast8Days = async (db, customerId, deliveryDate, type) => {
@@ -55,20 +54,23 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
     let last8Days = customerData.last8Days || {};
 
     // Normalize type to status
-    const normalizedType = String(type || "").trim().toLowerCase();
+    const normalizedType = String(type || "")
+      .trim()
+      .toLowerCase();
     let status = "pending";
     if (normalizedType === "delivered") {
       status = "delivered";
     } else if (
       ["reached", "price_mismatch", "stock_available", "other_vendor"].includes(
-        normalizedType
+        normalizedType,
       )
     ) {
       status = "reached";
     }
 
     // Update the specific date entry
-    const dateStr = deliveryDate instanceof Date
+    const dateStr =
+      deliveryDate instanceof Date
         ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
         : String(deliveryDate);
 
@@ -99,7 +101,6 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
     }
   } catch (err) {
     console.error("updateLast8Days error:", err);
-
   }
 };
 
@@ -638,10 +639,24 @@ const saveDeliveredTrays = async (req, res) => {
     const deliveryDate = new Date(deliveryId);
     await updateLast8Days(db, customerId, deliveryDate, "delivered");
 
-    // ⭐ Denormalize to customer document
-    await dbcollection("customers").doc(customerId).update({
-      latestRemark: "Delivered",
-    });
+    // ⭐ Denormalize to customer document with actual tray count & sync todayOverride
+    const todayDate = getTodayDateString();
+    const deliveryDateStr = getDateStringInTimeZone(deliveryDate, INDIA_TZ);
+    
+    const trayLabel = trays === 1 ? "1 tray" : `${trays} trays`;
+    const updateData = {
+      latestRemark: trayLabel,
+    };
+    
+    // ✅ If marking TODAY's delivery, also update todayOverride to OFF
+    if (deliveryDateStr === todayDate) {
+      updateData.todayOverride = {
+        date: todayDate,
+        status: "OFF",
+      };
+    }
+    
+    await db.collection("customers").doc(customerId).update(updateData);
 
     cache.del(`userDeliveries:${customerId}`);
     cache.del("latestRemarks");
