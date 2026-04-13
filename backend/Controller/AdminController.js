@@ -239,6 +239,13 @@ const updateCustomerMeta = async (req, res) => {
 
     await customerRef.update(updateData);
 
+    try {
+      cache.del("customerInfo:userInfo");
+      cache.del(`customer:${id}`);
+    } catch (cacheError) {
+      console.warn("Failed to invalidate customer caches:", cacheError);
+    }
+
     return res.status(200).json({
       message: "Customer updated successfully",
       updated: updateData,
@@ -263,6 +270,7 @@ const addZone = async (req, res) => {
     }
 
     await db.collection("zones").add({ name });
+    cache.del("zones:list");
 
     res.json({ message: "Zone added" });
   } catch (e) {
@@ -272,11 +280,19 @@ const addZone = async (req, res) => {
 };
 
 const getZones = async (req, res) => {
+  const cacheKey = "zones:list";
+
   try {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const db = getFirestore();
     const snap = await db.collection("zones").get();
 
     const zones = snap.docs.map((d) => d.data().name);
+    cache.set(cacheKey, zones, 300);
     res.json(zones);
   } catch (e) {
     res.status(500).json({ message: "Error fetching zones" });

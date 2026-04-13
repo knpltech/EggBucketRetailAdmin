@@ -67,7 +67,7 @@ const CustomerInfo = () => {
 
     await axios.post(`${ADMIN_PATH}/zones/add`, { name });
 
-    await fetchZones();
+    setZones((prev) => (prev.includes(name) ? prev : [...prev, name]));
 
     alert("Zone Added");
   };
@@ -83,7 +83,11 @@ const CustomerInfo = () => {
         zone,
       });
 
-      await fetchCustomers();
+      setCustomers((prev) =>
+        prev.map((customer) =>
+          customer.id === id ? { ...customer, zone } : customer,
+        ),
+      );
     } finally {
       setAssigningZoneId(null);
     }
@@ -131,7 +135,13 @@ const CustomerInfo = () => {
         ...formData,
       });
 
-      await fetchCustomers();
+      setCustomers((prev) =>
+        prev.map((customer) =>
+          customer.id === editingCustomer.id
+            ? { ...customer, ...formData }
+            : customer,
+        ),
+      );
 
       setEditingCustomer(null);
     } catch {

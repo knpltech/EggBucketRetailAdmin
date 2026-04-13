@@ -59,9 +59,27 @@ const getStatusAndReasonFromType = (type, checkReason = "") => {
   return { status: "Pending", reason: "" };
 };
 
+const invalidateCustomerInfoCache = (customerId) => {
+  try {
+    cache.del("customerInfo:userInfo");
+    if (customerId) {
+      cache.del(`customer:${customerId}`);
+    }
+  } catch (error) {
+    console.warn("Failed to invalidate customer info cache:", error);
+  }
+};
+
 // Fetches all customer information
 const userInfo = async (req, res) => {
+  const cacheKey = "customerInfo:userInfo";
+
   try {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
     const db = getFirestore();
     const customersSnapshot = await db.collection("customers").get();
     const customers = [];
@@ -76,6 +94,7 @@ const userInfo = async (req, res) => {
       });
     }
 
+    cache.set(cacheKey, customers, 120);
     res.status(200).json(customers);
   } catch (error) {
     console.error("Error fetching customers:", error);
@@ -89,6 +108,12 @@ const specificUser = async (req, res) => {
     const db = getFirestore();
     const userId = req.params.id;
 
+    const cacheKey = `customer:${userId}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
     const userDoc = await db.collection("customers").doc(userId).get();
 
     if (!userDoc.exists) {
@@ -96,11 +121,14 @@ const specificUser = async (req, res) => {
     }
 
     const data = userDoc.data() || {};
-    res.status(200).json({
+    const payload = {
       id: userDoc.id,
       ...data,
       priority: normalizeCustomerPriority(data?.priority),
-    });
+    };
+
+    cache.set(cacheKey, payload, 120);
+    res.status(200).json(payload);
   } catch (error) {
     console.error("Error fetching customer:", error);
     res.status(500).json({ error: "Failed to fetch customer data" });
@@ -410,6 +438,7 @@ const addCustomer = async (req, res) => {
       remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
+    invalidateCustomerInfoCache();
     res.status(200).json({ message: "Customer added successfully" });
   } catch (error) {
     console.error("Error in addCustomer:", error);
