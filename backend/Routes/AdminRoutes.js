@@ -60,7 +60,7 @@ import {
   saveSkipConfig,
 } from "../Controller/AdminController.js";
 
-// Customer routes
+// Customer routes 
 router.route("/login").post(login);
 router.use(authenticateToken);
 
