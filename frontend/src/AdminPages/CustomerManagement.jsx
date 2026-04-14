@@ -128,6 +128,25 @@ export default function CustomerManagement() {
     init();
   }, [activeTab]);
 
+  
+  const getTodayEffectiveStatus = (customer) => {
+    const override = customer?.todayOverride;
+
+    const overrideDate = override?.date
+      ? String(override.date).slice(0, 10)
+      : null;
+
+    if (!override || overrideDate !== todayDate) {
+      return "ON";
+    }
+
+    const status = String(override.status || "")
+      .trim()
+      .toUpperCase();
+
+    return status === "OFF" ? "OFF" : "ON";
+  };
+
   // ================= FILTER =================
 
   const filtered = useMemo(() => {
@@ -158,6 +177,34 @@ export default function CustomerManagement() {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
+    } else if (sortBy === "zone") {
+      list.sort((a, b) =>
+        String(a.zone || "")
+          .toLowerCase()
+          .localeCompare(String(b.zone || "").toLowerCase()),
+      );
+    } else if (sortBy === "delivery") {
+      const onFirst = (customer) =>
+        getTodayEffectiveStatus(customer) === "ON" ? 0 : 1;
+
+      list.sort((a, b) => {
+        const diff = onFirst(a) - onFirst(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
+    } else if (sortBy === "status") {
+      const statusRank = (customer) => {
+        const status = normalizeStatus(customer.latestStatus || "").toLowerCase();
+        if (status === "delivered") return 0;
+        if (status === "checked") return 1;
+        return 2;
+      };
+
+      list.sort((a, b) => {
+        const diff = statusRank(a) - statusRank(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "priority") {
       const rank = (p) => {
         const v = normalizePriority(p);
@@ -244,24 +291,6 @@ export default function CustomerManagement() {
     } finally {
       setUpdatingPriorityId(null);
     }
-  };
-
-  const getTodayEffectiveStatus = (customer) => {
-    const override = customer?.todayOverride;
-
-    const overrideDate = override?.date
-      ? String(override.date).slice(0, 10)
-      : null;
-
-    if (!override || overrideDate !== todayDate) {
-      return "ON";
-    }
-
-    const status = String(override.status || "")
-      .trim()
-      .toUpperCase();
-
-    return status === "OFF" ? "OFF" : "ON";
   };
 
   const toggleTodayDelivery = async (customer) => {
@@ -433,7 +462,10 @@ export default function CustomerManagement() {
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
             <option value="priority">Priority</option>
-            {!isAll && <option value="remarks">Remarks A-Z</option>}
+            <option value="zone">Zone</option>
+            <option value="delivery">Delivery Plan </option>
+            <option value="status">Status </option>
+            <option value="remarks">Remarks </option>
           </select>
 
           {canDownloadExcel && (
