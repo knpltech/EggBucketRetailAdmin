@@ -37,7 +37,6 @@ export default function CustomerManagement() {
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
-  const isAll = activeTab === "ALL";
   const canDownloadExcel = true;
 
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -134,23 +133,33 @@ export default function CustomerManagement() {
     return "";
   };
 
-  
   const getTodayEffectiveStatus = (customer) => {
+    const last8Days = customer?.last8Days || {};
     const override = customer?.todayOverride;
 
-    const overrideDate = override?.date
-      ? String(override.date).slice(0, 10)
-      : null;
-
-    if (!override || overrideDate !== todayDate) {
-      return "ON";
+    // ✅ PRIORITY 1: Delivery status is primary source of truth
+    // If delivered today, always return OFF (regardless of override)
+    if (last8Days[todayDate] === "delivered") {
+      return "OFF";
     }
 
-    const status = String(override.status || "")
-      .trim()
-      .toUpperCase();
+    // ✅ PRIORITY 2: Manual override (if no delivery status today)
+    if (override) {
+      const overrideDate = override?.date
+        ? String(override.date).slice(0, 10)
+        : null;
 
-    return status === "OFF" ? "OFF" : "ON";
+      // Only use override if it's for TODAY
+      if (overrideDate === todayDate) {
+        const status = String(override.status || "")
+          .trim()
+          .toUpperCase();
+        return status === "OFF" ? "OFF" : "ON";
+      }
+    }
+
+    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
+    return "ON";
   };
 
   // ================= FILTER =================
@@ -179,7 +188,6 @@ export default function CustomerManagement() {
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
 
-    // SORT
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -201,7 +209,7 @@ export default function CustomerManagement() {
       });
     } else if (sortBy === "status") {
       const statusRank = (customer) => {
-        const status = normalizeStatus(customer.latestStatus || "").toLowerCase();
+        const status = getLatestStatus(customer).toLowerCase();
         if (status === "delivered") return 0;
         if (status === "checked") return 1;
         return 2;
@@ -298,37 +306,6 @@ export default function CustomerManagement() {
       setUpdatingPriorityId(null);
     }
   };
-
-
-  const getTodayEffectiveStatus = (customer) => {
-    const last8Days = customer?.last8Days || {};
-    const override = customer?.todayOverride;
-
-    // ✅ PRIORITY 1: Delivery status is primary source of truth
-    // If delivered today, always return OFF (regardless of override)
-    if (last8Days[todayDate] === "delivered") {
-      return "OFF";
-    }
-
-    // ✅ PRIORITY 2: Manual override (if no delivery status today)
-    if (override) {
-      const overrideDate = override?.date
-        ? String(override.date).slice(0, 10)
-        : null;
-
-      // Only use override if it's for TODAY
-      if (overrideDate === todayDate) {
-        const status = String(override.status || "")
-          .trim()
-          .toUpperCase();
-        return status === "OFF" ? "OFF" : "ON";
-      }
-    }
-
-    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
-    return "ON";
-  };
-
 
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
