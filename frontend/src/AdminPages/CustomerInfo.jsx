@@ -47,6 +47,7 @@ const CustomerInfo = () => {
   const fetchCustomers = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/user-info`);
+      setError("");
       setCustomers(res.data || []);
     } catch {
       setError("Error fetching customer data");
@@ -235,7 +236,9 @@ const CustomerInfo = () => {
                 key={c.id}
                 className="border-t hover:bg-gray-50"
                 onClick={() =>
-                  navigate(`/admin/customer-info/${c.id}`)
+                  navigate(`/admin/customer-info/${c.id}`, {
+                    state: { customer: c },
+                  })
                 }
               >
 
@@ -244,6 +247,7 @@ const CustomerInfo = () => {
                 <td className="p-3">
                   <img
                     src={c.imageUrl}
+                    loading="lazy"
                     className="w-10 h-10 rounded-full object-cover"
                   />
                 </td>
