@@ -37,7 +37,6 @@ export default function CustomerManagement() {
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
-  const isAll = activeTab === "ALL";
   const canDownloadExcel = true;
 
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -134,6 +133,35 @@ export default function CustomerManagement() {
     return "";
   };
 
+  const getTodayEffectiveStatus = (customer) => {
+    const last8Days = customer?.last8Days || {};
+    const override = customer?.todayOverride;
+
+    // ✅ PRIORITY 1: Delivery status is primary source of truth
+    // If delivered today, always return OFF (regardless of override)
+    if (last8Days[todayDate] === "delivered") {
+      return "OFF";
+    }
+
+    // ✅ PRIORITY 2: Manual override (if no delivery status today)
+    if (override) {
+      const overrideDate = override?.date
+        ? String(override.date).slice(0, 10)
+        : null;
+
+      // Only use override if it's for TODAY
+      if (overrideDate === todayDate) {
+        const status = String(override.status || "")
+          .trim()
+          .toUpperCase();
+        return status === "OFF" ? "OFF" : "ON";
+      }
+    }
+
+    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
+    return "ON";
+  };
+
   // ================= FILTER =================
   // ⭐ OPTIMIZED: All filtering & sorting happens on frontend, no API calls
 
@@ -160,11 +188,38 @@ export default function CustomerManagement() {
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
 
-    // SORT
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
+    } else if (sortBy === "zone") {
+      list.sort((a, b) =>
+        String(a.zone || "")
+          .toLowerCase()
+          .localeCompare(String(b.zone || "").toLowerCase()),
+      );
+    } else if (sortBy === "delivery") {
+      const onFirst = (customer) =>
+        getTodayEffectiveStatus(customer) === "ON" ? 0 : 1;
+
+      list.sort((a, b) => {
+        const diff = onFirst(a) - onFirst(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
+    } else if (sortBy === "status") {
+      const statusRank = (customer) => {
+        const status = getLatestStatus(customer).toLowerCase();
+        if (status === "delivered") return 0;
+        if (status === "checked") return 1;
+        return 2;
+      };
+
+      list.sort((a, b) => {
+        const diff = statusRank(a) - statusRank(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "priority") {
       const rank = (p) => {
         const v = normalizePriority(p);
@@ -250,35 +305,6 @@ export default function CustomerManagement() {
     } finally {
       setUpdatingPriorityId(null);
     }
-  };
-
-  const getTodayEffectiveStatus = (customer) => {
-    const last8Days = customer?.last8Days || {};
-    const override = customer?.todayOverride;
-
-    // ✅ PRIORITY 1: Delivery status is primary source of truth
-    // If delivered today, always return OFF (regardless of override)
-    if (last8Days[todayDate] === "delivered") {
-      return "OFF";
-    }
-
-    // ✅ PRIORITY 2: Manual override (if no delivery status today)
-    if (override) {
-      const overrideDate = override?.date
-        ? String(override.date).slice(0, 10)
-        : null;
-
-      // Only use override if it's for TODAY
-      if (overrideDate === todayDate) {
-        const status = String(override.status || "")
-          .trim()
-          .toUpperCase();
-        return status === "OFF" ? "OFF" : "ON";
-      }
-    }
-
-    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
-    return "ON";
   };
 
   const toggleTodayDelivery = async (customer) => {
@@ -450,7 +476,10 @@ export default function CustomerManagement() {
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
             <option value="priority">Priority</option>
-            {!isAll && <option value="remarks">Remarks A-Z</option>}
+            <option value="zone">Zone</option>
+            <option value="delivery">Delivery Plan </option>
+            <option value="status">Status </option>
+            <option value="remarks">Remarks </option>
           </select>
 
           {canDownloadExcel && (
