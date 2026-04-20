@@ -115,6 +115,28 @@ const normalizeCustomerPriority = (priority) => {
   return "P0";
 };
 
+const normalizeCustomerPotential = (value) => {
+  const VALID_POTENTIALS = [
+    "T 1","T 2","T 3","T 4","T 5","T 6","T 7",
+    "T 8","T 9","T 10","T 15","T 20","T 25","T 30",
+    "T 50","T 100",
+  ];
+
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T 1";
+
+  if (VALID_POTENTIALS.includes(raw)) return raw;
+
+  // Handle legacy format without space (T1 -> T 1)
+  const withSpace = raw.replace(/T(\d+)/, "T $1");
+  if (VALID_POTENTIALS.includes(withSpace)) return withSpace;
+
+  return "T 1";
+};
+
 const getStatusAndReasonFromType = (type, checkReason) => {
   const normalizedType = String(type || "")
     .trim()
@@ -642,12 +664,12 @@ const saveDeliveredTrays = async (req, res) => {
     // ⭐ Denormalize to customer document with actual tray count & sync todayOverride
     const todayDate = getTodayDateString();
     const deliveryDateStr = getDateStringInTimeZone(deliveryDate, INDIA_TZ);
-    
+
     const trayLabel = trays === 1 ? "1 tray" : `${trays} trays`;
     const updateData = {
       latestRemark: trayLabel,
     };
-    
+
     // ✅ If marking TODAY's delivery, also update todayOverride to OFF
     if (deliveryDateStr === todayDate) {
       updateData.todayOverride = {
@@ -655,7 +677,7 @@ const saveDeliveredTrays = async (req, res) => {
         status: "OFF",
       };
     }
-    
+
     await db.collection("customers").doc(customerId).update(updateData);
 
     cache.del(`userDeliveries:${customerId}`);
@@ -955,6 +977,41 @@ const updateCustomerPriority = async (req, res) => {
   }
 };
 
+const updateCustomerPotential = async (req, res) => {
+  try {
+    const { id, potential } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Customer ID is required" });
+    }
+
+    if (potential === undefined || potential === null) {
+      return res.status(400).json({ message: "Potential is required" });
+    }
+
+    const normalizedPotential = normalizeCustomerPotential(potential);
+
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(id);
+
+    await customerRef.update({ potential: normalizedPotential });
+
+    try {
+      cache.del("userInfo");
+    } catch (cacheErr) {
+      console.warn("Failed to clear userInfo cache:", cacheErr);
+    }
+
+    return res.status(200).json({
+      message: "Potential updated successfully",
+      potential: normalizedPotential,
+    });
+  } catch (err) {
+    console.error("updateCustomerPotential error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 // Save skip delivery config per customer
 // POST /customer/skip-config
 // Body: { id, type: "MANUAL"|"AUTO", days: number, startDate: "YYYY-MM-DD"|null }
@@ -1084,6 +1141,7 @@ export {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPriority,
+  updateCustomerPotential,
   saveSkipConfig,
   toggleTodayDelivery,
   addZone,
