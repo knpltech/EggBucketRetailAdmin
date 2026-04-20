@@ -43,6 +43,7 @@ const SupCustomerInfo = () => {
   const fetchCustomers = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/user-info`);
+      setError("");
       setCustomers(res.data || []);
     } catch {
       setError("Error fetching customer data");
@@ -79,7 +80,11 @@ const SupCustomerInfo = () => {
         zone,
       });
 
-      await fetchCustomers();
+      setCustomers((prev) =>
+        prev.map((customer) =>
+          customer.id === id ? { ...customer, zone } : customer,
+        ),
+      );
     } finally {
       setAssigningZoneId(null);
     }
@@ -111,7 +116,13 @@ const SupCustomerInfo = () => {
         ...formData,
       });
 
-      await fetchCustomers();
+      setCustomers((prev) =>
+        prev.map((customer) =>
+          customer.id === editingCustomer.id
+            ? { ...customer, ...formData }
+            : customer,
+        ),
+      );
 
       setEditingCustomer(null);
     } catch {
