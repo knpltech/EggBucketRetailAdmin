@@ -149,7 +149,7 @@ const specificUser = async (req, res) => {
       ...data,
       priority: normalizeCustomerPriority(data?.priority),
       potential: normalizeCustomerPotential(data?.potential),
-    });
+    };
   } catch (error) {
     console.error("Error fetching customer:", error);
     res.status(500).json({ error: "Failed to fetch customer data" });
