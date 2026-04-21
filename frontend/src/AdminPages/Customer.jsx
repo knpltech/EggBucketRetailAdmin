@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import {
@@ -57,10 +57,15 @@ const Customer = () => {
   // Obtain customer id from parameters
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const prefetchedCustomer = location.state?.customer || null;
 
-  const [customer, setCustomer] = useState(null);
+  const [customer, setCustomer] = useState(prefetchedCustomer);
   const [deliveries, setDeliveries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingCustomer, setLoadingCustomer] = useState(!prefetchedCustomer);
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [error, setError] = useState("");
   const [showFullImage, setShowFullImage] = useState(false);
   const [savingReasonId, setSavingReasonId] = useState("");
@@ -77,33 +82,84 @@ const Customer = () => {
     return trays === 1 ? "1 tray" : `${trays} trays`;
   };
 
-  // Fetch details of customer and deliveries using customer id
+  // Fetch basic customer info on page load
   useEffect(() => {
-    const fetchCustomerData = async () => {
+    let isMounted = true;
+
+    const fetchCustomer = async () => {
+      if (prefetchedCustomer?.id === id) {
+        setLoadingCustomer(false);
+        return;
+      }
+
       try {
-        // Both customer details and customer deliveries
-        const [customerRes, deliveriesRes] = await Promise.all([
-          axios.get(`${ADMIN_PATH}/customer-info/${id}`),
-          axios.get(`${ADMIN_PATH}/customer/deliveries/${id}`),
-        ]);
+        const customerRes = await axios.get(`${ADMIN_PATH}/customer-info/${id}`);
+        if (!isMounted) return;
         setCustomer(customerRes.data);
-        setDeliveries(deliveriesRes.data.deliveries || []);
       } catch (err) {
-        console.error("Error fetching customer or deliveries:", err);
-        setError("Failed to load customer or delivery data.");
+        if (!isMounted) return;
+        console.error("Error fetching customer:", err);
+        setError("Failed to load customer data.");
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoadingCustomer(false);
+        }
       }
     };
 
-    fetchCustomerData();
-  }, [id]);
+    setError("");
+    setReasonError("");
+    setCustomer(prefetchedCustomer?.id === id ? prefetchedCustomer : null);
+    setDeliveries([]);
+    setLoadingCustomer(!prefetchedCustomer || prefetchedCustomer.id !== id);
+    setLoadingDeliveries(false);
+    setShowHistory(false);
+    setHistoryLoaded(false);
+
+    fetchCustomer();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, prefetchedCustomer]);
+
+  const handleShowHistory = async () => {
+    if (showHistory || loadingDeliveries) return;
+
+    setShowHistory(true);
+    await loadDeliveries();
+  };
+
+  const loadDeliveries = async () => {
+    if (historyLoaded) {
+      return deliveries;
+    }
+
+    setReasonError("");
+    setLoadingDeliveries(true);
+
+    try {
+      const deliveriesRes = await axios.get(
+        `${ADMIN_PATH}/customer/deliveries/${id}`,
+      );
+      const nextDeliveries = deliveriesRes.data.deliveries || [];
+      setDeliveries(nextDeliveries);
+      setHistoryLoaded(true);
+      return nextDeliveries;
+    } catch (err) {
+      console.error("Error fetching deliveries:", err);
+      setReasonError("Failed to load delivery data.");
+      return null;
+    } finally {
+      setLoadingDeliveries(false);
+    }
+  };
 
   // Download csv file of customer deliveries
-  const handleDownloadCSV = () => {
-    if (!deliveries.length) return;
+  const handleDownloadCSV = (sourceDeliveries = deliveries) => {
+    if (!sourceDeliveries.length) return;
 
-    const rows = deliveries.map((delivery) => {
+    const rows = sourceDeliveries.map((delivery) => {
       const dateObj = new Date(delivery.timestamp._seconds * 1000);
       const date = dateObj.toLocaleDateString();
       const time = dateObj.toLocaleTimeString();
@@ -134,6 +190,18 @@ const Customer = () => {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const handleDownloadWithFetch = async () => {
+    let sourceDeliveries = deliveries;
+
+    if (!historyLoaded) {
+      const loadedDeliveries = await loadDeliveries();
+      if (!loadedDeliveries?.length) return;
+      sourceDeliveries = loadedDeliveries;
+    }
+
+    handleDownloadCSV(sourceDeliveries);
   };
 
   const handleSelectCheckedReason = async (deliveryId, reason) => {
@@ -303,7 +371,7 @@ const Customer = () => {
   };
 
   // Display a loading UI while the data is being fetched
-  if (loading) {
+  if (loadingCustomer) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center">
@@ -386,6 +454,7 @@ const Customer = () => {
                 <img
                   src={customer.imageUrl}
                   alt={customer.name}
+                  loading="eager"
                   className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-full border-4 border-white shadow-md cursor-pointer hover:scale-105 transition-transform"
                   onClick={() => setShowFullImage(true)}
                 />
@@ -449,6 +518,7 @@ const Customer = () => {
                       <img
                         src={mapUrl}
                         alt="Google Map"
+                        loading="lazy"
                         className="w-full h-48 object-cover hover:opacity-90 transition-opacity"
                       />
                       <div className="bg-gray-50 px-4 py-2 text-center">
@@ -468,32 +538,57 @@ const Customer = () => {
                 <h3 className="text-lg font-bold text-gray-900">
                   Delivery History
                 </h3>
-                {deliveries.length > 0 && (
-                  <div className="mt-2 sm:mt-0 flex items-center gap-2">
-                    {hasAnyResettableData && (
-                      <button
-                        onClick={handleResetAllCheckedReasons}
-                        disabled={isResettingAllReasons}
-                        className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md shadow-sm text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-60 transition-colors"
-                      >
-                        {isResettingAllReasons ? "Resetting..." : "Reset All"}
-                      </button>
-                    )}
-                    <button
-                      onClick={handleDownloadCSV}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
-                    >
-                      <FiDownload className="-ml-1 mr-2" />
-                      Download CSV
-                    </button>
-                  </div>
-                )}
+                <div className="mt-2 sm:mt-0 flex items-center gap-2">
+                  <button
+                    onClick={handleShowHistory}
+                    disabled={showHistory || loadingDeliveries}
+                    className="inline-flex items-center px-4 py-2 border border-blue-200 text-sm font-medium rounded-md shadow-sm text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-60 transition-colors"
+                  >
+                    {showHistory ? "History Shown" : "Show History"}
+                  </button>
+                  <button
+                    onClick={handleDownloadWithFetch}
+                    disabled={loadingDeliveries}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-60 transition-colors"
+                  >
+                    <FiDownload className="-ml-1 mr-2" />
+                    Download CSV
+                  </button>
+                  {showHistory && deliveries.length > 0 && (
+                    <>
+                      {hasAnyResettableData && (
+                        <button
+                          onClick={handleResetAllCheckedReasons}
+                          disabled={isResettingAllReasons}
+                          className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md shadow-sm text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-60 transition-colors"
+                        >
+                          {isResettingAllReasons ? "Resetting..." : "Reset All"}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
-              {deliveries.length > 0 ? (
+              {!showHistory ? (
+                <div className="bg-gray-50 rounded-lg p-6 text-center">
+                  <p className="text-sm text-gray-600">
+                    Delivery history is hidden by default to load this page faster.
+                  </p>
+                </div>
+              ) : loadingDeliveries ? (
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <div className="animate-pulse space-y-4">
+                    <div className="h-4 w-48 bg-gray-200 rounded"></div>
+                    <div className="h-16 w-full bg-gray-200 rounded"></div>
+                    <div className="h-16 w-full bg-gray-200 rounded"></div>
+                    <div className="h-16 w-full bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              ) : deliveries.length > 0 ? (
                 <div className="bg-gray-50 rounded-lg overflow-hidden">
                   <ul className="divide-y divide-gray-200">
-                    {deliveries.map((delivery, index) => {
+                    {deliveries.map((delivery) => {
                       const deliveryDate = new Date(
                         delivery.timestamp._seconds * 1000,
                       );
@@ -504,7 +599,7 @@ const Customer = () => {
                           .toLowerCase() === "reached";
                       return (
                         <li
-                          key={index}
+                          key={delivery.id}
                           className="p-4 hover:bg-gray-100 transition-colors"
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">

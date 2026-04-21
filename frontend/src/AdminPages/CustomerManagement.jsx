@@ -36,8 +36,8 @@ export default function CustomerManagement() {
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
+  const [updatingPotentialId, setUpdatingPotentialId] = useState(null);
 
-  const isAll = activeTab === "ALL";
   const canDownloadExcel = true;
 
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -105,6 +105,64 @@ export default function CustomerManagement() {
     return "Pending";
   };
 
+  // ⭐ NEW: Display remarks with proper formatting
+  // - If Delivered: show "X tray/trays" only if count > 0
+  // - If Checked: show reason (e.g., "PRICE MISMATCH")
+  // - If Pending: show nothing
+  const getRemarkDisplay = (customer) => {
+    const status = getLatestStatus(customer);
+    const remark = customer.latestRemark || "";
+
+    if (status === "Delivered") {
+      // Extract tray count from "2 trays" format
+      const match = remark.match(/^(\d+)\s+trays?$/i);
+      if (match) {
+        const count = parseInt(match[1], 10);
+        if (count > 0) {
+          return count === 1 ? "1 tray" : `${count} trays`;
+        }
+      }
+      return "";
+    }
+
+    if (status === "Checked") {
+      // Show reason only if it exists
+      return remark && remark !== "-" ? remark : "";
+    }
+
+    // Pending: show nothing
+    return "";
+  };
+
+  const getTodayEffectiveStatus = (customer) => {
+    const last8Days = customer?.last8Days || {};
+    const override = customer?.todayOverride;
+
+    // ✅ PRIORITY 1: Delivery status is primary source of truth
+    // If delivered today, always return OFF (regardless of override)
+    if (last8Days[todayDate] === "delivered") {
+      return "OFF";
+    }
+
+    // ✅ PRIORITY 2: Manual override (if no delivery status today)
+    if (override) {
+      const overrideDate = override?.date
+        ? String(override.date).slice(0, 10)
+        : null;
+
+      // Only use override if it's for TODAY
+      if (overrideDate === todayDate) {
+        const status = String(override.status || "")
+          .trim()
+          .toUpperCase();
+        return status === "OFF" ? "OFF" : "ON";
+      }
+    }
+
+    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
+    return "ON";
+  };
+
   // ================= FILTER =================
   // ⭐ OPTIMIZED: All filtering & sorting happens on frontend, no API calls
 
@@ -131,11 +189,38 @@ export default function CustomerManagement() {
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
 
-    // SORT
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
+    } else if (sortBy === "zone") {
+      list.sort((a, b) =>
+        String(a.zone || "")
+          .toLowerCase()
+          .localeCompare(String(b.zone || "").toLowerCase()),
+      );
+    } else if (sortBy === "delivery") {
+      const onFirst = (customer) =>
+        getTodayEffectiveStatus(customer) === "ON" ? 0 : 1;
+
+      list.sort((a, b) => {
+        const diff = onFirst(a) - onFirst(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
+    } else if (sortBy === "status") {
+      const statusRank = (customer) => {
+        const status = getLatestStatus(customer).toLowerCase();
+        if (status === "delivered") return 0;
+        if (status === "checked") return 1;
+        return 2;
+      };
+
+      list.sort((a, b) => {
+        const diff = statusRank(a) - statusRank(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "priority") {
       const rank = (p) => {
         const v = normalizePriority(p);
@@ -150,17 +235,17 @@ export default function CustomerManagement() {
       });
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
-        (c) => c.latestRemark && c.latestRemark !== "-",
+        (c) => getRemarkDisplay(c) && getRemarkDisplay(c) !== "",
       );
 
       const withoutRemarks = list.filter(
-        (c) => !c.latestRemark || c.latestRemark === "-",
+        (c) => !getRemarkDisplay(c) || getRemarkDisplay(c) === "-",
       );
 
       withRemarks.sort((a, b) =>
-        a.latestRemark
+        getRemarkDisplay(a)
           .toLowerCase()
-          .localeCompare(b.latestRemark.toLowerCase()),
+          .localeCompare(getRemarkDisplay(b).toLowerCase()),
       );
 
       withoutRemarks.sort((a, b) =>
@@ -221,24 +306,6 @@ export default function CustomerManagement() {
     } finally {
       setUpdatingPriorityId(null);
     }
-  };
-
-  const getTodayEffectiveStatus = (customer) => {
-    const override = customer?.todayOverride;
-
-    const overrideDate = override?.date
-      ? String(override.date).slice(0, 10)
-      : null;
-
-    if (!override || overrideDate !== todayDate) {
-      return "ON";
-    }
-
-    const status = String(override.status || "")
-      .trim()
-      .toUpperCase();
-
-    return status === "OFF" ? "OFF" : "ON";
   };
 
   const toggleTodayDelivery = async (customer) => {
@@ -358,6 +425,53 @@ export default function CustomerManagement() {
     }
   };
 
+  const updatePotential = async (customer) => {
+    if (!customer?.id || updatingPotentialId === customer.id) return;
+
+    const currentPotential = normalizePotential(customer.potential);
+    const nextPotential = getNextPotential(currentPotential);
+
+    const previousPotential = currentPotential;
+
+    // Optimistic UI: update only this row, no full refetch.
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id ? { ...row, potential: nextPotential } : row,
+      ),
+    );
+
+    try {
+      setUpdatingPotentialId(customer.id);
+
+      const res = await axios.post(`${ADMIN_PATH}/customer/potential`, {
+        id: customer.id,
+        potential: nextPotential,
+      });
+
+      const savedPotential = res?.data?.potential;
+      if (savedPotential) {
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id
+              ? { ...row, potential: normalizePotential(savedPotential) }
+              : row,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("Potential update error:", err);
+
+      // Revert optimistic update if server write failed.
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id ? { ...row, potential: previousPotential } : row,
+        ),
+      );
+    } finally {
+      setUpdatingPotentialId(null);
+    }
+  };
+
   // ================= EXCEL =================
 
   const downloadExcel = () => {
@@ -369,7 +483,7 @@ export default function CustomerManagement() {
       Zone: c.zone || "",
       Priority: normalizePriority(c.priority),
       Status: normalizeStatus(c.latestStatus),
-      Remarks: c.latestRemark || "-",
+      Remarks: getRemarkDisplay(c),
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -410,7 +524,10 @@ export default function CustomerManagement() {
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
             <option value="priority">Priority</option>
-            {!isAll && <option value="remarks">Remarks A-Z</option>}
+            <option value="zone">Zone</option>
+            <option value="delivery">Delivery Plan </option>
+            <option value="status">Status </option>
+            <option value="remarks">Remarks </option>
           </select>
 
           {canDownloadExcel && (
@@ -450,6 +567,7 @@ export default function CustomerManagement() {
               <th className="p-3">Delivery Plan</th>
               <th className="p-3">Skip</th>
               <th className="p-3">Priority</th>
+              <th className="p-3">Potential</th>
               <th className="p-3">Status</th>
               <th className="p-3">Remarks</th>
             </tr>
@@ -532,6 +650,17 @@ export default function CustomerManagement() {
                 </td>
 
                 <td className="p-3">
+                  <button
+                    disabled={updatingPotentialId === c.id}
+                    onClick={() => updatePotential(c)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${updatingPotentialId === c.id ? "opacity-70" : ""}`}
+                    style={{ backgroundColor: getPotentialColor(c.potential) }}
+                  >
+                    {normalizePotential(c.potential)}
+                  </button>
+                </td>
+
+                <td className="p-3">
                   <span
                     className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
                   >
@@ -539,7 +668,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                <td className="p-3 text-left">{c.latestRemark || "-"}</td>
+                <td className="p-3 text-left">{getRemarkDisplay(c)}</td>
               </tr>
             ))}
           </tbody>
@@ -642,6 +771,51 @@ function getDateStringInTimeZone(date, timeZone) {
   }
 
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizePotential(value) {
+  const VALID_POTENTIALS = [
+    "T 1","T 2","T 3","T 4","T 5","T 6",
+    "T 7","T 8","T 9","T 10","T 15","T 20",
+    "T 25","T 30","T 50","T 100",
+  ];
+
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T 1";
+
+  if (VALID_POTENTIALS.includes(raw)) return raw;
+
+  // Handle legacy format without space (T1 -> T 1)
+  const withSpace = raw.replace(/T(\d+)/, "T $1");
+  if (VALID_POTENTIALS.includes(withSpace)) return withSpace;
+
+  return "T 1";
+}
+
+function getNextPotential(currentPotential) {
+  const POTENTIALS = [
+    "T 1","T 2","T 3","T 4","T 5","T 6","T 7",
+    "T 8","T 9","T 10","T 15","T 20","T 25","T 30","T 50",
+    "T 100",
+  ];
+
+  const normalized = normalizePotential(currentPotential);
+  const index = POTENTIALS.indexOf(normalized);
+  const next = (index + 1) % POTENTIALS.length;
+  return POTENTIALS[next];
+}
+
+function getPotentialColor(value) {
+  const potential = normalizePotential(value);
+  const num = parseInt(potential.slice(2), 10);
+
+  // T 1-T 7 = red, T 8-T 15 = orange, T 20+ = green
+  if (num <= 7) return "#FF3B30"; // red
+  if (num <= 15) return "#FB8C00"; // orange
+  return "#0F9D58"; // green
 }
 
 function clampDays0to6(value) {

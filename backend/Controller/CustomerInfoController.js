@@ -22,6 +22,28 @@ const normalizeCustomerPriority = (value) => {
   return "P0";
 };
 
+const normalizeCustomerPotential = (value) => {
+  const VALID_POTENTIALS = [
+    "T 1","T 2","T 3","T 4","T 5","T 6","T 7",
+    "T 8","T 9","T 10","T 15","T 20","T 25","T 30",
+    "T 50","T 100",
+  ];
+
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T 1";
+
+  if (VALID_POTENTIALS.includes(raw)) return raw;
+
+  // Handle legacy format without space (T1 -> T 1)
+  const withSpace = raw.replace(/T(\d+)/, "T $1");
+  if (VALID_POTENTIALS.includes(withSpace)) return withSpace;
+
+  return "T 1";
+};
+
 const getStatusAndReasonFromType = (type, checkReason = "") => {
   const DELIVERY_REASON_MAP = {
     price_mismatch: "Price Mismatch",
@@ -682,6 +704,7 @@ const addCustomer = async (req, res) => {
       location,
       zone: "UNASSIGNED",
       priority: "P0",
+      potential: "T 1",
       remarks: "",
     });
     await counterRef.set({ counter: current + 1 });

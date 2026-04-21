@@ -46,6 +46,7 @@ import {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPriority,
+  updateCustomerPotential,
   addZone,
   getZones,
   getAnalyticsLast8,
@@ -73,6 +74,7 @@ router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single("image"), addCustomer);
 router.post("/customer/status", updateCustomerMeta);
 router.post("/customer/priority", updateCustomerPriority);
+router.post("/customer/potential", updateCustomerPotential);
 router.post("/customer/delivery-reason", saveCheckedReason);
 router.post("/customer/delivery-reason/reset-all", resetAllCheckedReasons);
 router.post("/customer/delivery-trays", saveDeliveredTrays);

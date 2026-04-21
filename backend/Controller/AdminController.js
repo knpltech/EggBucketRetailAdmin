@@ -33,7 +33,6 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
-
 // HELPER: Maintain denormalized last8Days field in customer doc
 
 const updateLast8Days = async (db, customerId, deliveryDate, type) => {
@@ -55,20 +54,23 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
     let last8Days = customerData.last8Days || {};
 
     // Normalize type to status
-    const normalizedType = String(type || "").trim().toLowerCase();
+    const normalizedType = String(type || "")
+      .trim()
+      .toLowerCase();
     let status = "pending";
     if (normalizedType === "delivered") {
       status = "delivered";
     } else if (
       ["reached", "price_mismatch", "stock_available", "other_vendor"].includes(
-        normalizedType
+        normalizedType,
       )
     ) {
       status = "reached";
     }
 
     // Update the specific date entry
-    const dateStr = deliveryDate instanceof Date
+    const dateStr =
+      deliveryDate instanceof Date
         ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
         : String(deliveryDate);
 
@@ -99,7 +101,6 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
     }
   } catch (err) {
     console.error("updateLast8Days error:", err);
-
   }
 };
 
@@ -112,6 +113,28 @@ const normalizeCustomerPriority = (priority) => {
   if (/^P[0-7]$/.test(p)) return p;
   if (/^[0-7]$/.test(p)) return `P${p}`;
   return "P0";
+};
+
+const normalizeCustomerPotential = (value) => {
+  const VALID_POTENTIALS = [
+    "T 1","T 2","T 3","T 4","T 5","T 6","T 7",
+    "T 8","T 9","T 10","T 15","T 20","T 25","T 30",
+    "T 50","T 100",
+  ];
+
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T 1";
+
+  if (VALID_POTENTIALS.includes(raw)) return raw;
+
+  // Handle legacy format without space (T1 -> T 1)
+  const withSpace = raw.replace(/T(\d+)/, "T $1");
+  if (VALID_POTENTIALS.includes(withSpace)) return withSpace;
+
+  return "T 1";
 };
 
 const getStatusAndReasonFromType = (type, checkReason) => {
@@ -238,6 +261,13 @@ const updateCustomerMeta = async (req, res) => {
 
     await customerRef.update(updateData);
 
+    try {
+      cache.del("customerInfo:userInfo");
+      cache.del(`customer:${id}`);
+    } catch (cacheError) {
+      console.warn("Failed to invalidate customer caches:", cacheError);
+    }
+
     return res.status(200).json({
       message: "Customer updated successfully",
       updated: updateData,
@@ -262,6 +292,7 @@ const addZone = async (req, res) => {
     }
 
     await db.collection("zones").add({ name });
+    cache.del("zones:list");
 
     res.json({ message: "Zone added" });
   } catch (e) {
@@ -271,11 +302,19 @@ const addZone = async (req, res) => {
 };
 
 const getZones = async (req, res) => {
+  const cacheKey = "zones:list";
+
   try {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const db = getFirestore();
     const snap = await db.collection("zones").get();
 
     const zones = snap.docs.map((d) => d.data().name);
+    cache.set(cacheKey, zones, 300);
     res.json(zones);
   } catch (e) {
     res.status(500).json({ message: "Error fetching zones" });
@@ -638,10 +677,24 @@ const saveDeliveredTrays = async (req, res) => {
     const deliveryDate = new Date(deliveryId);
     await updateLast8Days(db, customerId, deliveryDate, "delivered");
 
-    // ⭐ Denormalize to customer document
-    await dbcollection("customers").doc(customerId).update({
-      latestRemark: "Delivered",
-    });
+    // ⭐ Denormalize to customer document with actual tray count & sync todayOverride
+    const todayDate = getTodayDateString();
+    const deliveryDateStr = getDateStringInTimeZone(deliveryDate, INDIA_TZ);
+
+    const trayLabel = trays === 1 ? "1 tray" : `${trays} trays`;
+    const updateData = {
+      latestRemark: trayLabel,
+    };
+
+    // ✅ If marking TODAY's delivery, also update todayOverride to OFF
+    if (deliveryDateStr === todayDate) {
+      updateData.todayOverride = {
+        date: todayDate,
+        status: "OFF",
+      };
+    }
+
+    await db.collection("customers").doc(customerId).update(updateData);
 
     cache.del(`userDeliveries:${customerId}`);
     cache.del("latestRemarks");
@@ -940,6 +993,41 @@ const updateCustomerPriority = async (req, res) => {
   }
 };
 
+const updateCustomerPotential = async (req, res) => {
+  try {
+    const { id, potential } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Customer ID is required" });
+    }
+
+    if (potential === undefined || potential === null) {
+      return res.status(400).json({ message: "Potential is required" });
+    }
+
+    const normalizedPotential = normalizeCustomerPotential(potential);
+
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(id);
+
+    await customerRef.update({ potential: normalizedPotential });
+
+    try {
+      cache.del("userInfo");
+    } catch (cacheErr) {
+      console.warn("Failed to clear userInfo cache:", cacheErr);
+    }
+
+    return res.status(200).json({
+      message: "Potential updated successfully",
+      potential: normalizedPotential,
+    });
+  } catch (err) {
+    console.error("updateCustomerPotential error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 // Save skip delivery config per customer
 // POST /customer/skip-config
 // Body: { id, type: "MANUAL"|"AUTO", days: number, startDate: "YYYY-MM-DD"|null }
@@ -1069,6 +1157,7 @@ export {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPriority,
+  updateCustomerPotential,
   saveSkipConfig,
   toggleTodayDelivery,
   addZone,

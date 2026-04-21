@@ -143,7 +143,7 @@ const CustomerInfo = () => {
 
     await axios.post(`${ADMIN_PATH}/zones/add`, { name });
 
-    await fetchZones();
+    setZones((prev) => (prev.includes(name) ? prev : [...prev, name]));
 
     alert("Zone Added");
   };
@@ -326,7 +326,9 @@ const CustomerInfo = () => {
                 key={c.id}
                 className="border-t hover:bg-gray-50"
                 onClick={() =>
-                  navigate(`/admin/customer-info/${c.id}`)
+                  navigate(`/admin/customer-info/${c.id}`, {
+                    state: { customer: c },
+                  })
                 }
               >
 
@@ -335,6 +337,7 @@ const CustomerInfo = () => {
                 <td className="p-3">
                   <img
                     src={c.imageUrl}
+                    loading="lazy"
                     className="w-10 h-10 rounded-full object-cover"
                   />
                 </td>
