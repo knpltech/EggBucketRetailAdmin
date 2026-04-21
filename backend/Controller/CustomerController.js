@@ -1,6 +1,13 @@
 import { getFirestore } from "firebase-admin/firestore";
 import cache from "./cache.js";
 
+const invalidateUserInfoCache = async () => {
+  const keys = await cache.keysAsync("customerInfo:userInfo*");
+  if (keys.length > 0) {
+    await cache.delAsync(keys);
+  }
+};
+
 // Utility to delete a subcollection (since Firestore doesn't auto-delete subcollections)
 const deleteSubcollection = async (parentDocRef, subcollectionName) => {
   const subcollectionSnapshot = await parentDocRef
@@ -39,10 +46,10 @@ const deleteCustomer = async (req, res) => {
     await customerRef.delete();
 
     try {
-      cache.del("customerInfo:userInfo");
-      cache.del(`customer:${id}`);
-      cache.del(`userDeliveries:${id}`);
-      cache.del("allCustomerDeliveries");
+      await invalidateUserInfoCache();
+      await cache.delAsync(`customer:${id}`);
+      await cache.delAsync(`userDeliveries:${id}`);
+      await cache.delAsync("allCustomerDeliveries");
     } catch (cacheError) {
       console.warn("Failed to invalidate customer caches:", cacheError);
     }
@@ -74,8 +81,8 @@ const updateCustomer = async (req, res) => {
     await customerRef.update({ name, business, phone });
 
     try {
-      cache.del("customerInfo:userInfo");
-      cache.del(`customer:${id}`);
+      await invalidateUserInfoCache();
+      await cache.delAsync(`customer:${id}`);
     } catch (cacheError) {
       console.warn("Failed to invalidate customer caches:", cacheError);
     }

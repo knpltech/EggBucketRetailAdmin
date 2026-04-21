@@ -5,6 +5,8 @@ import { FaTrash, FaEdit } from "react-icons/fa";
 import { FiEdit2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 
+const PAGE_SIZE = 15;
+
 const CustomerInfo = () => {
   const [customers, setCustomers] = useState([]);
   const [zones, setZones] = useState([]);
@@ -25,6 +27,10 @@ const CustomerInfo = () => {
   });
 
   const [sortOption, setSortOption] = useState("name");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageLoading, setPageLoading] = useState(false);
 
   const navigate = useNavigate();
 
@@ -38,20 +44,89 @@ const CustomerInfo = () => {
     setLoading(true);
 
     try {
-      await Promise.all([fetchCustomers(), fetchZones()]);
+      await Promise.all([
+        fetchCustomers({ page: 1, sortBy: sortOption }),
+        fetchZones(),
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = async ({ page = 1, sortBy } = {}) => {
+    setPageLoading(true);
+
     try {
-      const res = await axios.get(`${ADMIN_PATH}/user-info`);
+      const res = await axios.get(`${ADMIN_PATH}/user-info`, {
+        params: {
+          limit: PAGE_SIZE,
+          page,
+          sortBy: sortBy || sortOption,
+        },
+      });
+
+      const payload = res.data || {};
+      const responseCustomers = Array.isArray(payload)
+        ? payload
+        : payload.customers || [];
+      const serverHasNextPage = Boolean(payload?.pagination?.hasNextPage);
+      const serverTotalPagesRaw = Number(payload?.pagination?.totalPages);
+      const serverCurrentPageRaw = Number(payload?.pagination?.currentPage);
+      const serverTotalPages =
+        Number.isFinite(serverTotalPagesRaw) && serverTotalPagesRaw > 0
+          ? Math.floor(serverTotalPagesRaw)
+          : 1;
+      const resolvedCurrentPage =
+        Number.isFinite(serverCurrentPageRaw) && serverCurrentPageRaw > 0
+          ? Math.floor(serverCurrentPageRaw)
+          : page;
+      const minimumExpectedPages = serverHasNextPage
+        ? resolvedCurrentPage + 1
+        : resolvedCurrentPage;
+      const safeTotalPages = Math.max(serverTotalPages, minimumExpectedPages, 1);
+
       setError("");
-      setCustomers(res.data || []);
+      setCustomers(responseCustomers);
+      setCurrentPage(Array.isArray(payload) ? page : resolvedCurrentPage);
+      setTotalPages(
+        Array.isArray(payload)
+          ? Math.max(1, Math.ceil(responseCustomers.length / PAGE_SIZE))
+          : safeTotalPages,
+      );
+      setHasNextPage(Array.isArray(payload) ? false : serverHasNextPage);
     } catch {
       setError("Error fetching customer data");
+    } finally {
+      setPageLoading(false);
     }
+  };
+
+  const handleNextPage = () => {
+    if (!hasNextPage || pageLoading || currentPage >= totalPages) return;
+    fetchCustomers({ page: currentPage + 1 });
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage <= 1 || pageLoading) return;
+
+    fetchCustomers({ page: currentPage - 1 });
+  };
+
+  const handlePageClick = (pageNumber) => {
+    if (pageLoading || pageNumber === currentPage) return;
+    fetchCustomers({ page: pageNumber });
+  };
+
+  const handleSortChange = async (e) => {
+    const nextSortOption = e.target.value;
+
+    setSortOption(nextSortOption);
+    setCurrentPage(1);
+
+    await fetchCustomers({
+      page: 1,
+      sortBy: nextSortOption,
+    });
   };
 
   const fetchZones = async () => {
@@ -84,11 +159,9 @@ const CustomerInfo = () => {
         zone,
       });
 
-      setCustomers((prev) =>
-        prev.map((customer) =>
-          customer.id === id ? { ...customer, zone } : customer,
-        ),
-      );
+      await fetchCustomers({
+        page: currentPage,
+      });
     } finally {
       setAssigningZoneId(null);
     }
@@ -136,13 +209,9 @@ const CustomerInfo = () => {
         ...formData,
       });
 
-      setCustomers((prev) =>
-        prev.map((customer) =>
-          customer.id === editingCustomer.id
-            ? { ...customer, ...formData }
-            : customer,
-        ),
-      );
+      await fetchCustomers({
+        page: currentPage,
+      });
 
       setEditingCustomer(null);
     } catch {
@@ -150,17 +219,38 @@ const CustomerInfo = () => {
     }
   };
 
-  // SORT 
-
   const sortedCustomers = [...customers].sort((a, b) => {
-    if (sortOption === "name") {
-      return a.name.localeCompare(b.name);
+    if (sortOption === "createdAt") {
+      return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
     }
 
-    return new Date(b.createdAt) - new Date(a.createdAt);
+    return String(a?.name || "").localeCompare(String(b?.name || ""));
   });
 
-  
+  const getPageButtons = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    const normalized = [...pages]
+      .filter((page) => page >= 1 && page <= totalPages)
+      .sort((a, b) => a - b);
+
+    const withEllipsis = [];
+    for (let i = 0; i < normalized.length; i += 1) {
+      const page = normalized[i];
+      const prev = normalized[i - 1];
+      if (i > 0 && page - prev > 1) {
+        withEllipsis.push(`ellipsis-${prev}`);
+      }
+      withEllipsis.push(page);
+    }
+
+    return withEllipsis;
+  };
+
+  const pageButtons = getPageButtons();
 
   if (loading) {
     return (
@@ -190,7 +280,7 @@ const CustomerInfo = () => {
 
           <select
             value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
+            onChange={handleSortChange}
             className="border px-3 py-2 rounded"
           >
             <option value="name">Name</option>
@@ -353,6 +443,59 @@ const CustomerInfo = () => {
 
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+
+        <button
+          type="button"
+          onClick={handlePrevPage}
+          disabled={currentPage === 1 || pageLoading}
+          className="bg-gray-200 text-gray-800 px-4 py-2 rounded disabled:opacity-50"
+        >
+          Previous
+        </button>
+
+        <div className="flex items-center gap-2">
+          {pageButtons.map((pageItem) => {
+            if (typeof pageItem === "string") {
+              return (
+                <span key={pageItem} className="px-2 text-gray-500">
+                  ...
+                </span>
+              );
+            }
+
+            const isActive = pageItem === currentPage;
+
+            return (
+              <button
+                key={pageItem}
+                type="button"
+                onClick={() => handlePageClick(pageItem)}
+                disabled={pageLoading || isActive}
+                className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
+              >
+                {pageItem}
+              </button>
+            );
+          })}
+
+          <span className="text-sm text-gray-700">
+            {currentPage}/{totalPages}
+            {pageLoading ? " (Loading...)" : ""}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleNextPage}
+          disabled={!hasNextPage || pageLoading}
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+        >
+          Next
+        </button>
+
       </div>
 
       {/* EDIT MODAL */}

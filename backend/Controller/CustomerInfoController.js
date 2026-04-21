@@ -1,8 +1,13 @@
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldPath, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
+
+const DEFAULT_CUSTOMER_PAGE_SIZE = 15;
+const MAX_CUSTOMER_PAGE_SIZE = 50;
+const USER_INFO_CACHE_VERSION = "v2";
+const TOTAL_CUSTOMERS_CACHE_KEY = `customerInfo:userInfo:${USER_INFO_CACHE_VERSION}:totalCustomers`;
 
 const normalizeCustomerPriority = (value) => {
   const raw = String(value ?? "")
@@ -81,47 +86,288 @@ const getStatusAndReasonFromType = (type, checkReason = "") => {
   return { status: "Pending", reason: "" };
 };
 
-const invalidateCustomerInfoCache = (customerId) => {
+const parsePageLimit = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_CUSTOMER_PAGE_SIZE;
+  }
+
+  return Math.min(parsed, MAX_CUSTOMER_PAGE_SIZE);
+};
+
+const parsePageNumber = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 1;
+  }
+
+  return parsed;
+};
+
+const normalizeSortBy = (value) => {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw === "createdAt" ? "createdAt" : "name";
+};
+
+const toBase64Url = (base64Value) =>
+  String(base64Value)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+
+const fromBase64Url = (base64UrlValue) => {
+  const normalized = String(base64UrlValue)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const remainder = normalized.length % 4;
+  if (remainder === 0) {
+    return normalized;
+  }
+
+  return `${normalized}${"=".repeat(4 - remainder)}`;
+};
+
+const encodeCursor = (payload) => {
+  const base64 = Buffer.from(JSON.stringify(payload), "utf8").toString(
+    "base64",
+  );
+  return toBase64Url(base64);
+};
+
+const decodeCursor = (cursor) => {
+  if (!cursor) return null;
+
   try {
-    cache.del("customerInfo:userInfo");
+    // 1) Preferred path for URL-safe cursors
+    const decoded = Buffer.from(fromBase64Url(cursor), "base64").toString(
+      "utf8",
+    );
+    const parsed = JSON.parse(decoded);
+
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    if (!parsed.lastId) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    try {
+      // 2) Backward-compatible fallback for legacy base64 cursors
+      const decodedLegacy = Buffer.from(String(cursor), "base64").toString(
+        "utf8",
+      );
+      const parsedLegacy = JSON.parse(decodedLegacy);
+
+      if (!parsedLegacy || typeof parsedLegacy !== "object") {
+        return null;
+      }
+
+      if (!parsedLegacy.lastId) {
+        return null;
+      }
+
+      return parsedLegacy;
+    } catch {
+      return null;
+    }
+  }
+};
+
+const invalidateCustomerInfoCache = async (customerId) => {
+  try {
+    const cacheKeys = await cache.keysAsync("customerInfo:userInfo*");
+    if (cacheKeys.length > 0) {
+      await cache.delAsync(cacheKeys);
+    }
+
+    await cache.delAsync(TOTAL_CUSTOMERS_CACHE_KEY);
+
     if (customerId) {
-      cache.del(`customer:${customerId}`);
+      await cache.delAsync(`customer:${customerId}`);
     }
   } catch (error) {
     console.warn("Failed to invalidate customer info cache:", error);
   }
 };
 
-// Fetches all customer information
-const userInfo = async (req, res) => {
-  const cacheKey = "customerInfo:userInfo";
+const getTotalCustomersCount = async (db) => {
+  const cachedTotal = await cache.getAsync(TOTAL_CUSTOMERS_CACHE_KEY);
+  if (typeof cachedTotal === "number") {
+    return cachedTotal;
+  }
+
+  let totalCustomers = 0;
 
   try {
-    const cached = cache.get(cacheKey);
+    const aggregateSnapshot = await db.collection("customers").count().get();
+    const aggregateCount = aggregateSnapshot.data()?.count;
+    const parsedCount = Number(aggregateCount);
+
+    if (Number.isFinite(parsedCount) && parsedCount >= 0) {
+      totalCustomers = Math.floor(parsedCount);
+    } else {
+      const snapshot = await db.collection("customers").get();
+      totalCustomers = snapshot.size;
+    }
+  } catch {
+    const snapshot = await db.collection("customers").get();
+    totalCustomers = snapshot.size;
+  }
+
+  await cache.setAsync(TOTAL_CUSTOMERS_CACHE_KEY, totalCustomers, 120);
+  return totalCustomers;
+};
+
+// Fetches all customer information
+const userInfo = async (req, res) => {
+  const hasPageParam = req.query.page !== undefined;
+  const isPaginatedRequest =
+    req.query.limit !== undefined ||
+    req.query.cursor !== undefined ||
+    hasPageParam;
+
+  const sortBy = normalizeSortBy(req.query.sortBy);
+  const limit = parsePageLimit(req.query.limit);
+  const requestedPage = parsePageNumber(req.query.page);
+
+  const pagingKey = hasPageParam
+    ? `page:${requestedPage}`
+    : `cursor:${req.query.cursor || "start"}`;
+
+  const cacheKey = isPaginatedRequest
+    ? `customerInfo:userInfo:${USER_INFO_CACHE_VERSION}:limit:${limit}:sort:${sortBy}:${pagingKey}`
+    : "customerInfo:userInfo";
+
+  try {
+    const cached = await cache.getAsync(cacheKey);
     if (cached) {
       return res.status(200).json(cached);
     }
 
     const db = getFirestore();
+
+    if (isPaginatedRequest) {
+      const totalCustomers = await getTotalCustomersCount(db);
+      const totalPages = Math.max(
+        1,
+        Math.ceil(Number(totalCustomers || 0) / limit),
+      );
+
+      // Prefer direct page-number based navigation for random access (e.g., jump to page 5).
+      if (hasPageParam) {
+        const currentPage = Math.min(requestedPage, totalPages);
+        const offset = (currentPage - 1) * limit;
+
+        const snapshot = await db
+          .collection("customers")
+          .orderBy(FieldPath.documentId(), "asc")
+          .offset(offset)
+          .limit(limit)
+          .get();
+
+        const customers = snapshot.docs.map((doc) => {
+          const customerData = doc.data();
+          return {
+            id: doc.id,
+            ...customerData,
+            priority: normalizeCustomerPriority(customerData?.priority),
+          };
+        });
+
+        const payload = {
+          customers,
+          pagination: {
+            limit,
+            totalCustomers,
+            totalPages,
+            currentPage,
+            hasNextPage: currentPage < totalPages,
+            hasPrevPage: currentPage > 1,
+            nextCursor: null,
+            sortBy,
+            sortDirection: "asc",
+          },
+        };
+
+        await cache.setAsync(cacheKey, payload, 120);
+        return res.status(200).json(payload);
+      }
+
+      const cursor = decodeCursor(req.query.cursor);
+
+      let query = db
+        .collection("customers")
+        .orderBy(FieldPath.documentId(), "asc")
+        .limit(limit + 1);
+
+      if (cursor) {
+        const cursorDoc = await db.collection("customers").doc(cursor.lastId).get();
+        if (cursorDoc.exists) {
+          query = query.startAfter(cursorDoc);
+        }
+      }
+
+      const snapshot = await query.get();
+      const docs = snapshot.docs;
+      const hasNextPage = docs.length > limit;
+      const pageDocs = hasNextPage ? docs.slice(0, limit) : docs;
+
+      const customers = pageDocs.map((doc) => {
+        const customerData = doc.data();
+        return {
+          id: doc.id,
+          ...customerData,
+          priority: normalizeCustomerPriority(customerData?.priority),
+        };
+      });
+
+      let nextCursor = null;
+      if (hasNextPage && pageDocs.length > 0) {
+        const lastDoc = pageDocs[pageDocs.length - 1];
+
+        nextCursor = encodeCursor({
+          lastId: lastDoc.id,
+        });
+      }
+
+      const payload = {
+        customers,
+        pagination: {
+          limit,
+          totalCustomers,
+          totalPages,
+          currentPage: 1,
+          hasNextPage,
+          hasPrevPage: false,
+          nextCursor,
+          sortBy,
+          sortDirection: "asc",
+        },
+      };
+
+      await cache.setAsync(cacheKey, payload, 120);
+      return res.status(200).json(payload);
+    }
+
     const customersSnapshot = await db.collection("customers").get();
-    const customers = [];
-
-    for (const doc of customersSnapshot.docs) {
+    const customers = customersSnapshot.docs.map((doc) => {
       const customerData = doc.data();
-
-      customers.push({
+      return {
         id: doc.id,
         ...customerData,
         priority: normalizeCustomerPriority(customerData?.priority),
-        potential: normalizeCustomerPotential(customerData?.potential),
-      });
-    }
+      };
+    });
 
-    cache.set(cacheKey, customers, 120);
-    res.status(200).json(customers);
+    await cache.setAsync(cacheKey, customers, 120);
+    return res.status(200).json(customers);
   } catch (error) {
     console.error("Error fetching customers:", error);
-    res.status(500).json({ error: "Failed to fetch customer data" });
+    return res.status(500).json({ error: "Failed to fetch customer data" });
   }
 };
 
@@ -132,7 +378,7 @@ const specificUser = async (req, res) => {
     const userId = req.params.id;
 
     const cacheKey = `customer:${userId}`;
-    const cached = cache.get(cacheKey);
+    const cached = await cache.getAsync(cacheKey);
     if (cached) {
       return res.status(200).json(cached);
     }
@@ -148,8 +394,10 @@ const specificUser = async (req, res) => {
       id: userDoc.id,
       ...data,
       priority: normalizeCustomerPriority(data?.priority),
-      potential: normalizeCustomerPotential(data?.potential),
     };
+
+    await cache.setAsync(cacheKey, payload, 120);
+    res.status(200).json(payload);
   } catch (error) {
     console.error("Error fetching customer:", error);
     res.status(500).json({ error: "Failed to fetch customer data" });
@@ -460,7 +708,7 @@ const addCustomer = async (req, res) => {
       remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
-    invalidateCustomerInfoCache();
+    await invalidateCustomerInfoCache();
     res.status(200).json({ message: "Customer added successfully" });
   } catch (error) {
     console.error("Error in addCustomer:", error);
