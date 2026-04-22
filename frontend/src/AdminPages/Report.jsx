@@ -6,6 +6,7 @@ import { ADMIN_PATH } from "../constant";
 
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
+const PAGE_SIZE = 25;
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
@@ -18,6 +19,7 @@ const Report = () => {
   const [zones, setZones] = useState([]);
   const [filteredDeliveries, setFilteredDeliveries] = useState([]);
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [savingReasonId, setSavingReasonId] = useState("");
   const [savingTraysId, setSavingTraysId] = useState("");
@@ -74,6 +76,9 @@ const Report = () => {
   const getDeliveryReason = (delivery) => {
     return delivery?.reason || delivery?.checkReason || "";
   };
+
+  const isCompletedStatus = (statusKey) =>
+    statusKey === "checked" || statusKey === "delivered";
 
   const parseTimestamp = (value) => {
     if (!value) return null;
@@ -307,7 +312,9 @@ const Report = () => {
     let temp = [...filteredDeliveries];
 
     // STATUS FILTER
-    if (statusFilter !== "all") {
+    if (statusFilter === "all") {
+      temp = temp.filter((d) => isCompletedStatus(d.statusKey));
+    } else {
       temp = temp.filter((d) => d.statusKey === statusFilter);
     }
 
@@ -356,6 +363,17 @@ const Report = () => {
     setDisplayedDeliveries(temp);
   }, [filteredDeliveries, statusFilter, sortBy, selectedAgent]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedDate, statusFilter, sortBy, selectedAgent]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(displayedDeliveries.length / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, displayedDeliveries.length]);
+
   const getStatusColor = (status) => {
     switch (status) {
       case "delivered":
@@ -368,7 +386,7 @@ const Report = () => {
   };
 
   const getStatusCounts = () => ({
-    all: filteredDeliveries.length,
+    all: filteredDeliveries.filter((d) => isCompletedStatus(d.statusKey)).length,
     delivered: filteredDeliveries.filter((d) => d.statusKey === "delivered")
       .length,
     checked: filteredDeliveries.filter((d) => d.statusKey === "checked").length,
@@ -376,6 +394,61 @@ const Report = () => {
   });
 
   const statusCounts = getStatusCounts();
+  const selectedAgentStats =
+    selectedAgent === "all"
+      ? null
+      : filteredDeliveries.reduce(
+          (stats, delivery) => {
+            const agentName = (delivery.deliveryMan?.name || "").trim();
+
+            if (agentName !== selectedAgent) {
+              return stats;
+            }
+
+            if (delivery.statusKey === "checked") {
+              stats.checked += 1;
+            }
+
+            if (delivery.statusKey === "delivered") {
+              stats.delivered += 1;
+            }
+
+            return stats;
+          },
+          { checked: 0, delivered: 0 },
+        );
+  const totalPages = Math.max(1, Math.ceil(displayedDeliveries.length / PAGE_SIZE));
+  const paginatedDeliveries = displayedDeliveries.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const getPageButtons = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    const normalized = [...pages]
+      .filter((page) => page >= 1 && page <= totalPages)
+      .sort((a, b) => a - b);
+
+    const withEllipsis = [];
+    for (let i = 0; i < normalized.length; i += 1) {
+      const page = normalized[i];
+      const prev = normalized[i - 1];
+
+      if (i > 0 && page - prev > 1) {
+        withEllipsis.push(`ellipsis-${prev}`);
+      }
+
+      withEllipsis.push(page);
+    }
+
+    return withEllipsis;
+  };
+
+  const pageButtons = getPageButtons();
 
   const downloadSummaryExcel = async () => {
     if (!startRange || !endRange) {
@@ -627,6 +700,20 @@ const Report = () => {
           </div>
         </div>
 
+        {selectedAgentStats && (
+          <div className="px-4 py-3 sm:px-6 lg:px-8 border-b bg-blue-50 flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">
+              {selectedAgent}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800 border border-yellow-300">
+              Checked: {selectedAgentStats.checked}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800 border border-green-300">
+              Delivered: {selectedAgentStats.delivered}
+            </span>
+          </div>
+        )}
+
         {/* TABLE */}
         <div className="overflow-x-auto p-2.5 sm:p-4 lg:p-6">
           <table className="w-full border rounded-xl overflow-hidden">
@@ -650,8 +737,8 @@ const Report = () => {
               </tr>
             </thead>
             <tbody className="bg-white">
-              {displayedDeliveries.length ? (
-                displayedDeliveries.map((row, i) => (
+              {paginatedDeliveries.length ? (
+                paginatedDeliveries.map((row, i) => (
                   <tr key={i} className="hover:bg-gray-50 border-b">
                     <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
                       {row.custid}
@@ -793,6 +880,58 @@ const Report = () => {
             </tbody>
           </table>
         </div>
+
+        {!loading && displayedDeliveries.length > 0 && (
+          <div className="px-4 pb-4 sm:px-6 lg:px-8 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="bg-gray-200 text-gray-800 px-4 py-2 rounded disabled:opacity-50"
+            >
+              Previous
+            </button>
+
+            <div className="flex items-center gap-2">
+              {pageButtons.map((pageItem) => {
+                if (typeof pageItem === "string") {
+                  return (
+                    <span key={pageItem} className="px-2 text-gray-500">
+                      ...
+                    </span>
+                  );
+                }
+
+                const isActive = pageItem === currentPage;
+
+                return (
+                  <button
+                    key={pageItem}
+                    type="button"
+                    onClick={() => setCurrentPage(pageItem)}
+                    disabled={isActive}
+                    className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
+                  >
+                    {pageItem}
+                  </button>
+                );
+              })}
+
+              <span className="text-sm text-gray-700">
+                {currentPage}/{totalPages}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
