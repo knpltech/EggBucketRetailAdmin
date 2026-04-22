@@ -5,7 +5,7 @@ import { FaTrash, FaEdit } from "react-icons/fa";
 import { FiEdit2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 25;
 
 const CustomerInfo = () => {
   const [customers, setCustomers] = useState([]);
@@ -175,7 +175,12 @@ const CustomerInfo = () => {
         data: { id },
       });
 
-      setCustomers((prev) => prev.filter((c) => c.id !== id));
+      const nextPage =
+        customers.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+
+      await fetchCustomers({
+        page: nextPage,
+      });
 
       setDeleteConfirmation(null);
     } catch {
