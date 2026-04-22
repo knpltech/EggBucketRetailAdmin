@@ -31,6 +31,7 @@ const CustomerInfo = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [pageLoading, setPageLoading] = useState(false);
+  const [isServerPaginated, setIsServerPaginated] = useState(false);
 
   const navigate = useNavigate();
 
@@ -39,6 +40,12 @@ const CustomerInfo = () => {
   useEffect(() => {
     init();
   }, []);
+
+  useEffect(() => {
+    if (!isServerPaginated) {
+      setHasNextPage(currentPage < totalPages);
+    }
+  }, [currentPage, totalPages, isServerPaginated]);
 
   const init = async () => {
     setLoading(true);
@@ -69,6 +76,7 @@ const CustomerInfo = () => {
       const responseCustomers = Array.isArray(payload)
         ? payload
         : payload.customers || [];
+      const hasServerPagination = Boolean(payload?.pagination);
       const serverHasNextPage = Boolean(payload?.pagination?.hasNextPage);
       const serverTotalPagesRaw = Number(payload?.pagination?.totalPages);
       const serverCurrentPageRaw = Number(payload?.pagination?.currentPage);
@@ -86,14 +94,19 @@ const CustomerInfo = () => {
       const safeTotalPages = Math.max(serverTotalPages, minimumExpectedPages, 1);
 
       setError("");
+      setIsServerPaginated(hasServerPagination);
       setCustomers(responseCustomers);
-      setCurrentPage(Array.isArray(payload) ? page : resolvedCurrentPage);
+      setCurrentPage(hasServerPagination ? resolvedCurrentPage : page);
       setTotalPages(
-        Array.isArray(payload)
-          ? Math.max(1, Math.ceil(responseCustomers.length / PAGE_SIZE))
-          : safeTotalPages,
+        hasServerPagination
+          ? safeTotalPages
+          : Math.max(1, Math.ceil(responseCustomers.length / PAGE_SIZE))
       );
-      setHasNextPage(Array.isArray(payload) ? false : serverHasNextPage);
+      setHasNextPage(
+        hasServerPagination
+          ? serverHasNextPage
+          : page < Math.max(1, Math.ceil(responseCustomers.length / PAGE_SIZE)),
+      );
     } catch {
       setError("Error fetching customer data");
     } finally {
@@ -103,18 +116,35 @@ const CustomerInfo = () => {
 
   const handleNextPage = () => {
     if (!hasNextPage || pageLoading || currentPage >= totalPages) return;
-    fetchCustomers({ page: currentPage + 1 });
+
+    if (isServerPaginated) {
+      fetchCustomers({ page: currentPage + 1 });
+      return;
+    }
+
+    setCurrentPage((prev) => prev + 1);
   };
 
   const handlePrevPage = () => {
     if (currentPage <= 1 || pageLoading) return;
 
-    fetchCustomers({ page: currentPage - 1 });
+    if (isServerPaginated) {
+      fetchCustomers({ page: currentPage - 1 });
+      return;
+    }
+
+    setCurrentPage((prev) => prev - 1);
   };
 
   const handlePageClick = (pageNumber) => {
     if (pageLoading || pageNumber === currentPage) return;
-    fetchCustomers({ page: pageNumber });
+
+    if (isServerPaginated) {
+      fetchCustomers({ page: pageNumber });
+      return;
+    }
+
+    setCurrentPage(pageNumber);
   };
 
   const handleSortChange = async (e) => {
@@ -176,7 +206,9 @@ const CustomerInfo = () => {
       });
 
       const nextPage =
-        customers.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+        paginatedCustomers.length === 1 && currentPage > 1
+          ? currentPage - 1
+          : currentPage;
 
       await fetchCustomers({
         page: nextPage,
@@ -231,6 +263,12 @@ const CustomerInfo = () => {
 
     return String(a?.name || "").localeCompare(String(b?.name || ""));
   });
+  const paginatedCustomers = isServerPaginated
+    ? sortedCustomers
+    : sortedCustomers.slice(
+        (currentPage - 1) * PAGE_SIZE,
+        currentPage * PAGE_SIZE,
+      );
 
   const getPageButtons = () => {
     if (totalPages <= 7) {
@@ -325,7 +363,7 @@ const CustomerInfo = () => {
 
           <tbody>
 
-            {sortedCustomers.map((c) => (
+            {paginatedCustomers.map((c) => (
 
               <tr
                 key={c.id}
