@@ -6,11 +6,16 @@ import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 import { FiUsers, FiTruck, FiPackage } from "react-icons/fi";
 
+const PAGE_SIZE = 25;
+
 const Analytics = () => {
   const [allCustomers, setAllCustomers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortOption, setSortOption] = useState("name");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [expandedCustomerId, setExpandedCustomerId] = useState(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
@@ -100,6 +105,9 @@ const Analytics = () => {
 
       setAllCustomers(full);
       setCustomers(full);
+      setCurrentPage(1);
+      setExpandedCustomerId(null);
+      setShowDetails(false);
     } catch (err) {
       console.log("Analytics load error:", err);
     } finally {
@@ -158,6 +166,8 @@ const Analytics = () => {
         });
       }
       setCustomers(sorted);
+      setCurrentPage(1);
+      setExpandedCustomerId(null);
     },
     [allCustomers, normalizePriority, getPriorityNumber, getTodayEffectiveStatus],
   );
@@ -456,6 +466,39 @@ const Analytics = () => {
   );
   const avgDeliveries =
     totalCustomers === 0 ? 0 : (totalDeliveries / totalCustomers).toFixed(1);
+  const totalPages = Math.max(1, Math.ceil(customers.length / PAGE_SIZE));
+  const paginatedCustomers = customers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const detailColumnSpan = 5 + last7DaysHeader.length;
+
+  const getPageButtons = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    const normalized = [...pages]
+      .filter((page) => page >= 1 && page <= totalPages)
+      .sort((a, b) => a - b);
+
+    const withEllipsis = [];
+    for (let i = 0; i < normalized.length; i += 1) {
+      const page = normalized[i];
+      const prev = normalized[i - 1];
+
+      if (i > 0 && page - prev > 1) {
+        withEllipsis.push(`ellipsis-${prev}`);
+      }
+
+      withEllipsis.push(page);
+    }
+
+    return withEllipsis;
+  };
+
+  const pageButtons = getPageButtons();
 
   return (
     <div className="min-h-screen bg-gray-50 px-2 py-5 md:px-3 md:py-6">
@@ -541,6 +584,21 @@ const Analytics = () => {
         </div>
       </div>
 
+      <div className="mb-6 flex justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            setShowDetails((prev) => !prev);
+            setExpandedCustomerId(null);
+          }}
+          className={`px-4 py-2 rounded-lg text-white shadow ${showDetails ? "bg-gray-700 hover:bg-gray-800" : "bg-blue-600 hover:bg-blue-700"}`}
+        >
+          {showDetails ? "Hide Details" : "Show Details"}
+        </button>
+      </div>
+
+      {showDetails && (
+        <>
       {/* LEGEND */}
       <div className="mb-4 flex flex-wrap gap-6 text-sm">
         <div className="flex items-center gap-2">
@@ -574,8 +632,6 @@ const Analytics = () => {
               <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
                 Delivery Plan
               </th>
-            
-
               {last7DaysHeader.map((d, i) => (
                 <th
                   key={i}
@@ -612,8 +668,6 @@ const Analytics = () => {
                     <td className="px-1.5 py-2">
                       <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                     </td>
-
-                 
                     {[...Array(8)].map((_, i) => (
                       <td key={i} className="px-1 py-2 text-center">
                         <div className="w-14 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
@@ -621,65 +675,202 @@ const Analytics = () => {
                     ))}
                   </tr>
                 ))
-              : customers.map((c) => (
-                  <tr
-                    key={c.id}
-                    className="border-t border-gray-200 hover:bg-gray-50"
-                  >
-                  
+              : paginatedCustomers.map((c) => {
+                  const isExpanded = expandedCustomerId === c.id;
+                  const effectiveStatus = getTodayEffectiveStatus(c);
 
-                    <td className="px-1.5 py-2 font-medium truncate">
-                      {c.custid}
-                    </td>
-                    <td className="px-1.5 py-2 font-bold text-[13px] leading-4 whitespace-normal break-words">
-                      {c.name}
-                    </td>
-                    <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
-                      {c.zone || "UNASSIGNED"}
-                    </td>
-                    
-                    <td className="px-1.5 py-2 text-center align-middle">
-                      {getPriorityButton(c)}
-                  </td>
-                  <td className="px-1.5 py-2 text-center align-middle">
-                      {(() => {
-                        const effective = getTodayEffectiveStatus(c);
-                        const isOn = effective === "ON";
-                        const isUpdating = updatingTodayId === c.id;
+                  return (
+                    <React.Fragment key={c.id}>
+                      <tr className="border-t border-gray-200 hover:bg-gray-50">
+                        <td className="px-1.5 py-2 font-medium truncate">
+                          {c.custid}
+                        </td>
+                        <td className="px-1.5 py-2 font-bold text-[13px] leading-4 whitespace-normal break-words">
+                          {c.name}
+                        </td>
+                        <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
+                          {c.zone || "UNASSIGNED"}
+                        </td>
 
-                        return (
-                          <label
-                            className={`relative inline-flex items-center ${
-                              isUpdating
-                                ? "opacity-70 cursor-not-allowed"
-                                : "cursor-pointer"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="sr-only peer"
-                              checked={isOn}
-                              disabled={isUpdating}
-                              onChange={() => toggleTodayDelivery(c)}
-                              aria-label={isOn ? "Today: ON" : "Today: OFF"}
-                            />
-                            <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
-                            <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
-                          </label>
-                        );
-                      })()}
-                    </td>
+                        <td className="px-1.5 py-2 text-center align-middle">
+                          {getPriorityButton(c)}
+                        </td>
+                        <td className="px-1.5 py-2 text-center align-middle">
+                          {(() => {
+                            const isOn = effectiveStatus === "ON";
+                            const isUpdating = updatingTodayId === c.id;
 
-                    {c.last7.map((d, index) => (
-                      <td key={index} className="px-1 py-2 text-center">
-                        {getStatusPill(d.type)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                            return (
+                              <label
+                                className={`relative inline-flex items-center ${
+                                  isUpdating
+                                    ? "opacity-70 cursor-not-allowed"
+                                    : "cursor-pointer"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="sr-only peer"
+                                  checked={isOn}
+                                  disabled={isUpdating}
+                                  onChange={() => toggleTodayDelivery(c)}
+                                  aria-label={isOn ? "Today: ON" : "Today: OFF"}
+                                />
+                                <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+                                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
+                              </label>
+                            );
+                          })()}
+                        </td>
+                        {c.last7.map((d, index) => (
+                          <td key={index} className="px-1 py-2 text-center">
+                            {getStatusPill(d.type)}
+                          </td>
+                        ))}
+                      </tr>
+
+                      {isExpanded && (
+                        <tr className="border-t border-gray-100 bg-blue-50/40">
+                          <td colSpan={detailColumnSpan} className="px-4 py-4">
+                            <div className="grid gap-4 md:grid-cols-[96px_1fr]">
+                              <div className="flex justify-center md:justify-start">
+                                {c.imageUrl ? (
+                                  <img
+                                    src={c.imageUrl}
+                                    alt={c.name || "Customer"}
+                                    className="h-24 w-24 rounded-xl object-cover border border-gray-200 bg-white"
+                                  />
+                                ) : (
+                                  <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-500">
+                                    No Image
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-lg bg-white p-3 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Customer ID
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {c.custid || "N/A"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg bg-white p-3 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Name
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {c.name || "N/A"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg bg-white p-3 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Zone
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {c.zone || "UNASSIGNED"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg bg-white p-3 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Priority
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {normalizePriority(c.priority)}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg bg-white p-3 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Delivery Plan
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {effectiveStatus}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg bg-white p-3 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Created
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {c.createdAt
+                                      ? new Date(c.createdAt).toLocaleString()
+                                      : "N/A"}
+                                  </p>
+                                </div>
+                                <div className="rounded-lg bg-white p-3 shadow-sm sm:col-span-2 xl:col-span-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                    Last 8 Days Summary
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {(c.deliveries || []).length} recorded updates in the last 8 days
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
           </tbody>
         </table>
       </div>
+
+      {!loading && (
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="bg-gray-200 text-gray-800 px-4 py-2 rounded disabled:opacity-50"
+          >
+            Previous
+          </button>
+
+          <div className="flex items-center gap-2">
+            {pageButtons.map((pageItem) => {
+              if (typeof pageItem === "string") {
+                return (
+                  <span key={pageItem} className="px-2 text-gray-500">
+                    ...
+                  </span>
+                );
+              }
+
+              const isActive = pageItem === currentPage;
+
+              return (
+                <button
+                  key={pageItem}
+                  type="button"
+                  onClick={() => setCurrentPage(pageItem)}
+                  disabled={isActive}
+                  className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
+                >
+                  {pageItem}
+                </button>
+              );
+            })}
+
+            <span className="text-sm text-gray-700">
+              {currentPage}/{totalPages}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
+        </>
+      )}
     </div>
   );
 };
