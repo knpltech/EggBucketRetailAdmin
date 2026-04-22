@@ -1,5 +1,4 @@
 import NodeCache from "node-cache";
-import { createClient } from "redis";
 
 const DEFAULT_TTL_SECONDS = 300;
 
@@ -16,50 +15,6 @@ class HybridCache {
 			checkperiod: DEFAULT_TTL_SECONDS + 20,
 			useClones: false,
 		});
-
-		this.redisClient = null;
-		this.redisReady = false;
-		this.connectPromise = null;
-
-		const redisUrl = process.env.REDIS_URL;
-		const redisEnabled = String(process.env.REDIS_ENABLED || "true") !== "false";
-
-		if (!redisEnabled || !redisUrl) {
-			return;
-		}
-
-		this.redisClient = createClient({ url: redisUrl });
-
-		this.redisClient.on("ready", () => {
-			this.redisReady = true;
-			console.log("[cache] Redis connected");
-		});
-
-		this.redisClient.on("end", () => {
-			this.redisReady = false;
-			console.warn("[cache] Redis connection closed");
-		});
-
-		this.redisClient.on("error", (error) => {
-			this.redisReady = false;
-			console.warn("[cache] Redis error, using memory cache fallback:", error.message);
-		});
-
-		this.connectPromise = this.redisClient.connect().catch((error) => {
-			this.redisReady = false;
-			console.warn("[cache] Redis unavailable, using memory cache fallback:", error.message);
-		});
-	}
-
-	async ensureRedisReady() {
-		if (!this.redisClient) return false;
-		if (this.redisReady) return true;
-
-		if (this.connectPromise) {
-			await this.connectPromise;
-		}
-
-		return this.redisReady;
 	}
 
 	deserialize(raw) {
@@ -92,90 +47,20 @@ class HybridCache {
 		return this.memory.keys();
 	}
 
-	// Asynchronous API (Redis-backed)
+	// Asynchronous API
 	async getAsync(key) {
-		const memoryValue = this.memory.get(key);
-		if (memoryValue !== undefined) {
-			return memoryValue;
-		}
-
-		const redisAvailable = await this.ensureRedisReady();
-		if (!redisAvailable) {
-			return undefined;
-		}
-
-		try {
-			const raw = await this.redisClient.get(key);
-			const parsed = this.deserialize(raw);
-			if (parsed !== undefined) {
-				this.memory.set(key, parsed, DEFAULT_TTL_SECONDS);
-			}
-			return parsed;
-		} catch (error) {
-			console.warn("[cache] Redis get failed:", error.message);
-			return undefined;
-		}
+		return this.memory.get(key);
 	}
 
 	async setAsync(key, value, ttlSeconds = DEFAULT_TTL_SECONDS) {
-		this.memory.set(key, value, ttlSeconds);
-
-		const redisAvailable = await this.ensureRedisReady();
-		if (!redisAvailable) {
-			return true;
-		}
-
-		try {
-			await this.redisClient.setEx(key, ttlSeconds, this.serialize(value));
-			return true;
-		} catch (error) {
-			console.warn("[cache] Redis set failed:", error.message);
-			return false;
-		}
+		return this.memory.set(key, value, ttlSeconds);
 	}
 
 	async delAsync(keyOrKeys) {
-		this.memory.del(keyOrKeys);
-
-		const redisAvailable = await this.ensureRedisReady();
-		if (!redisAvailable) {
-			return 0;
-		}
-
-		try {
-			if (Array.isArray(keyOrKeys)) {
-				if (keyOrKeys.length === 0) return 0;
-				return this.redisClient.del(keyOrKeys);
-			}
-
-			return this.redisClient.del(String(keyOrKeys));
-		} catch (error) {
-			console.warn("[cache] Redis delete failed:", error.message);
-			return 0;
-		}
+		return this.memory.del(keyOrKeys);
 	}
 
 	async keysAsync(pattern = "*") {
-		const redisAvailable = await this.ensureRedisReady();
-		if (redisAvailable) {
-			const keys = [];
-			try {
-				for await (const key of this.redisClient.scanIterator({ MATCH: pattern })) {
-					keys.push(key);
-				}
-			} catch (error) {
-				console.warn("[cache] Redis keys scan failed:", error.message);
-			}
-
-			// Keep memory cache aligned with Redis key space for consistency
-			const localKeys = this.memory.keys().filter((key) => !keys.includes(key));
-			if (localKeys.length > 0) {
-				this.memory.del(localKeys);
-			}
-
-			return keys;
-		}
-
 		const matcher = globToRegExp(pattern);
 		return this.memory.keys().filter((key) => matcher.test(key));
 	}

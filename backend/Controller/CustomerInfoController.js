@@ -4,10 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
 
-const DEFAULT_CUSTOMER_PAGE_SIZE = 15;
+const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
-const USER_INFO_CACHE_VERSION = "v2";
-const TOTAL_CUSTOMERS_CACHE_KEY = `customerInfo:userInfo:${USER_INFO_CACHE_VERSION}:totalCustomers`;
 
 const normalizeCustomerPriority = (value) => {
   const raw = String(value ?? "")
@@ -184,8 +182,6 @@ const invalidateCustomerInfoCache = async (customerId) => {
       await cache.delAsync(cacheKeys);
     }
 
-    await cache.delAsync(TOTAL_CUSTOMERS_CACHE_KEY);
-
     if (customerId) {
       await cache.delAsync(`customer:${customerId}`);
     }
@@ -195,11 +191,6 @@ const invalidateCustomerInfoCache = async (customerId) => {
 };
 
 const getTotalCustomersCount = async (db) => {
-  const cachedTotal = await cache.getAsync(TOTAL_CUSTOMERS_CACHE_KEY);
-  if (typeof cachedTotal === "number") {
-    return cachedTotal;
-  }
-
   let totalCustomers = 0;
 
   try {
@@ -218,7 +209,6 @@ const getTotalCustomersCount = async (db) => {
     totalCustomers = snapshot.size;
   }
 
-  await cache.setAsync(TOTAL_CUSTOMERS_CACHE_KEY, totalCustomers, 120);
   return totalCustomers;
 };
 
@@ -234,20 +224,7 @@ const userInfo = async (req, res) => {
   const limit = parsePageLimit(req.query.limit);
   const requestedPage = parsePageNumber(req.query.page);
 
-  const pagingKey = hasPageParam
-    ? `page:${requestedPage}`
-    : `cursor:${req.query.cursor || "start"}`;
-
-  const cacheKey = isPaginatedRequest
-    ? `customerInfo:userInfo:${USER_INFO_CACHE_VERSION}:limit:${limit}:sort:${sortBy}:${pagingKey}`
-    : "customerInfo:userInfo";
-
   try {
-    const cached = await cache.getAsync(cacheKey);
-    if (cached) {
-      return res.status(200).json(cached);
-    }
-
     const db = getFirestore();
 
     if (isPaginatedRequest) {
@@ -293,7 +270,6 @@ const userInfo = async (req, res) => {
           },
         };
 
-        await cache.setAsync(cacheKey, payload, 120);
         return res.status(200).json(payload);
       }
 
@@ -349,7 +325,6 @@ const userInfo = async (req, res) => {
         },
       };
 
-      await cache.setAsync(cacheKey, payload, 120);
       return res.status(200).json(payload);
     }
 
@@ -363,7 +338,6 @@ const userInfo = async (req, res) => {
       };
     });
 
-    await cache.setAsync(cacheKey, customers, 120);
     return res.status(200).json(customers);
   } catch (error) {
     console.error("Error fetching customers:", error);
