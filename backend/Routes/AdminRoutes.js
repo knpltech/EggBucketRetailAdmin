@@ -51,6 +51,8 @@ import {
   getZones,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
+  getRetentionCustomers,
+  resetRetentionCustomer,
   saveCheckedReason,
   resetAllCheckedReasons,
   saveDeliveredTrays,
@@ -88,6 +90,8 @@ router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
+router.get("/customer-retention", getRetentionCustomers);
+router.post("/customer-retention/reset", resetRetentionCustomer);
 
 // Delivery partner related routes
 router.post("/add-del-partner", addDeliveryPartner);
