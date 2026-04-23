@@ -98,12 +98,23 @@ const CustomerRetention = () => {
     }
 
     try {
-      const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
+      const requestConfig = {
         params: {
           date,
           category,
         },
-      });
+      };
+      let res;
+
+      try {
+        res = await axios.get(`${ADMIN_PATH}/customer-retention`, requestConfig);
+      } catch (requestError) {
+        if (requestError?.response?.status !== 404) {
+          throw requestError;
+        }
+
+        res = await axios.get(`${ADMIN_PATH}/customer/retention`, requestConfig);
+      }
 
       const payload = res.data || {};
       const expectedDates = getPastThreeDatesPlusToday(date);
@@ -169,10 +180,20 @@ const CustomerRetention = () => {
 
     try {
       setResettingId(customer.id);
-      await axios.post(`${ADMIN_PATH}/customer-retention/reset`, {
+      const resetPayload = {
         customerId: customer.id,
         date: selectedDate,
-      });
+      };
+
+      try {
+        await axios.post(`${ADMIN_PATH}/customer-retention/reset`, resetPayload);
+      } catch (requestError) {
+        if (requestError?.response?.status !== 404) {
+          throw requestError;
+        }
+
+        await axios.post(`${ADMIN_PATH}/customer/retention/reset`, resetPayload);
+      }
 
       setCustomers((prev) => prev.filter((item) => item.id !== customer.id));
     } catch (err) {
