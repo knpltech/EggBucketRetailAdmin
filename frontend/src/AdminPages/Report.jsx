@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { FiEdit2 } from "react-icons/fi";
@@ -13,18 +13,26 @@ const CHECKED_TYPES = [
   "stock_available",
   "other_vendor",
 ];
+const ZONES_CACHE_KEY = "report-zones-cache";
 
 const Report = () => {
+  const getToday = () => {
+    const d = new Date();
+    return d.toISOString().split("T")[0];
+  };
+
+  const today = getToday();
   const [data, setData] = useState([]);
   const [zones, setZones] = useState([]);
-  const [filteredDeliveries, setFilteredDeliveries] = useState([]);
-  const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [savingReasonId, setSavingReasonId] = useState("");
   const [savingTraysId, setSavingTraysId] = useState("");
   const [editingReasonId, setEditingReasonId] = useState("");
   const [editingTraysId, setEditingTraysId] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
+  const hasLoadedInitially = useRef(false);
+  const initialDateRef = useRef(today);
 
   const [sortBy, setSortBy] = useState("customer");
   const [selectedAgent, setSelectedAgent] = useState("all");
@@ -35,13 +43,6 @@ const Report = () => {
     if (trays >= 10) return "10+ trays";
     return trays === 1 ? "1 tray" : `${trays} trays`;
   };
-
-  const getToday = () => {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
-  };
-
-  const today = getToday();
 
   const [selectedDate, setSelectedDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -115,8 +116,11 @@ const Report = () => {
     return null;
   };
 
-  const fetchData = async (date) => {
-    setLoading(true);
+  const fetchData = useCallback(async (date, shouldShowLoader = true) => {
+    if (shouldShowLoader) {
+      setLoading(true);
+    }
+
     try {
       const res = await fetch(`${ADMIN_PATH}/all-deliveries?date=${date}`);
       const json = await res.json();
@@ -124,20 +128,39 @@ const Report = () => {
     } catch (err) {
       console.error("Fetch error:", err);
     } finally {
-      setLoading(false);
+      if (shouldShowLoader) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
-  const fetchZones = async () => {
+  const fetchZones = useCallback(async () => {
+    const cachedZones = sessionStorage.getItem(ZONES_CACHE_KEY);
+
+    if (cachedZones) {
+      try {
+        const parsedZones = JSON.parse(cachedZones);
+        if (Array.isArray(parsedZones) && parsedZones.length) {
+          setZones(parsedZones);
+        }
+      } catch (err) {
+        console.error("Zones cache parse error:", err);
+      }
+    }
+
     try {
       const res = await fetch(`${ADMIN_PATH}/zones`);
       const json = await res.json();
-      setZones(Array.isArray(json) ? json : []);
+      const nextZones = Array.isArray(json) ? json : [];
+      setZones(nextZones);
+      sessionStorage.setItem(ZONES_CACHE_KEY, JSON.stringify(nextZones));
     } catch (err) {
       console.error("Zones fetch error:", err);
-      setZones([]);
+      if (!cachedZones) {
+        setZones([]);
+      }
     }
-  };
+  }, []);
 
   const updateDeliveryValue = (customerId, deliveryId, patch) => {
     setData((prev) =>
@@ -254,89 +277,141 @@ const Report = () => {
   };
 
   useEffect(() => {
+    let isActive = true;
+
+    const loadInitialData = async () => {
+      setLoading(true);
+      try {
+        const [deliveriesRes, zonesRes] = await Promise.all([
+          fetch(`${ADMIN_PATH}/all-deliveries?date=${initialDateRef.current}`),
+          fetch(`${ADMIN_PATH}/zones`),
+        ]);
+
+        const [deliveriesJson, zonesJson] = await Promise.all([
+          deliveriesRes.json(),
+          zonesRes.json(),
+        ]);
+
+        if (!isActive) return;
+
+        setData(deliveriesJson.customers || []);
+        const nextZones = Array.isArray(zonesJson) ? zonesJson : [];
+        setZones(nextZones);
+        sessionStorage.setItem(ZONES_CACHE_KEY, JSON.stringify(nextZones));
+        hasLoadedInitially.current = true;
+      } catch (err) {
+        console.error("Initial report load error:", err);
+        if (isActive) {
+          setData([]);
+          fetchZones();
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    };
+
+    const cachedZones = sessionStorage.getItem(ZONES_CACHE_KEY);
+    if (cachedZones) {
+      try {
+        const parsedZones = JSON.parse(cachedZones);
+        if (Array.isArray(parsedZones)) {
+          setZones(parsedZones);
+        }
+      } catch (err) {
+        console.error("Zones cache parse error:", err);
+      }
+    }
+
+    loadInitialData();
+
+    return () => {
+      isActive = false;
+    };
+  }, [fetchZones]);
+
+  useEffect(() => {
+    if (!hasLoadedInitially.current) {
+      return;
+    }
+
     fetchData(selectedDate);
-  }, [selectedDate]);
+  }, [fetchData, selectedDate]);
 
-  useEffect(() => {
-    fetchZones();
-  }, []);
+  const zoneSet = useMemo(() => new Set(zones), [zones]);
 
-  // PROCESS DATA
-  useEffect(() => {
-    const result = data.map((customer) => {
-      const delivery = customer.deliveries?.[0];
-      const statusKey = getStatusKey(delivery);
-      const canEditReason =
-        String(delivery?.type || "")
-          .trim()
-          .toLowerCase() === "reached";
-      const resolvedZone = zones.includes(customer.zone)
-        ? customer.zone
-        : "UNASSIGNED";
+  const filteredDeliveries = useMemo(
+    () =>
+      data.map((customer) => {
+        const delivery = customer.deliveries?.[0];
+        const statusKey = getStatusKey(delivery);
+        const canEditReason =
+          String(delivery?.type || "")
+            .trim()
+            .toLowerCase() === "reached";
+        const resolvedZone =
+          customer.zone && zoneSet.has(customer.zone)
+            ? customer.zone
+            : "UNASSIGNED";
 
-      return {
-        customerId: customer.id,
-        deliveryId: delivery?.id || "",
-        custid: customer.custid,
-        name: customer.name,
-        customerCreatedAt: customer.createdAt || null,
-        zone: resolvedZone,
-        deliveryMan: delivery?.deliveryMan || null,
-        statusKey,
-        statusLabel: getStatusLabel(statusKey),
-        reason: getDeliveryReason(delivery),
-        canEditReason,
-        createdAt: delivery?.timestamp || null,
-        checkReason: delivery?.checkReason || "",
-        traysDelivered:
-          typeof delivery?.traysDelivered === "number"
-            ? delivery.traysDelivered
-            : null,
-      };
-    });
+        return {
+          customerId: customer.id,
+          deliveryId: delivery?.id || "",
+          custid: customer.custid,
+          name: customer.name,
+          customerCreatedAt: customer.createdAt || null,
+          zone: resolvedZone,
+          deliveryMan: delivery?.deliveryMan || null,
+          statusKey,
+          statusLabel: getStatusLabel(statusKey),
+          reason: getDeliveryReason(delivery),
+          canEditReason,
+          createdAt: delivery?.timestamp || null,
+          checkReason: delivery?.checkReason || "",
+          traysDelivered:
+            typeof delivery?.traysDelivered === "number"
+              ? delivery.traysDelivered
+              : null,
+        };
+      }),
+    [data, zoneSet],
+  );
 
-    setFilteredDeliveries(result);
-  }, [data, zones]);
+  const deliveryAgentOptions = useMemo(
+    () =>
+      [...new Set(
+        filteredDeliveries
+          .map((d) => (d.deliveryMan?.name || "").trim())
+          .filter(Boolean),
+      )].sort((a, b) => a.localeCompare(b)),
+    [filteredDeliveries],
+  );
 
-  // DELIVERY AGENT OPTIONS
-  const deliveryAgentOptions = [
-    ...new Set(
-      filteredDeliveries
-        .map((d) => (d.deliveryMan?.name || "").trim())
-        .filter(Boolean),
-    ),
-  ].sort((a, b) => a.localeCompare(b));
-
-  // FILTER + SORT
-  useEffect(() => {
+  const displayedDeliveries = useMemo(() => {
     let temp = [...filteredDeliveries];
 
-    // STATUS FILTER
     if (statusFilter === "all") {
       temp = temp.filter((d) => isCompletedStatus(d.statusKey));
     } else {
       temp = temp.filter((d) => d.statusKey === statusFilter);
     }
 
-    // AGENT FILTER
     if (selectedAgent !== "all") {
       temp = temp.filter(
         (d) => (d.deliveryMan?.name || "").trim() === selectedAgent,
       );
     }
 
-    // SORT BY CUSTOMER NAME
     if (sortBy === "customer") {
       temp.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     }
 
-    // SORT BY CUSTOMER CREATED DATE (Newest First)
     if (sortBy === "createdAt") {
       temp.sort((a, b) => {
         const aTime = parseTimestamp(a.customerCreatedAt)?.getTime();
         const bTime = parseTimestamp(b.customerCreatedAt)?.getTime();
 
-        // Keep rows with missing/invalid created date at the bottom.
         if (aTime == null && bTime == null) return 0;
         if (aTime == null) return 1;
         if (bTime == null) return -1;
@@ -345,13 +420,11 @@ const Report = () => {
       });
     }
 
-    // SORT BY DELIVERY TIME (Oldest First)
     if (sortBy === "time") {
       temp.sort((a, b) => {
         const aTime = parseTimestamp(a.createdAt)?.getTime();
         const bTime = parseTimestamp(b.createdAt)?.getTime();
 
-        // Keep rows with missing/invalid time at the bottom.
         if (aTime == null && bTime == null) return 0;
         if (aTime == null) return 1;
         if (bTime == null) return -1;
@@ -360,8 +433,8 @@ const Report = () => {
       });
     }
 
-    setDisplayedDeliveries(temp);
-  }, [filteredDeliveries, statusFilter, sortBy, selectedAgent]);
+    return temp;
+  }, [filteredDeliveries, selectedAgent, sortBy, statusFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -385,19 +458,23 @@ const Report = () => {
     }
   };
 
-  const getStatusCounts = () => ({
-    all: filteredDeliveries.filter((d) => isCompletedStatus(d.statusKey)).length,
-    delivered: filteredDeliveries.filter((d) => d.statusKey === "delivered")
-      .length,
-    checked: filteredDeliveries.filter((d) => d.statusKey === "checked").length,
-    pending: filteredDeliveries.filter((d) => d.statusKey === "pending").length,
-  });
+  const statusCounts = useMemo(
+    () => ({
+      all: filteredDeliveries.filter((d) => isCompletedStatus(d.statusKey))
+        .length,
+      delivered: filteredDeliveries.filter((d) => d.statusKey === "delivered")
+        .length,
+      checked: filteredDeliveries.filter((d) => d.statusKey === "checked").length,
+      pending: filteredDeliveries.filter((d) => d.statusKey === "pending").length,
+    }),
+    [filteredDeliveries],
+  );
 
-  const statusCounts = getStatusCounts();
-  const selectedAgentStats =
-    selectedAgent === "all"
-      ? null
-      : filteredDeliveries.reduce(
+  const selectedAgentStats = useMemo(
+    () =>
+      selectedAgent === "all"
+        ? null
+        : filteredDeliveries.reduce(
           (stats, delivery) => {
             const agentName = (delivery.deliveryMan?.name || "").trim();
 
@@ -413,14 +490,24 @@ const Report = () => {
               stats.delivered += 1;
             }
 
+            if (isCompletedStatus(delivery.statusKey)) {
+              stats.total += 1;
+            }
+
             return stats;
           },
-          { checked: 0, delivered: 0 },
-        );
+          { checked: 0, delivered: 0, total: 0 },
+        ),
+    [filteredDeliveries, selectedAgent],
+  );
   const totalPages = Math.max(1, Math.ceil(displayedDeliveries.length / PAGE_SIZE));
-  const paginatedDeliveries = displayedDeliveries.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
+  const paginatedDeliveries = useMemo(
+    () =>
+      displayedDeliveries.slice(
+        (currentPage - 1) * PAGE_SIZE,
+        currentPage * PAGE_SIZE,
+      ),
+    [currentPage, displayedDeliveries],
   );
 
   const getPageButtons = () => {
@@ -448,7 +535,7 @@ const Report = () => {
     return withEllipsis;
   };
 
-  const pageButtons = getPageButtons();
+  const pageButtons = useMemo(() => getPageButtons(), [currentPage, totalPages]);
 
   const downloadSummaryExcel = async () => {
     if (!startRange || !endRange) {
@@ -711,226 +798,243 @@ const Report = () => {
             <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800 border border-green-300">
               Delivered: {selectedAgentStats.delivered}
             </span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-800 border border-slate-300">
+              Total: {selectedAgentStats.total}
+            </span>
           </div>
         )}
 
-        {/* TABLE */}
-        <div className="overflow-x-auto p-2.5 sm:p-4 lg:p-6">
-          <table className="w-full border rounded-xl overflow-hidden">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                {[
-                  "Customer ID",
-                  "Customer Name",
-                  "Delivery  Time",
-                  "Zone",
-                  "Delivery Agent",
-                  "Status",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    className="px-3 sm:px-5 lg:px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white">
-              {paginatedDeliveries.length ? (
-                paginatedDeliveries.map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50 border-b">
-                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      {row.custid}
-                    </td>
-                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      {row.name}
-                    </td>
-                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      {formatTime(row.createdAt)}
-                    </td>
-                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      {row.zone || "UNASSIGNED"}
-                    </td>
-                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      {row.deliveryMan?.name || "Not assigned"}
-                    </td>
-                    <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                      <div className="flex flex-col items-start gap-1.5">
-                        <span
-                          className={`inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                            row.statusKey,
-                          )}`}
-                        >
-                          {row.statusLabel}
-                        </span>
-
-                        {row.statusKey === "checked" && (
-                          <div>
-                            {!row.canEditReason ? (
-                              <span className="text-sm text-gray-700 items-center">
-                                {row.reason || "-"}
-                              </span>
-                            ) : row.checkReason &&
-                              editingReasonId !== row.deliveryId ? (
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-700 items-center">
-                                  {row.checkReason}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="text-slate-500 hover:text-slate-700 transition-colors"
-                                  onClick={() =>
-                                    setEditingReasonId(row.deliveryId)
-                                  }
-                                  title="Edit reason"
-                                  aria-label="Edit reason"
-                                >
-                                  <FiEdit2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <select
-                                className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                value={row.checkReason || ""}
-                                disabled={savingReasonId === row.deliveryId}
-                                onChange={(e) =>
-                                  handleSelectCheckedReason(
-                                    row.customerId,
-                                    row.deliveryId,
-                                    e.target.value,
-                                  )
-                                }
-                              >
-                                <option value="" disabled>
-                                  Select reason
-                                </option>
-                                {CHECK_REASONS.map((reason) => (
-                                  <option key={reason} value={reason}>
-                                    {reason}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        )}
-
-                        {row.statusKey === "delivered" && (
-                          <div>
-                            {row.traysDelivered !== null &&
-                            editingTraysId !== row.deliveryId ? (
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-700">
-                                  {formatTrayLabel(row.traysDelivered)}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="text-slate-500 hover:text-slate-700 transition-colors"
-                                  onClick={() =>
-                                    setEditingTraysId(row.deliveryId)
-                                  }
-                                  title="Edit trays"
-                                  aria-label="Edit trays"
-                                >
-                                  <FiEdit2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <select
-                                className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                value={
-                                  row.traysDelivered === null
-                                    ? ""
-                                    : row.traysDelivered >= 10
-                                      ? 10
-                                      : row.traysDelivered
-                                }
-                                disabled={savingTraysId === row.deliveryId}
-                                onChange={(e) =>
-                                  handleSelectDeliveredTrays(
-                                    row.customerId,
-                                    row.deliveryId,
-                                    e.target.value,
-                                  )
-                                }
-                              >
-                                <option value="" disabled>
-                                  Select trays
-                                </option>
-                                {TRAY_OPTIONS.map((trayCount) => (
-                                  <option key={trayCount} value={trayCount}>
-                                    {formatTrayLabel(trayCount)}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="6" className="py-14 text-center text-gray-500">
-                    No deliveries found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="px-4 pt-4 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={() => setShowDetails((prev) => !prev)}
+            className={`px-4 py-2 rounded-lg text-white shadow ${showDetails ? "bg-gray-700 hover:bg-gray-800" : "bg-blue-600 hover:bg-blue-700"}`}
+          >
+            {showDetails ? "Hide Details" : "Show Details"}
+          </button>
         </div>
 
-        {!loading && displayedDeliveries.length > 0 && (
-          <div className="px-4 pb-4 sm:px-6 lg:px-8 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="bg-gray-200 text-gray-800 px-4 py-2 rounded disabled:opacity-50"
-            >
-              Previous
-            </button>
+        {showDetails && (
+          <>
+            {/* TABLE */}
+            <div className="overflow-x-auto p-2.5 sm:p-4 lg:p-6">
+              <table className="w-full border rounded-xl overflow-hidden">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    {[
+                      "Customer ID",
+                      "Customer Name",
+                      "Delivery  Time",
+                      "Zone",
+                      "Delivery Agent",
+                      "Status",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-3 sm:px-5 lg:px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {paginatedDeliveries.length ? (
+                    paginatedDeliveries.map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50 border-b">
+                        <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                          {row.custid}
+                        </td>
+                        <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                          {row.name}
+                        </td>
+                        <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                          {formatTime(row.createdAt)}
+                        </td>
+                        <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                          {row.zone || "UNASSIGNED"}
+                        </td>
+                        <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                          {row.deliveryMan?.name || "Not assigned"}
+                        </td>
+                        <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
+                          <div className="flex flex-col items-start gap-1.5">
+                            <span
+                              className={`inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                row.statusKey,
+                              )}`}
+                            >
+                              {row.statusLabel}
+                            </span>
 
-            <div className="flex items-center gap-2">
-              {pageButtons.map((pageItem) => {
-                if (typeof pageItem === "string") {
-                  return (
-                    <span key={pageItem} className="px-2 text-gray-500">
-                      ...
-                    </span>
-                  );
-                }
+                            {row.statusKey === "checked" && (
+                              <div>
+                                {!row.canEditReason ? (
+                                  <span className="text-sm text-gray-700 items-center">
+                                    {row.reason || "-"}
+                                  </span>
+                                ) : row.checkReason &&
+                                  editingReasonId !== row.deliveryId ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-700 items-center">
+                                      {row.checkReason}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="text-slate-500 hover:text-slate-700 transition-colors"
+                                      onClick={() =>
+                                        setEditingReasonId(row.deliveryId)
+                                      }
+                                      title="Edit reason"
+                                      aria-label="Edit reason"
+                                    >
+                                      <FiEdit2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <select
+                                    className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                    value={row.checkReason || ""}
+                                    disabled={savingReasonId === row.deliveryId}
+                                    onChange={(e) =>
+                                      handleSelectCheckedReason(
+                                        row.customerId,
+                                        row.deliveryId,
+                                        e.target.value,
+                                      )
+                                    }
+                                  >
+                                    <option value="" disabled>
+                                      Select reason
+                                    </option>
+                                    {CHECK_REASONS.map((reason) => (
+                                      <option key={reason} value={reason}>
+                                        {reason}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
 
-                const isActive = pageItem === currentPage;
-
-                return (
-                  <button
-                    key={pageItem}
-                    type="button"
-                    onClick={() => setCurrentPage(pageItem)}
-                    disabled={isActive}
-                    className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
-                  >
-                    {pageItem}
-                  </button>
-                );
-              })}
-
-              <span className="text-sm text-gray-700">
-                {currentPage}/{totalPages}
-              </span>
+                            {row.statusKey === "delivered" && (
+                              <div>
+                                {row.traysDelivered !== null &&
+                                editingTraysId !== row.deliveryId ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-700">
+                                      {formatTrayLabel(row.traysDelivered)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="text-slate-500 hover:text-slate-700 transition-colors"
+                                      onClick={() =>
+                                        setEditingTraysId(row.deliveryId)
+                                      }
+                                      title="Edit trays"
+                                      aria-label="Edit trays"
+                                    >
+                                      <FiEdit2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <select
+                                    className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                    value={
+                                      row.traysDelivered === null
+                                        ? ""
+                                        : row.traysDelivered >= 10
+                                          ? 10
+                                          : row.traysDelivered
+                                    }
+                                    disabled={savingTraysId === row.deliveryId}
+                                    onChange={(e) =>
+                                      handleSelectDeliveredTrays(
+                                        row.customerId,
+                                        row.deliveryId,
+                                        e.target.value,
+                                      )
+                                    }
+                                  >
+                                    <option value="" disabled>
+                                      Select trays
+                                    </option>
+                                    {TRAY_OPTIONS.map((trayCount) => (
+                                      <option key={trayCount} value={trayCount}>
+                                        {formatTrayLabel(trayCount)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6" className="py-14 text-center text-gray-500">
+                        No deliveries found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
+            {!loading && displayedDeliveries.length > 0 && (
+              <div className="px-4 pb-4 sm:px-6 lg:px-8 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="bg-gray-200 text-gray-800 px-4 py-2 rounded disabled:opacity-50"
+                >
+                  Previous
+                </button>
+
+                <div className="flex items-center gap-2">
+                  {pageButtons.map((pageItem) => {
+                    if (typeof pageItem === "string") {
+                      return (
+                        <span key={pageItem} className="px-2 text-gray-500">
+                          ...
+                        </span>
+                      );
+                    }
+
+                    const isActive = pageItem === currentPage;
+
+                    return (
+                      <button
+                        key={pageItem}
+                        type="button"
+                        onClick={() => setCurrentPage(pageItem)}
+                        disabled={isActive}
+                        className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
+                      >
+                        {pageItem}
+                      </button>
+                    );
+                  })}
+
+                  <span className="text-sm text-gray-700">
+                    {currentPage}/{totalPages}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
