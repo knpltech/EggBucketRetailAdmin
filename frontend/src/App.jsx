@@ -11,6 +11,7 @@ import PersonnelList from "./AdminPages/PersonnelList";
 import Customer from "./AdminPages/Customer";
 import Report from "./AdminPages/Report";
 import Analytics from "./AdminPages/Analytics";
+import CustomerRetention from "./AdminPages/CustomerRetention";
 import CustomerView from "./Admin-View/CustomerView";
 import CustomerDetails from "./CustomerPages/CustomerDetails";
 import PersonnelView from "./Admin-View/PersonalView";
@@ -83,6 +84,7 @@ function App() {
         <Route path="customer-info/:id" element={<Customer />} />
         <Route path="report" element={<Report />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="customer-retention" element={<CustomerRetention />} />
         <Route path="customer-management" element={<CustomerManagement />} />
         <Route
           path="customer-map-for-delivery"

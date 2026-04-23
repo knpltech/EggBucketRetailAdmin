@@ -155,6 +155,289 @@ const getStatusAndReasonFromType = (type, checkReason) => {
   }
 };
 
+const RETENTION_CATEGORIES = [
+  "stock_available",
+  "price_mismatch",
+  "other_vendor",
+];
+
+const normalizeRetentionCategory = (value) => {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  if (RETENTION_CATEGORIES.includes(raw)) {
+    return raw;
+  }
+
+  return "all";
+};
+
+const getRetentionCategoryFromDelivery = (delivery = {}) => {
+  const type = String(delivery.type || "")
+    .trim()
+    .toLowerCase();
+
+  if (RETENTION_CATEGORIES.includes(type)) {
+    return type;
+  }
+
+  const reason = String(delivery.checkReason || delivery.reason || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  if (RETENTION_CATEGORIES.includes(reason)) {
+    return reason;
+  }
+
+  return "";
+};
+
+const getRetentionCategoryLabel = (category) => {
+  if (category === "stock_available") return "Stock Available";
+  if (category === "price_mismatch") return "Price Mismatch";
+  if (category === "other_vendor") return "Other Vendor";
+  return "-";
+};
+
+const getRetentionStatus = (delivery = null) => {
+  if (!delivery) {
+    return {
+      key: "pending",
+      label: "Pending",
+      category: "",
+      categoryLabel: "-",
+      reason: "",
+    };
+  }
+
+  const type = String(delivery.type || "")
+    .trim()
+    .toLowerCase();
+  const category = getRetentionCategoryFromDelivery(delivery);
+
+  if (type === "delivered") {
+    return {
+      key: "delivered",
+      label: "Delivered",
+      category: "",
+      categoryLabel: "-",
+      reason: "",
+    };
+  }
+
+  if (type === "reached" || RETENTION_CATEGORIES.includes(type)) {
+    return {
+      key: "checked",
+      label: "Checked",
+      category,
+      categoryLabel: getRetentionCategoryLabel(category),
+      reason: delivery.checkReason || delivery.reason || getRetentionCategoryLabel(type),
+    };
+  }
+
+  return {
+    key: "pending",
+    label: "Pending",
+    category: "",
+    categoryLabel: "-",
+    reason: "",
+  };
+};
+
+const getPastThreeDatesPlusToday = (dateString) => {
+  const endDate = dateString ? new Date(`${dateString}T00:00:00`) : new Date();
+  if (Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+
+  const dates = [];
+  for (let offset = 3; offset >= 0; offset -= 1) {
+    const date = new Date(endDate);
+    date.setDate(endDate.getDate() - offset);
+    dates.push(getDateStringInTimeZone(date, INDIA_TZ));
+  }
+
+  return dates;
+};
+
+const runInBatches = async (items, batchSize, handler) => {
+  const results = [];
+
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    const batchResults = await Promise.all(batch.map(handler));
+    results.push(...batchResults);
+  }
+
+  return results;
+};
+
+const getRetentionCustomers = async (req, res) => {
+  try {
+    const selectedDate =
+      req.query.date || getDateStringInTimeZone(new Date(), INDIA_TZ);
+    const dates = getPastThreeDatesPlusToday(selectedDate);
+    if (!dates) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+
+    const todayKey = dates[dates.length - 1];
+    const selectedCategory = normalizeRetentionCategory(req.query.category);
+    const cacheKey = `customerRetention:v3:${todayKey}:${selectedCategory}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
+    const db = getFirestore();
+    const customersSnap = await db.collection("customers").get();
+
+    const rows = [];
+    const counts = {
+      all: 0,
+      stock_available: 0,
+      price_mismatch: 0,
+      other_vendor: 0,
+    };
+
+    await runInBatches(
+      customersSnap.docs,
+      25,
+      async (customerDoc) => {
+        const customer = customerDoc.data() || {};
+        const deliveriesRef = customerDoc.ref.collection("deliveries");
+
+        const deliverySnaps = await Promise.all(
+          dates.map((dateKey) => deliveriesRef.doc(dateKey).get()),
+        );
+
+        const todaySnap = deliverySnaps[deliverySnaps.length - 1];
+        if (!todaySnap.exists) return null;
+
+        const todayStatus = getRetentionStatus(todaySnap.data());
+        if (todayStatus.key !== "checked") return null;
+
+        counts.all += 1;
+        if (counts[todayStatus.category] !== undefined) {
+          counts[todayStatus.category] += 1;
+        }
+
+        const dayStatuses = {};
+        dates.forEach((dateKey, index) => {
+          dayStatuses[dateKey] = getRetentionStatus(
+            deliverySnaps[index].exists ? deliverySnaps[index].data() : null,
+          );
+        });
+
+        const row = {
+          id: customerDoc.id,
+          custid: customer.custid || "",
+          name: customer.name || "",
+          phone: customer.phone || "",
+          zone: customer.zone || "UNASSIGNED",
+          todayCategory: todayStatus.category,
+          todayCategoryLabel: todayStatus.categoryLabel,
+          todayReason: todayStatus.reason,
+          days: dayStatuses,
+        };
+
+        if (
+          selectedCategory === "all" ||
+          todayStatus.category === selectedCategory
+        ) {
+          rows.push(row);
+        }
+        return null;
+      },
+    );
+
+    rows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    const payload = {
+      date: todayKey,
+      dates,
+      categories: [
+        { value: "all", label: "All" },
+        { value: "stock_available", label: "Stock Available" },
+        { value: "price_mismatch", label: "Price Mismatch" },
+        { value: "other_vendor", label: "Other Vendor" },
+      ],
+      counts,
+      customers: rows,
+    };
+
+    cache.set(cacheKey, payload, 60);
+    return res.status(200).json(payload);
+  } catch (err) {
+    console.error("getRetentionCustomers error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const resetRetentionCustomer = async (req, res) => {
+  try {
+    const { customerId, date } = req.body || {};
+    if (!customerId || !date) {
+      return res
+        .status(400)
+        .json({ message: "Customer ID and date are required" });
+    }
+
+    const dates = getPastThreeDatesPlusToday(date);
+    if (!dates) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+
+    const targetDate = dates[dates.length - 1];
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(customerId);
+    const deliveryRef = customerRef.collection("deliveries").doc(targetDate);
+    const deliverySnap = await deliveryRef.get();
+
+    if (!deliverySnap.exists) {
+      return res.status(404).json({ message: "Today's delivery not found" });
+    }
+
+    await deliveryRef.delete();
+
+    await customerRef.update({
+      [`last8Days.${targetDate}`]: admin.firestore.FieldValue.delete(),
+      last8DaysUpdatedAt: Date.now(),
+    });
+
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const staleKeys = keys.filter(
+        (key) =>
+          key.startsWith("customerRetention") ||
+          key.startsWith("allCustomerDeliveries") ||
+          key.startsWith("analytics:last8"),
+      );
+      if (staleKeys.length > 0) {
+        cache.del(staleKeys);
+      }
+      cache.del(`userDeliveries:${customerId}`);
+      cache.del(`allCustomerDeliveries:${targetDate}`);
+      cache.del("customerMapStatus:today");
+      cache.del("latestRemarks");
+    } catch (cacheErr) {
+      console.warn("retention reset cache invalidation error:", cacheErr);
+    }
+
+    return res.status(200).json({
+      message: "Customer reset to pending",
+      customerId,
+      date: targetDate,
+    });
+  } catch (err) {
+    console.error("resetRetentionCustomer error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 const getCustomerMapStatus = async (req, res) => {
   try {
     const cacheKey = "customerMapStatus:today";
@@ -1178,6 +1461,8 @@ export {
   getCustomersByDeliveryDays,
   getCustomersByDeliveryCount,
   saveCheckedReason,
+  getRetentionCustomers,
+  resetRetentionCustomer,
   resetAllCheckedReasons,
   saveDeliveredTrays,
   getLatestRemarks,
