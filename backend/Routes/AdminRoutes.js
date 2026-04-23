@@ -92,6 +92,8 @@ router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
 router.get("/customer-retention", getRetentionCustomers);
 router.post("/customer-retention/reset", resetRetentionCustomer);
+router.get("/customer/retention", getRetentionCustomers);
+router.post("/customer/retention/reset", resetRetentionCustomer);
 
 // Delivery partner related routes
 router.post("/add-del-partner", addDeliveryPartner);

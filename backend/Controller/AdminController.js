@@ -303,36 +303,59 @@ const getRetentionCustomers = async (req, res) => {
       other_vendor: 0,
     };
 
+    const candidates = [];
+
+    await runInBatches(customersSnap.docs, 50, async (customerDoc) => {
+      const todaySnap = await customerDoc.ref
+        .collection("deliveries")
+        .doc(todayKey)
+        .get();
+
+      if (!todaySnap.exists) return null;
+
+      const todayStatus = getRetentionStatus(todaySnap.data());
+      if (todayStatus.key !== "checked") return null;
+
+      counts.all += 1;
+      if (counts[todayStatus.category] !== undefined) {
+        counts[todayStatus.category] += 1;
+      }
+
+      if (
+        selectedCategory === "all" ||
+        todayStatus.category === selectedCategory
+      ) {
+        candidates.push({
+          customerDoc,
+          todayStatus,
+        });
+      }
+
+      return null;
+    });
+
+    const previousDates = dates.slice(0, -1);
+
     await runInBatches(
-      customersSnap.docs,
-      25,
-      async (customerDoc) => {
+      candidates,
+      50,
+      async ({ customerDoc, todayStatus }) => {
         const customer = customerDoc.data() || {};
         const deliveriesRef = customerDoc.ref.collection("deliveries");
 
-        const deliverySnaps = await Promise.all(
-          dates.map((dateKey) => deliveriesRef.doc(dateKey).get()),
+        const previousSnaps = await Promise.all(
+          previousDates.map((dateKey) => deliveriesRef.doc(dateKey).get()),
         );
 
-        const todaySnap = deliverySnaps[deliverySnaps.length - 1];
-        if (!todaySnap.exists) return null;
-
-        const todayStatus = getRetentionStatus(todaySnap.data());
-        if (todayStatus.key !== "checked") return null;
-
-        counts.all += 1;
-        if (counts[todayStatus.category] !== undefined) {
-          counts[todayStatus.category] += 1;
-        }
-
         const dayStatuses = {};
-        dates.forEach((dateKey, index) => {
+        previousDates.forEach((dateKey, index) => {
           dayStatuses[dateKey] = getRetentionStatus(
-            deliverySnaps[index].exists ? deliverySnaps[index].data() : null,
+            previousSnaps[index].exists ? previousSnaps[index].data() : null,
           );
         });
+        dayStatuses[todayKey] = todayStatus;
 
-        const row = {
+        rows.push({
           id: customerDoc.id,
           custid: customer.custid || "",
           name: customer.name || "",
@@ -342,14 +365,8 @@ const getRetentionCustomers = async (req, res) => {
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
           days: dayStatuses,
-        };
+        });
 
-        if (
-          selectedCategory === "all" ||
-          todayStatus.category === selectedCategory
-        ) {
-          rows.push(row);
-        }
         return null;
       },
     );
