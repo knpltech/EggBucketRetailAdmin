@@ -1,4 +1,4 @@
-import { FieldPath, getFirestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
@@ -106,7 +106,21 @@ const normalizeSortBy = (value) => {
   const raw = String(value || "")
     .trim()
     .toLowerCase();
-  return raw === "createdAt" ? "createdAt" : "name";
+  return raw === "createdat" ? "createdAt" : "name";
+};
+
+const sortCustomers = (customers, sortBy) => {
+  const sorted = [...customers];
+
+  if (sortBy === "createdAt") {
+    sorted.sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+    return sorted;
+  }
+
+  sorted.sort((a, b) =>
+    String(a?.name || "").localeCompare(String(b?.name || "")),
+  );
+  return sorted;
 };
 
 const toBase64Url = (base64Value) =>
@@ -192,6 +206,17 @@ const invalidateCustomerInfoCache = async (customerId) => {
   }
 };
 
+const invalidateAllCustomerDeliveriesCache = async () => {
+  try {
+    const cacheKeys = await cache.keysAsync("allCustomerDeliveries*");
+    if (cacheKeys.length > 0) {
+      await cache.delAsync(cacheKeys);
+    }
+  } catch (error) {
+    console.warn("Failed to invalidate all deliveries cache:", error);
+  }
+};
+
 const getTotalCustomersCount = async (db) => {
   let totalCustomers = 0;
 
@@ -230,6 +255,12 @@ const userInfo = async (req, res) => {
     const db = getFirestore();
 
     if (isPaginatedRequest) {
+      const cacheKey = `customerInfo:userInfo:page:${sortBy}:${limit}:${requestedPage}:${req.query.cursor || ""}`;
+      const cachedPayload = await cache.getAsync(cacheKey);
+      if (cachedPayload) {
+        return res.status(200).json(cachedPayload);
+      }
+
       const totalCustomers = await getTotalCustomersCount(db);
       const totalPages = Math.max(
         1,
@@ -241,12 +272,15 @@ const userInfo = async (req, res) => {
         const currentPage = Math.min(requestedPage, totalPages);
         const offset = (currentPage - 1) * limit;
 
-        const snapshot = await db
-          .collection("customers")
-          .orderBy(FieldPath.documentId(), "asc")
-          .offset(offset)
-          .limit(limit)
-          .get();
+        let query = db.collection("customers");
+
+        if (sortBy === "createdAt") {
+          query = query.orderBy("createdAt", "desc");
+        } else {
+          query = query.orderBy("name", "asc");
+        }
+
+        const snapshot = await query.offset(offset).limit(limit).get();
 
         const customers = snapshot.docs.map((doc) => {
           const customerData = doc.data();
@@ -272,18 +306,27 @@ const userInfo = async (req, res) => {
           },
         };
 
+        await cache.setAsync(cacheKey, payload, 60);
         return res.status(200).json(payload);
       }
 
       const cursor = decodeCursor(req.query.cursor);
 
-      let query = db
-        .collection("customers")
-        .orderBy(FieldPath.documentId(), "asc")
-        .limit(limit + 1);
+      let query = db.collection("customers");
+
+      if (sortBy === "createdAt") {
+        query = query.orderBy("createdAt", "desc");
+      } else {
+        query = query.orderBy("name", "asc");
+      }
+
+      query = query.limit(limit + 1);
 
       if (cursor) {
-        const cursorDoc = await db.collection("customers").doc(cursor.lastId).get();
+        const cursorDoc = await db
+          .collection("customers")
+          .doc(cursor.lastId)
+          .get();
         if (cursorDoc.exists) {
           query = query.startAfter(cursorDoc);
         }
@@ -327,7 +370,14 @@ const userInfo = async (req, res) => {
         },
       };
 
+      await cache.setAsync(cacheKey, payload, 60);
       return res.status(200).json(payload);
+    }
+
+    const cacheKey = `customerInfo:userInfo:all:${sortBy}`;
+    const cachedCustomers = await cache.getAsync(cacheKey);
+    if (cachedCustomers) {
+      return res.status(200).json(cachedCustomers);
     }
 
     const customersSnapshot = await db.collection("customers").get();
@@ -340,7 +390,10 @@ const userInfo = async (req, res) => {
       };
     });
 
-    return res.status(200).json(customers);
+    const sortedCustomers = sortCustomers(customers, sortBy);
+
+    await cache.setAsync(cacheKey, sortedCustomers, 60);
+    return res.status(200).json(sortedCustomers);
   } catch (error) {
     console.error("Error fetching customers:", error);
     return res.status(500).json({ error: "Failed to fetch customer data" });
@@ -469,7 +522,19 @@ const getAllCustomerDeliveries = async (req, res) => {
   try {
     const db = getFirestore();
 
-    const customersSnap = await db.collection("customers").get();
+    const [customersSnap, deliveryManSnap] = await Promise.all([
+      db.collection("customers").get(),
+      db.collection("DeliveryMan").get(),
+    ]);
+
+    const deliveryManMap = new Map();
+    deliveryManSnap.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      deliveryManMap.set(doc.id, {
+        name: data.name || "",
+        phone: data.phone || "",
+      });
+    });
 
     const customersWithDeliveries = await Promise.all(
       customersSnap.docs.map(async (doc) => {
@@ -489,22 +554,9 @@ const getAllCustomerDeliveries = async (req, res) => {
               data.type,
               data.checkReason,
             );
-            let deliveryMan = null;
-
-            if (data.deliveredBy) {
-              const manDoc = await db
-                .collection("DeliveryMan")
-                .doc(data.deliveredBy)
-                .get();
-
-              if (manDoc.exists) {
-                const manData = manDoc.data();
-                deliveryMan = {
-                  name: manData.name || "",
-                  phone: manData.phone || "",
-                };
-              }
-            }
+            const deliveryMan = data.deliveredBy
+              ? deliveryManMap.get(data.deliveredBy) || null
+              : null;
 
             deliveries = [
               {
@@ -525,22 +577,9 @@ const getAllCustomerDeliveries = async (req, res) => {
                 data.type,
                 data.checkReason,
               );
-              let deliveryMan = null;
-
-              if (data.deliveredBy) {
-                const manDoc = await db
-                  .collection("DeliveryMan")
-                  .doc(data.deliveredBy)
-                  .get();
-
-                if (manDoc.exists) {
-                  const manData = manDoc.data();
-                  deliveryMan = {
-                    name: manData.name || "",
-                    phone: manData.phone || "",
-                  };
-                }
-              }
+              const deliveryMan = data.deliveredBy
+                ? deliveryManMap.get(data.deliveredBy) || null
+                : null;
 
               return {
                 id: d.id,
@@ -685,6 +724,7 @@ const addCustomer = async (req, res) => {
     });
     await counterRef.set({ counter: current + 1 });
     await invalidateCustomerInfoCache();
+    await invalidateAllCustomerDeliveriesCache();
     res.status(200).json({ message: "Customer added successfully" });
   } catch (error) {
     console.error("Error in addCustomer:", error);
