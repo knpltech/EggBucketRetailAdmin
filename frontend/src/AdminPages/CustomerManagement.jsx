@@ -775,31 +775,29 @@ function getDateStringInTimeZone(date, timeZone) {
 
 function normalizePotential(value) {
   const VALID_POTENTIALS = [
-    "T 1","T 2","T 3","T 4","T 5","T 6",
-    "T 7","T 8","T 9","T 10","T 15","T 20",
-    "T 25","T 30","T 50","T 100",
+    "T1","T2","T3","T4","T5","T6","T7","T8","T9",
+    "T10","T15","T20","T25","T30","T50","T100",
   ];
 
   const raw = String(value ?? "")
     .trim()
     .toUpperCase();
 
-  if (!raw) return "T 1";
+  if (!raw) return "T1";
 
   if (VALID_POTENTIALS.includes(raw)) return raw;
 
-  // Handle legacy format without space (T1 -> T 1)
-  const withSpace = raw.replace(/T(\d+)/, "T $1");
-  if (VALID_POTENTIALS.includes(withSpace)) return withSpace;
+  // Handle legacy format with space (T 1 -> T1)
+  const withoutSpace = raw.replace(/T\s+(\d+)/, "T$1");
+  if (VALID_POTENTIALS.includes(withoutSpace)) return withoutSpace;
 
-  return "T 1";
+  return "T1";
 }
 
 function getNextPotential(currentPotential) {
   const POTENTIALS = [
-    "T 1","T 2","T 3","T 4","T 5","T 6","T 7",
-    "T 8","T 9","T 10","T 15","T 20","T 25","T 30","T 50",
-    "T 100",
+    "T1","T2","T3","T4","T5","T6","T7","T8",
+    "T9","T10","T15","T20","T25","T30","T50","T100",
   ];
 
   const normalized = normalizePotential(currentPotential);
@@ -810,9 +808,9 @@ function getNextPotential(currentPotential) {
 
 function getPotentialColor(value) {
   const potential = normalizePotential(value);
-  const num = parseInt(potential.slice(2), 10);
+  const num = parseInt(potential.slice(1), 10);
 
-  // T 1-T 7 = red, T 8-T 15 = orange, T 20+ = green
+  // T1-T7 = red, T8-T15 = orange, T20+ = green
   if (num <= 7) return "#FF3B30"; // red
   if (num <= 15) return "#FB8C00"; // orange
   return "#0F9D58"; // green

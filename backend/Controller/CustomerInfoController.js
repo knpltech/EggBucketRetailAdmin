@@ -22,24 +22,24 @@ const normalizeCustomerPriority = (value) => {
 
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
-    "T 1","T 2","T 3","T 4","T 5","T 6","T 7",
-    "T 8","T 9","T 10","T 15","T 20","T 25","T 30",
-    "T 50","T 100",
+    "T1","T2","T3","T4","T5","T6","T7",
+    "T8","T9","T10","T15","T20","T25","T30",
+    "T50","T100",
   ];
 
   const raw = String(value ?? "")
     .trim()
     .toUpperCase();
 
-  if (!raw) return "T 1";
+  if (!raw) return "T1";
 
   if (VALID_POTENTIALS.includes(raw)) return raw;
 
-  // Handle legacy format without space (T1 -> T 1)
-  const withSpace = raw.replace(/T(\d+)/, "T $1");
-  if (VALID_POTENTIALS.includes(withSpace)) return withSpace;
+  // Handle legacy format with space (T 1 -> T1)
+  const withoutSpace = raw.replace(/T\s+(\d+)/, "T$1");
+  if (VALID_POTENTIALS.includes(withoutSpace)) return withoutSpace;
 
-  return "T 1";
+  return "T1";
 };
 
 const getStatusAndReasonFromType = (type, checkReason = "") => {
@@ -103,7 +103,9 @@ const parsePageNumber = (value) => {
 };
 
 const normalizeSortBy = (value) => {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
   return raw === "createdAt" ? "createdAt" : "name";
 };
 
@@ -678,7 +680,7 @@ const addCustomer = async (req, res) => {
       location,
       zone: "UNASSIGNED",
       priority: "P0",
-      potential: "T 1",
+      potential: "T1",
       remarks: "",
     });
     await counterRef.set({ counter: current + 1 });
