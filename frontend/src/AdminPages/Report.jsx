@@ -6,7 +6,6 @@ import { ADMIN_PATH } from "../constant";
 
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
-const PAGE_SIZE = 25;
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
@@ -24,7 +23,6 @@ const Report = () => {
   const today = getToday();
   const [data, setData] = useState([]);
   const [zones, setZones] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [savingReasonId, setSavingReasonId] = useState("");
   const [savingTraysId, setSavingTraysId] = useState("");
@@ -436,17 +434,6 @@ const Report = () => {
     return temp;
   }, [filteredDeliveries, selectedAgent, sortBy, statusFilter]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedDate, statusFilter, sortBy, selectedAgent]);
-
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(displayedDeliveries.length / PAGE_SIZE));
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, displayedDeliveries.length]);
-
   const getStatusColor = (status) => {
     switch (status) {
       case "delivered":
@@ -500,43 +487,6 @@ const Report = () => {
         ),
     [filteredDeliveries, selectedAgent],
   );
-  const totalPages = Math.max(1, Math.ceil(displayedDeliveries.length / PAGE_SIZE));
-  const paginatedDeliveries = useMemo(
-    () =>
-      displayedDeliveries.slice(
-        (currentPage - 1) * PAGE_SIZE,
-        currentPage * PAGE_SIZE,
-      ),
-    [currentPage, displayedDeliveries],
-  );
-
-  const getPageButtons = () => {
-    if (totalPages <= 7) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1);
-    }
-
-    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
-    const normalized = [...pages]
-      .filter((page) => page >= 1 && page <= totalPages)
-      .sort((a, b) => a - b);
-
-    const withEllipsis = [];
-    for (let i = 0; i < normalized.length; i += 1) {
-      const page = normalized[i];
-      const prev = normalized[i - 1];
-
-      if (i > 0 && page - prev > 1) {
-        withEllipsis.push(`ellipsis-${prev}`);
-      }
-
-      withEllipsis.push(page);
-    }
-
-    return withEllipsis;
-  };
-
-  const pageButtons = useMemo(() => getPageButtons(), [currentPage, totalPages]);
-
   const downloadSummaryExcel = async () => {
     if (!startRange || !endRange) {
       alert("Select Start & End Date");
@@ -839,9 +789,12 @@ const Report = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {paginatedDeliveries.length ? (
-                    paginatedDeliveries.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50 border-b">
+                  {displayedDeliveries.length ? (
+                    displayedDeliveries.map((row) => (
+                      <tr
+                        key={`${row.customerId}-${row.deliveryId || selectedDate}`}
+                        className="hover:bg-gray-50 border-b"
+                      >
                         <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
                           {row.custid}
                         </td>
@@ -982,58 +935,6 @@ const Report = () => {
                 </tbody>
               </table>
             </div>
-
-            {!loading && displayedDeliveries.length > 0 && (
-              <div className="px-4 pb-4 sm:px-6 lg:px-8 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="bg-gray-200 text-gray-800 px-4 py-2 rounded disabled:opacity-50"
-                >
-                  Previous
-                </button>
-
-                <div className="flex items-center gap-2">
-                  {pageButtons.map((pageItem) => {
-                    if (typeof pageItem === "string") {
-                      return (
-                        <span key={pageItem} className="px-2 text-gray-500">
-                          ...
-                        </span>
-                      );
-                    }
-
-                    const isActive = pageItem === currentPage;
-
-                    return (
-                      <button
-                        key={pageItem}
-                        type="button"
-                        onClick={() => setCurrentPage(pageItem)}
-                        disabled={isActive}
-                        className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
-                      >
-                        {pageItem}
-                      </button>
-                    );
-                  })}
-
-                  <span className="text-sm text-gray-700">
-                    {currentPage}/{totalPages}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
-            )}
           </>
         )}
       </div>

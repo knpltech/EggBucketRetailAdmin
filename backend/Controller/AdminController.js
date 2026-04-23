@@ -261,7 +261,19 @@ const updateCustomerMeta = async (req, res) => {
     await customerRef.update(updateData);
 
     try {
-      cache.del("customerInfo:userInfo");
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const customerInfoKeys = keys.filter((key) =>
+        key.startsWith("customerInfo:userInfo"),
+      );
+      if (customerInfoKeys.length > 0) {
+        cache.del(customerInfoKeys);
+      }
+      const allDeliveriesKeys = keys.filter((key) =>
+        key.startsWith("allCustomerDeliveries"),
+      );
+      if (allDeliveriesKeys.length > 0) {
+        cache.del(allDeliveriesKeys);
+      }
       cache.del(`customer:${id}`);
     } catch (cacheError) {
       console.warn("Failed to invalidate customer caches:", cacheError);

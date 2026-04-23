@@ -26,12 +26,12 @@ const CustomerInfo = () => {
     phone: "",
   });
 
-  const [sortOption, setSortOption] = useState("name");
+  const [sortOption, setSortOption] = useState("createdAt");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState({ 1: "" });
   const [pageLoading, setPageLoading] = useState(false);
-  const [isServerPaginated, setIsServerPaginated] = useState(false);
 
   const navigate = useNavigate();
 
@@ -41,18 +41,12 @@ const CustomerInfo = () => {
     init();
   }, []);
 
-  useEffect(() => {
-    if (!isServerPaginated) {
-      setHasNextPage(currentPage < totalPages);
-    }
-  }, [currentPage, totalPages, isServerPaginated]);
-
   const init = async () => {
     setLoading(true);
 
     try {
       await Promise.all([
-        fetchCustomers({ page: 1, sortBy: sortOption }),
+        fetchCustomers({ page: 1, sortBy: sortOption, cursor: "" }),
         fetchZones(),
       ]);
     } finally {
@@ -60,15 +54,19 @@ const CustomerInfo = () => {
     }
   };
 
-  const fetchCustomers = async ({ page = 1, sortBy } = {}) => {
+  const fetchCustomers = async ({ page = currentPage, sortBy, cursor } = {}) => {
     setPageLoading(true);
 
     try {
+      const requestedSort = sortBy || sortOption;
+      const requestedCursor =
+        cursor !== undefined ? cursor : pageCursors[page] || "";
+
       const res = await axios.get(`${ADMIN_PATH}/user-info`, {
         params: {
           limit: PAGE_SIZE,
-          page,
-          sortBy: sortBy || sortOption,
+          cursor: requestedCursor,
+          sortBy: requestedSort,
         },
       });
 
@@ -76,37 +74,23 @@ const CustomerInfo = () => {
       const responseCustomers = Array.isArray(payload)
         ? payload
         : payload.customers || [];
-      const hasServerPagination = Boolean(payload?.pagination);
-      const serverHasNextPage = Boolean(payload?.pagination?.hasNextPage);
-      const serverTotalPagesRaw = Number(payload?.pagination?.totalPages);
-      const serverCurrentPageRaw = Number(payload?.pagination?.currentPage);
-      const serverTotalPages =
-        Number.isFinite(serverTotalPagesRaw) && serverTotalPagesRaw > 0
-          ? Math.floor(serverTotalPagesRaw)
-          : 1;
-      const resolvedCurrentPage =
-        Number.isFinite(serverCurrentPageRaw) && serverCurrentPageRaw > 0
-          ? Math.floor(serverCurrentPageRaw)
-          : page;
-      const minimumExpectedPages = serverHasNextPage
-        ? resolvedCurrentPage + 1
-        : resolvedCurrentPage;
-      const safeTotalPages = Math.max(serverTotalPages, minimumExpectedPages, 1);
+      const pagination = payload.pagination || {};
+      const resolvedTotalPages = Math.max(
+        1,
+        Number(pagination.totalPages) || 1,
+      );
+      const nextCursor = pagination.nextCursor || "";
 
       setError("");
-      setIsServerPaginated(hasServerPagination);
       setCustomers(responseCustomers);
-      setCurrentPage(hasServerPagination ? resolvedCurrentPage : page);
-      setTotalPages(
-        hasServerPagination
-          ? safeTotalPages
-          : Math.max(1, Math.ceil(responseCustomers.length / PAGE_SIZE))
-      );
-      setHasNextPage(
-        hasServerPagination
-          ? serverHasNextPage
-          : page < Math.max(1, Math.ceil(responseCustomers.length / PAGE_SIZE)),
-      );
+      setCurrentPage(page);
+      setTotalPages(resolvedTotalPages);
+      setHasNextPage(Boolean(pagination.hasNextPage));
+      setPageCursors((prev) => ({
+        ...prev,
+        [page]: requestedCursor,
+        ...(nextCursor ? { [page + 1]: nextCursor } : {}),
+      }));
     } catch {
       setError("Error fetching customer data");
     } finally {
@@ -114,48 +98,50 @@ const CustomerInfo = () => {
     }
   };
 
-  const handleNextPage = () => {
-    if (!hasNextPage || pageLoading || currentPage >= totalPages) return;
-
-    if (isServerPaginated) {
-      fetchCustomers({ page: currentPage + 1 });
-      return;
-    }
-
-    setCurrentPage((prev) => prev + 1);
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage <= 1 || pageLoading) return;
-
-    if (isServerPaginated) {
-      fetchCustomers({ page: currentPage - 1 });
-      return;
-    }
-
-    setCurrentPage((prev) => prev - 1);
-  };
-
-  const handlePageClick = (pageNumber) => {
-    if (pageLoading || pageNumber === currentPage) return;
-
-    if (isServerPaginated) {
-      fetchCustomers({ page: pageNumber });
-      return;
-    }
-
-    setCurrentPage(pageNumber);
-  };
-
   const handleSortChange = async (e) => {
     const nextSortOption = e.target.value;
 
     setSortOption(nextSortOption);
     setCurrentPage(1);
+    setPageCursors({ 1: "" });
 
     await fetchCustomers({
       page: 1,
       sortBy: nextSortOption,
+      cursor: "",
+    });
+  };
+
+  const handleNextPage = () => {
+    if (!hasNextPage || pageLoading) return;
+    const nextPage = currentPage + 1;
+    fetchCustomers({
+      page: nextPage,
+      cursor: pageCursors[nextPage] || "",
+    });
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage <= 1 || pageLoading) return;
+    const prevPage = currentPage - 1;
+    fetchCustomers({
+      page: prevPage,
+      cursor: pageCursors[prevPage] || "",
+    });
+  };
+
+  const handlePageClick = (pageNumber) => {
+    if (
+      pageLoading ||
+      pageNumber === currentPage ||
+      !Object.prototype.hasOwnProperty.call(pageCursors, pageNumber)
+    ) {
+      return;
+    }
+
+    fetchCustomers({
+      page: pageNumber,
+      cursor: pageCursors[pageNumber] || "",
     });
   };
 
@@ -189,9 +175,7 @@ const CustomerInfo = () => {
         zone,
       });
 
-      await fetchCustomers({
-        page: currentPage,
-      });
+      await fetchCustomers({ page: currentPage });
     } finally {
       setAssigningZoneId(null);
     }
@@ -205,13 +189,13 @@ const CustomerInfo = () => {
         data: { id },
       });
 
-      const nextPage =
-        paginatedCustomers.length === 1 && currentPage > 1
-          ? currentPage - 1
-          : currentPage;
+      const nextPage = customers.length === 1 && currentPage > 1
+        ? currentPage - 1
+        : currentPage;
 
       await fetchCustomers({
         page: nextPage,
+        cursor: pageCursors[nextPage] || "",
       });
 
       setDeleteConfirmation(null);
@@ -246,9 +230,7 @@ const CustomerInfo = () => {
         ...formData,
       });
 
-      await fetchCustomers({
-        page: currentPage,
-      });
+      await fetchCustomers({ page: currentPage });
 
       setEditingCustomer(null);
     } catch {
@@ -263,12 +245,6 @@ const CustomerInfo = () => {
 
     return String(a?.name || "").localeCompare(String(b?.name || ""));
   });
-  const paginatedCustomers = isServerPaginated
-    ? sortedCustomers
-    : sortedCustomers.slice(
-        (currentPage - 1) * PAGE_SIZE,
-        currentPage * PAGE_SIZE,
-      );
 
   const getPageButtons = () => {
     if (totalPages <= 7) {
@@ -326,8 +302,8 @@ const CustomerInfo = () => {
             onChange={handleSortChange}
             className="border px-3 py-2 rounded"
           >
-            <option value="name">Name</option>
             <option value="createdAt">Created Date</option>
+            <option value="name">Name</option>
           </select>
 
           <button
@@ -363,7 +339,7 @@ const CustomerInfo = () => {
 
           <tbody>
 
-            {paginatedCustomers.map((c) => (
+            {sortedCustomers.map((c) => (
 
               <tr
                 key={c.id}
@@ -510,13 +486,17 @@ const CustomerInfo = () => {
             }
 
             const isActive = pageItem === currentPage;
+            const canOpenPage = Object.prototype.hasOwnProperty.call(
+              pageCursors,
+              pageItem,
+            );
 
             return (
               <button
                 key={pageItem}
                 type="button"
                 onClick={() => handlePageClick(pageItem)}
-                disabled={pageLoading || isActive}
+                disabled={pageLoading || isActive || !canOpenPage}
                 className={`px-3 py-1 rounded border ${isActive ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-800 border-gray-300"} disabled:opacity-60`}
               >
                 {pageItem}
