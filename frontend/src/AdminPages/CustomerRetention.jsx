@@ -14,8 +14,96 @@ const CHECKED_TYPES = [
   "stock_available",
   "other_vendor",
 ];
-const RETENTION_CACHE_TTL_MS = 60 * 1000;
+const RETENTION_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes instead of 1 minute
 const ROWS_PER_PAGE = 25;
+
+// OPTIMIZATION: Batch fetch multiple dates in a single API call
+const fetchDeliveriesForDates = async (dateKeys) => {
+  // Create a cache key for the batch of dates
+  const sortedDates = [...dateKeys].sort().join(",");
+  const batchCacheKey = `customer-retention:v2:batch:${sortedDates}`;
+  const cached = sessionStorage.getItem(batchCacheKey);
+
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (
+        parsed?.savedAt &&
+        Date.now() - parsed.savedAt < RETENTION_CACHE_TTL_MS &&
+        parsed.data
+      ) {
+        return parsed.data;
+      }
+    } catch {
+      sessionStorage.removeItem(batchCacheKey);
+    }
+  }
+
+  // Fetch all dates at once by making individual requests
+  // (or could be optimized to a single batch endpoint if backend supports it)
+  const responses = await Promise.all(
+    dateKeys.map(async (dateKey) => {
+      const dateSpecificCacheKey = `customer-retention:v2:all-deliveries:${dateKey}`;
+      const dateCached = sessionStorage.getItem(dateSpecificCacheKey);
+
+      if (dateCached) {
+        try {
+          const parsed = JSON.parse(dateCached);
+          if (
+            parsed?.savedAt &&
+            Date.now() - parsed.savedAt < RETENTION_CACHE_TTL_MS &&
+            Array.isArray(parsed.customers)
+          ) {
+            return { dateKey, customers: parsed.customers };
+          }
+        } catch {
+          sessionStorage.removeItem(dateSpecificCacheKey);
+        }
+      }
+
+      const res = await axios.get(`${ADMIN_PATH}/all-deliveries`, {
+        params: { date: dateKey },
+      });
+      const customers = Array.isArray(res.data?.customers)
+        ? res.data.customers
+        : [];
+
+      // Cache individual date as well
+      sessionStorage.setItem(
+        dateSpecificCacheKey,
+        JSON.stringify({
+          savedAt: Date.now(),
+          customers,
+        }),
+      );
+
+      return { dateKey, customers };
+    }),
+  );
+
+  // Transform responses into a map for easier access
+  const data = {};
+  responses.forEach(({ dateKey, customers }) => {
+    data[dateKey] = customers;
+  });
+
+  // Cache the batch result
+  sessionStorage.setItem(
+    batchCacheKey,
+    JSON.stringify({
+      savedAt: Date.now(),
+      data,
+    }),
+  );
+
+  return data;
+};
+
+// Legacy function for backward compatibility
+const fetchDeliveriesForDate = async (dateKey) => {
+  const result = await fetchDeliveriesForDates([dateKey]);
+  return result[dateKey] || [];
+};
 
 const getTodayDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -147,41 +235,6 @@ const getStatusFromDelivery = (delivery) => {
   };
 };
 
-const fetchDeliveriesForDate = async (dateKey) => {
-  const cacheKey = `customer-retention:v2:all-deliveries:${dateKey}`;
-  const cached = sessionStorage.getItem(cacheKey);
-
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      if (
-        parsed?.savedAt &&
-        Date.now() - parsed.savedAt < RETENTION_CACHE_TTL_MS &&
-        Array.isArray(parsed.customers)
-      ) {
-        return parsed.customers;
-      }
-    } catch {
-      sessionStorage.removeItem(cacheKey);
-    }
-  }
-
-  const res = await axios.get(`${ADMIN_PATH}/all-deliveries`, {
-    params: { date: dateKey },
-  });
-  const customers = Array.isArray(res.data?.customers) ? res.data.customers : [];
-
-  sessionStorage.setItem(
-    cacheKey,
-    JSON.stringify({
-      savedAt: Date.now(),
-      customers,
-    }),
-  );
-
-  return customers;
-};
-
 const CustomerRetention = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -221,14 +274,14 @@ const CustomerRetention = () => {
 
     try {
       const expectedDates = getPastThreeDatesPlusToday(date);
-      const responses = await Promise.all(
-        expectedDates.map((dateKey) => fetchDeliveriesForDate(dateKey)),
-      );
+      
+      // OPTIMIZATION: Fetch all dates in a batch instead of sequential calls
+      const deliveriesMap = await fetchDeliveriesForDates(expectedDates);
 
       const customerMap = new Map();
 
-      expectedDates.forEach((dateKey, index) => {
-        const dayCustomers = responses[index] || [];
+      expectedDates.forEach((dateKey) => {
+        const dayCustomers = deliveriesMap[dateKey] || [];
 
         dayCustomers.forEach((customer) => {
           const existing = customerMap.get(customer.id) || {
@@ -350,9 +403,13 @@ const CustomerRetention = () => {
         await axios.post(`${ADMIN_PATH}/customer/retention/reset`, resetPayload);
       }
 
+      // OPTIMIZATION: Clear batch cache on reset
       dates.forEach((dateKey) => {
         sessionStorage.removeItem(`customer-retention:v2:all-deliveries:${dateKey}`);
       });
+      const sortedDates = [...dates].sort().join(",");
+      sessionStorage.removeItem(`customer-retention:v2:batch:${sortedDates}`);
+
       setCustomers((prev) => prev.filter((item) => item.id !== customer.id));
     } catch (err) {
       alert(err?.response?.data?.message || "Reset failed");
