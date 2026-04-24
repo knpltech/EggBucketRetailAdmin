@@ -8,6 +8,7 @@ const CATEGORY_OPTIONS = [
   { value: "price_mismatch", label: "Price Mismatch" },
   { value: "other_vendor", label: "Other Vendor" },
 ];
+const RETENTION_CACHE_TTL_MS = 60 * 1000;
 
 const getTodayDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -71,6 +72,101 @@ const getStatusRemark = (status) => {
   return "";
 };
 
+const getStatusFromDelivery = (delivery) => {
+  if (!delivery) {
+    return {
+      key: "pending",
+      label: "Pending",
+      category: "",
+      categoryLabel: "-",
+      reason: "",
+    };
+  }
+
+  const type = String(delivery.type || "")
+    .trim()
+    .toLowerCase();
+  const reason = String(delivery.checkReason || delivery.reason || "")
+    .trim();
+  const normalizedReason = reason.toLowerCase().replace(/\s+/g, "_");
+  const category = ["stock_available", "price_mismatch", "other_vendor"].includes(type)
+    ? type
+    : ["stock_available", "price_mismatch", "other_vendor"].includes(normalizedReason)
+      ? normalizedReason
+      : "";
+  const categoryLabel =
+    category === "stock_available"
+      ? "Stock Available"
+      : category === "price_mismatch"
+        ? "Price Mismatch"
+        : category === "other_vendor"
+          ? "Other Vendor"
+          : "-";
+
+  if (type === "delivered") {
+    return {
+      key: "delivered",
+      label: "Delivered",
+      category: "",
+      categoryLabel: "-",
+      reason: "",
+    };
+  }
+
+  if (type === "reached" || category) {
+    return {
+      key: "checked",
+      label: "Checked",
+      category,
+      categoryLabel,
+      reason: reason || categoryLabel,
+    };
+  }
+
+  return {
+    key: "pending",
+    label: "Pending",
+    category: "",
+    categoryLabel: "-",
+    reason: "",
+  };
+};
+
+const fetchDeliveriesForDate = async (dateKey) => {
+  const cacheKey = `customer-retention:all-deliveries:${dateKey}`;
+  const cached = sessionStorage.getItem(cacheKey);
+
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (
+        parsed?.savedAt &&
+        Date.now() - parsed.savedAt < RETENTION_CACHE_TTL_MS &&
+        Array.isArray(parsed.customers)
+      ) {
+        return parsed.customers;
+      }
+    } catch {
+      sessionStorage.removeItem(cacheKey);
+    }
+  }
+
+  const res = await axios.get(`${ADMIN_PATH}/all-deliveries`, {
+    params: { date: dateKey },
+  });
+  const customers = Array.isArray(res.data?.customers) ? res.data.customers : [];
+
+  sessionStorage.setItem(
+    cacheKey,
+    JSON.stringify({
+      savedAt: Date.now(),
+      customers,
+    }),
+  );
+
+  return customers;
+};
+
 const CustomerRetention = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -98,37 +194,69 @@ const CustomerRetention = () => {
     }
 
     try {
-      const requestConfig = {
-        params: {
-          date,
-          category,
-        },
-      };
-      let res;
-
-      try {
-        res = await axios.get(`${ADMIN_PATH}/customer-retention`, requestConfig);
-      } catch (requestError) {
-        if (requestError?.response?.status !== 404) {
-          throw requestError;
-        }
-
-        res = await axios.get(`${ADMIN_PATH}/customer/retention`, requestConfig);
-      }
-
-      const payload = res.data || {};
       const expectedDates = getPastThreeDatesPlusToday(date);
-      const payloadDates = Array.isArray(payload.dates) ? payload.dates : [];
-      const payloadMatchesSelectedDate =
-        payloadDates.length === 4 && payloadDates[payloadDates.length - 1] === date;
-      setDates(payloadMatchesSelectedDate ? payloadDates : expectedDates);
-      setCustomers(Array.isArray(payload.customers) ? payload.customers : []);
-      setCounts({
-        all: Number(payload.counts?.all || 0),
-        stock_available: Number(payload.counts?.stock_available || 0),
-        price_mismatch: Number(payload.counts?.price_mismatch || 0),
-        other_vendor: Number(payload.counts?.other_vendor || 0),
+      const responses = await Promise.all(
+        expectedDates.map((dateKey) => fetchDeliveriesForDate(dateKey)),
+      );
+
+      const customerMap = new Map();
+
+      expectedDates.forEach((dateKey, index) => {
+        const dayCustomers = responses[index] || [];
+
+        dayCustomers.forEach((customer) => {
+          const existing = customerMap.get(customer.id) || {
+            id: customer.id,
+            custid: customer.custid || "",
+            name: customer.name || "",
+            phone: customer.phone || "",
+            zone: customer.zone || "UNASSIGNED",
+            todayCategory: "",
+            todayCategoryLabel: "-",
+            todayReason: "",
+            days: {},
+          };
+          const delivery = customer.deliveries?.[0] || null;
+          const status = getStatusFromDelivery(delivery);
+
+          existing.days[dateKey] = status;
+
+          if (dateKey === date) {
+            existing.todayCategory = status.category;
+            existing.todayCategoryLabel = status.categoryLabel;
+            existing.todayReason = status.reason;
+          }
+
+          customerMap.set(customer.id, existing);
+        });
       });
+
+      const allRows = [...customerMap.values()].filter(
+        (customer) => customer.days?.[date]?.key === "checked",
+      );
+      const nextCounts = {
+        all: allRows.length,
+        stock_available: 0,
+        price_mismatch: 0,
+        other_vendor: 0,
+      };
+
+      allRows.forEach((customer) => {
+        if (nextCounts[customer.todayCategory] !== undefined) {
+          nextCounts[customer.todayCategory] += 1;
+        }
+      });
+
+      const filteredRows =
+        category === "all"
+          ? allRows
+          : allRows.filter((customer) => customer.todayCategory === category);
+
+      filteredRows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      setDates(expectedDates);
+      setCustomers(filteredRows);
+      setCounts(nextCounts);
       setError("");
     } catch (err) {
       setError(
@@ -195,6 +323,9 @@ const CustomerRetention = () => {
         await axios.post(`${ADMIN_PATH}/customer/retention/reset`, resetPayload);
       }
 
+      dates.forEach((dateKey) => {
+        sessionStorage.removeItem(`customer-retention:all-deliveries:${dateKey}`);
+      });
       setCustomers((prev) => prev.filter((item) => item.id !== customer.id));
     } catch (err) {
       alert(err?.response?.data?.message || "Reset failed");
