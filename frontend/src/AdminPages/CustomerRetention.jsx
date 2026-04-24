@@ -15,7 +15,7 @@ const CHECKED_TYPES = [
   "other_vendor",
 ];
 const ROWS_PER_PAGE = 25;
-const RETENTION_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const RETENTION_CACHE_TTL_MS = 60 * 60 * 1000; // 1 HOUR - super aggressive caching to minimize API calls
 
 const getTodayDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -345,34 +345,71 @@ const CustomerRetention = () => {
 
       try {
         setResettingId(customer.id);
+        
+        // Verify customer has required ID
+        if (!customer.id) {
+          throw new Error("Customer ID is missing");
+        }
+
         const resetPayload = {
           customerId: customer.id,
           date: selectedDate,
         };
 
+        console.log("Reset payload:", resetPayload);
+
+        let resetSuccess = false;
+
+        // Try the primary endpoint first
         try {
-          await axios.post(
+          const res = await axios.post(
             `${ADMIN_PATH}/customer-retention/reset`,
             resetPayload,
           );
-        } catch (requestError) {
-          if (requestError?.response?.status !== 404) {
-            throw requestError;
+          console.log("Reset response:", res.data);
+          resetSuccess = true;
+        } catch (primaryError) {
+          console.error("Primary endpoint failed:", primaryError);
+          
+          // Only try fallback if it's a 404
+          if (primaryError?.response?.status === 404) {
+            console.log("Trying fallback endpoint...");
+            try {
+              const res = await axios.post(
+                `${ADMIN_PATH}/customer/retention/reset`,
+                resetPayload,
+              );
+              console.log("Fallback reset response:", res.data);
+              resetSuccess = true;
+            } catch (fallbackError) {
+              console.error("Fallback endpoint also failed:", fallbackError);
+              throw fallbackError;
+            }
+          } else {
+            throw primaryError;
           }
-          await axios.post(`${ADMIN_PATH}/customer/retention/reset`, resetPayload);
         }
 
-        // ⭐ OPTIMIZED: Invalidate cache for this date after reset
-        const cacheKey = `retention:${selectedDate}`;
-        delete cacheRef.current[cacheKey];
+        if (resetSuccess) {
+          // ⭐ OPTIMIZED: Invalidate cache for this date after reset
+          const cacheKey = `retention:${selectedDate}`;
+          delete cacheRef.current[cacheKey];
 
-        // Refetch without loader
-        await fetchRetentionCustomers({
-          date: selectedDate,
-          showLoader: false,
-        });
+          // Refetch without loader
+          await fetchRetentionCustomers({
+            date: selectedDate,
+            showLoader: false,
+          });
+
+          alert("Customer reset successfully!");
+        }
       } catch (err) {
-        alert(err?.response?.data?.message || "Reset failed");
+        console.error("Reset error details:", err);
+        const errorMessage = 
+          err?.response?.data?.message || 
+          err?.message || 
+          "Reset failed. Please try again.";
+        alert(errorMessage);
       } finally {
         setResettingId("");
       }

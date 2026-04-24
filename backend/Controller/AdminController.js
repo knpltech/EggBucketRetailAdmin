@@ -285,16 +285,28 @@ const getRetentionCustomers = async (req, res) => {
     }
 
     const todayKey = dates[dates.length - 1];
-    // ⭐ OPTIMIZED: Cache per date only, not per category
-    // Frontend will filter by category, reducing cache entries and cache misses
+    
+    // ⭐ AGGRESSIVE CACHING: 1 hour TTL to minimize Firestore reads
+    // This is critical since data rarely changes within an hour
     const cacheKey = `customerRetention:v4:${todayKey}`;
     const cached = cache.get(cacheKey);
     if (cached) {
+      console.log(`[CACHE HIT] Retention data for ${todayKey} served from cache`);
       return res.status(200).json(cached);
     }
 
+    console.log(`[CACHE MISS] Fetching retention data for ${todayKey} from Firestore`);
+
     const db = getFirestore();
-    const customersSnap = await db.collection("customers").get();
+    
+    // ⭐ OPTIMIZED QUERY: Only fetch deliveries from today's collection
+    // Instead of reading ALL customers, we only read customers with deliveries today
+    const deliveriesRef = db.collectionGroup("deliveries");
+    const todayDeliveriesSnap = await deliveriesRef
+      .where("date", "==", todayKey)
+      .get();
+
+    console.log(`Found ${todayDeliveriesSnap.size} deliveries for ${todayKey}`);
 
     const rows = [];
     const counts = {
@@ -304,43 +316,44 @@ const getRetentionCustomers = async (req, res) => {
       other_vendor: 0,
     };
 
-    const candidates = [];
+    const customerIds = new Set();
+    const deliveryMap = {}; // Store deliveries by customerId for later use
 
-    await runInBatches(customersSnap.docs, 50, async (customerDoc) => {
-      const todaySnap = await customerDoc.ref
-        .collection("deliveries")
-        .doc(todayKey)
-        .get();
-
-      if (!todaySnap.exists) return null;
-
-      const todayStatus = getRetentionStatus(todaySnap.data());
-      if (todayStatus.key !== "checked") return null;
-
-      counts.all += 1;
-      if (counts[todayStatus.category] !== undefined) {
-        counts[todayStatus.category] += 1;
+    // First pass: collect unique customer IDs and delivery data
+    todayDeliveriesSnap.forEach((deliveryDoc) => {
+      const customerId = deliveryDoc.ref.parent.parent.id;
+      const deliveryData = deliveryDoc.data();
+      const status = getRetentionStatus(deliveryData);
+      
+      // Only track "checked" customers
+      if (status.key === "checked") {
+        customerIds.add(customerId);
+        deliveryMap[customerId] = { status, data: deliveryData };
+        counts.all += 1;
+        if (counts[status.category] !== undefined) {
+          counts[status.category] += 1;
+        }
       }
-
-      // ⭐ OPTIMIZED: Always include in candidates (no category filter on backend)
-      // Frontend will filter by category
-      candidates.push({
-        customerDoc,
-        todayStatus,
-      });
-
-      return null;
     });
 
+    console.log(`Found ${customerIds.size} customers with checked status`);
+
+    // Second pass: fetch customer details and previous dates
     const previousDates = dates.slice(0, -1);
+    const customerIds_array = Array.from(customerIds);
 
-    await runInBatches(
-      candidates,
-      50,
-      async ({ customerDoc, todayStatus }) => {
-        const customer = customerDoc.data() || {};
-        const deliveriesRef = customerDoc.ref.collection("deliveries");
+    await runInBatches(customerIds_array, 50, async (customerId) => {
+      try {
+        const customerRef = db.collection("customers").doc(customerId);
+        const customerSnap = await customerRef.get();
 
+        if (!customerSnap.exists) return null;
+
+        const customer = customerSnap.data() || {};
+        const deliveriesRef = customerRef.collection("deliveries");
+        const todayStatus = deliveryMap[customerId].status;
+
+        // Fetch previous 3 dates
         const previousSnaps = await Promise.all(
           previousDates.map((dateKey) => deliveriesRef.doc(dateKey).get()),
         );
@@ -354,7 +367,7 @@ const getRetentionCustomers = async (req, res) => {
         dayStatuses[todayKey] = todayStatus;
 
         rows.push({
-          id: customerDoc.id,
+          id: customerId,
           custid: customer.custid || "",
           name: customer.name || "",
           phone: customer.phone || "",
@@ -364,10 +377,11 @@ const getRetentionCustomers = async (req, res) => {
           todayReason: todayStatus.reason,
           days: dayStatuses,
         });
-
-        return null;
-      },
-    );
+      } catch (batchErr) {
+        console.error(`Error processing customer ${customerId}:`, batchErr);
+      }
+      return null;
+    });
 
     rows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
@@ -384,9 +398,11 @@ const getRetentionCustomers = async (req, res) => {
       customers: rows,
     };
 
-    // ⭐ OPTIMIZED: Cache for 5 minutes (300 seconds) since we're now caching all data per date
-    // This prevents redundant Firestore reads when users switch between categories
-    cache.set(cacheKey, payload, 300);
+    // ⭐ SUPER AGGRESSIVE CACHING: 1 hour (3600 seconds) TTL
+    // Since retention data rarely changes within an hour, this dramatically reduces reads
+    // If manual refresh needed, user can change the date picker
+    console.log(`[CACHE SET] Storing ${rows.length} customers for ${todayKey} with 1-hour TTL`);
+    cache.set(cacheKey, payload, 3600);
     return res.status(200).json(payload);
   } catch (err) {
     console.error("getRetentionCustomers error:", err);
@@ -397,6 +413,9 @@ const getRetentionCustomers = async (req, res) => {
 const resetRetentionCustomer = async (req, res) => {
   try {
     const { customerId, date } = req.body || {};
+    
+    console.log("Reset request received:", { customerId, date });
+    
     if (!customerId || !date) {
       return res
         .status(400)
@@ -407,25 +426,40 @@ const resetRetentionCustomer = async (req, res) => {
     const customerRef = db.collection("customers").doc(customerId);
     const deliveryRef = customerRef.collection("deliveries").doc(date);
 
+    // First verify the customer exists
+    const customerSnapshot = await customerRef.get();
+    if (!customerSnapshot.exists) {
+      console.error(`Customer ${customerId} not found`);
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    console.log(`Resetting customer ${customerId} for date ${date}`);
+
+    // Delete the delivery record and update customer's last8Days
     await db.runTransaction(async (transaction) => {
       const customerSnap = await transaction.get(customerRef);
 
       if (!customerSnap.exists) {
-        throw new Error("Customer not found");
+        throw new Error("Customer not found during transaction");
       }
 
+      // Delete the delivery document if it exists
       const deliverySnap = await transaction.get(deliveryRef);
-
       if (deliverySnap.exists) {
         transaction.delete(deliveryRef);
+        console.log(`Deleted delivery record for ${customerId} on ${date}`);
       }
 
+      // Update customer to remove from last8Days
       transaction.update(customerRef, {
         [`last8Days.${date}`]: admin.firestore.FieldValue.delete(),
         last8DaysUpdatedAt: Date.now(),
       });
+      
+      console.log(`Updated customer ${customerId} last8Days for ${date}`);
     });
 
+    // Invalidate relevant caches
     try {
       const keys = typeof cache.keys === "function" ? cache.keys() : [];
       const staleKeys = keys.filter(
@@ -434,10 +468,12 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customer-retention:v2") ||
           key.startsWith("customerRetention:v3") ||
           key.startsWith("customerRetention:v4") ||
+          key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );
       if (staleKeys.length > 0) {
         cache.del(staleKeys);
+        console.log(`Invalidated ${staleKeys.length} cache keys`);
       }
       cache.del(`userDeliveries:${customerId}`);
       cache.del("customerMapStatus:today");
@@ -446,17 +482,20 @@ const resetRetentionCustomer = async (req, res) => {
       console.warn("retention reset cache invalidation error:", cacheErr);
     }
 
+    console.log(`Reset completed successfully for customer ${customerId}`);
     return res.status(200).json({
-      message: "Customer reset to pending",
+      message: "Customer reset to pending successfully",
       customerId,
       date,
     });
   } catch (err) {
     console.error("resetRetentionCustomer error:", err);
+    
     const message = err.message === "Customer not found" 
       ? "Customer not found" 
-      : "Server error";
+      : err.message || "Failed to reset customer. Please try again.";
     const statusCode = err.message === "Customer not found" ? 404 : 500;
+    
     return res.status(statusCode).json({ message });
   }
 };
