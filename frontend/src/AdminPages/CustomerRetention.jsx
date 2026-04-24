@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 
@@ -14,96 +14,8 @@ const CHECKED_TYPES = [
   "stock_available",
   "other_vendor",
 ];
-const RETENTION_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes instead of 1 minute
 const ROWS_PER_PAGE = 25;
-
-// OPTIMIZATION: Batch fetch multiple dates in a single API call
-const fetchDeliveriesForDates = async (dateKeys) => {
-  // Create a cache key for the batch of dates
-  const sortedDates = [...dateKeys].sort().join(",");
-  const batchCacheKey = `customer-retention:v2:batch:${sortedDates}`;
-  const cached = sessionStorage.getItem(batchCacheKey);
-
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      if (
-        parsed?.savedAt &&
-        Date.now() - parsed.savedAt < RETENTION_CACHE_TTL_MS &&
-        parsed.data
-      ) {
-        return parsed.data;
-      }
-    } catch {
-      sessionStorage.removeItem(batchCacheKey);
-    }
-  }
-
-  // Fetch all dates at once by making individual requests
-  // (or could be optimized to a single batch endpoint if backend supports it)
-  const responses = await Promise.all(
-    dateKeys.map(async (dateKey) => {
-      const dateSpecificCacheKey = `customer-retention:v2:all-deliveries:${dateKey}`;
-      const dateCached = sessionStorage.getItem(dateSpecificCacheKey);
-
-      if (dateCached) {
-        try {
-          const parsed = JSON.parse(dateCached);
-          if (
-            parsed?.savedAt &&
-            Date.now() - parsed.savedAt < RETENTION_CACHE_TTL_MS &&
-            Array.isArray(parsed.customers)
-          ) {
-            return { dateKey, customers: parsed.customers };
-          }
-        } catch {
-          sessionStorage.removeItem(dateSpecificCacheKey);
-        }
-      }
-
-      const res = await axios.get(`${ADMIN_PATH}/all-deliveries`, {
-        params: { date: dateKey },
-      });
-      const customers = Array.isArray(res.data?.customers)
-        ? res.data.customers
-        : [];
-
-      // Cache individual date as well
-      sessionStorage.setItem(
-        dateSpecificCacheKey,
-        JSON.stringify({
-          savedAt: Date.now(),
-          customers,
-        }),
-      );
-
-      return { dateKey, customers };
-    }),
-  );
-
-  // Transform responses into a map for easier access
-  const data = {};
-  responses.forEach(({ dateKey, customers }) => {
-    data[dateKey] = customers;
-  });
-
-  // Cache the batch result
-  sessionStorage.setItem(
-    batchCacheKey,
-    JSON.stringify({
-      savedAt: Date.now(),
-      data,
-    }),
-  );
-
-  return data;
-};
-
-// Legacy function for backward compatibility
-const fetchDeliveriesForDate = async (dateKey) => {
-  const result = await fetchDeliveriesForDates([dateKey]);
-  return result[dateKey] || [];
-};
+const RETENTION_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const getTodayDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -253,111 +165,159 @@ const CustomerRetention = () => {
   const [resettingId, setResettingId] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // OPTIMIZATION: Paginate customers for faster rendering
+  // ⭐ CACHE: Store fetched data per date with TTL to avoid repeated API calls
+  const cacheRef = useRef({});
+
+  // ⭐ OPTIMIZATION: Filter by category on frontend (no API call)
+  const filteredCustomers = useMemo(() => {
+    if (selectedCategory === "all") {
+      return customers;
+    }
+    return customers.filter(
+      (c) => c.todayCategory === selectedCategory,
+    );
+  }, [customers, selectedCategory]);
+
+  // ⭐ OPTIMIZATION: Paginate filtered customers
   const { paginatedCustomers, totalPages } = useMemo(() => {
     const start = (currentPage - 1) * ROWS_PER_PAGE;
     const end = start + ROWS_PER_PAGE;
     return {
-      paginatedCustomers: customers.slice(start, end),
-      totalPages: Math.ceil(customers.length / ROWS_PER_PAGE),
+      paginatedCustomers: filteredCustomers.slice(start, end),
+      totalPages: Math.ceil(filteredCustomers.length / ROWS_PER_PAGE),
     };
-  }, [customers, currentPage]);
+  }, [filteredCustomers, currentPage]);
 
-  const fetchRetentionCustomers = useCallback(async ({
-    date = selectedDate,
-    category = selectedCategory,
-    showLoader = true,
-  } = {}) => {
-    if (showLoader) {
-      setLoading(true);
-    }
+  // ⭐ OPTIMIZED: Fetch retention data with caching by date
+  // Only calls backend if data is not cached or cache is stale
+  const fetchRetentionCustomers = useCallback(
+    async ({ date = selectedDate, showLoader = true } = {}) => {
+      // Check cache first
+      const cacheKey = `retention:${date}`;
+      const cached = cacheRef.current[cacheKey];
+      if (
+        cached &&
+        Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS
+      ) {
+        // Use cached data
+        const nextDates = Array.isArray(cached.dates)
+          ? cached.dates
+          : getPastThreeDatesPlusToday(date);
+        const nextCustomers = Array.isArray(cached.customers)
+          ? cached.customers.map((customer) => {
+              const dayStatuses = {};
+              nextDates.forEach((dateKey) => {
+                dayStatuses[dateKey] = getStatusFromDelivery(
+                  customer?.days?.[dateKey] || null,
+                );
+              });
+              return {
+                ...customer,
+                phone: customer.phone || "",
+                zone: customer.zone || "UNASSIGNED",
+                todayCategory: customer.todayCategory || "",
+                todayCategoryLabel: customer.todayCategoryLabel || "-",
+                todayReason: customer.todayReason || "",
+                days: dayStatuses,
+              };
+            })
+          : [];
 
-    try {
-      const expectedDates = getPastThreeDatesPlusToday(date);
-      
-      // OPTIMIZATION: Fetch all dates in a batch instead of sequential calls
-      const deliveriesMap = await fetchDeliveriesForDates(expectedDates);
-
-      const customerMap = new Map();
-
-      expectedDates.forEach((dateKey) => {
-        const dayCustomers = deliveriesMap[dateKey] || [];
-
-        dayCustomers.forEach((customer) => {
-          const existing = customerMap.get(customer.id) || {
-            id: customer.id,
-            custid: customer.custid || "",
-            name: customer.name || "",
-            phone: customer.phone || "",
-            zone: customer.zone || "UNASSIGNED",
-            todayCategory: "",
-            todayCategoryLabel: "-",
-            todayReason: "",
-            days: {},
-          };
-          const delivery = customer.deliveries?.[0] || null;
-          const status = getStatusFromDelivery(delivery);
-
-          existing.days[dateKey] = status;
-
-          if (dateKey === date) {
-            existing.todayCategory = status.category;
-            existing.todayCategoryLabel = status.categoryLabel;
-            existing.todayReason = status.reason;
-          }
-
-          customerMap.set(customer.id, existing);
+        setDates(nextDates);
+        setCustomers(nextCustomers);
+        setCounts(cached.counts || {
+          all: 0,
+          stock_available: 0,
+          price_mismatch: 0,
+          other_vendor: 0,
         });
-      });
-
-      const allRows = [...customerMap.values()].filter(
-        (customer) => customer.days?.[date]?.key === "checked",
-      );
-      const nextCounts = {
-        all: allRows.length,
-        stock_available: 0,
-        price_mismatch: 0,
-        other_vendor: 0,
-      };
-
-      allRows.forEach((customer) => {
-        if (nextCounts[customer.todayCategory] !== undefined) {
-          nextCounts[customer.todayCategory] += 1;
-        }
-      });
-
-      const filteredRows =
-        category === "all"
-          ? allRows
-          : allRows.filter((customer) => customer.todayCategory === category);
-
-      filteredRows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-      setDates(expectedDates);
-      setCustomers(filteredRows);
-      setCounts(nextCounts);
-      setCurrentPage(1); // Reset to first page on filter/date change
-      setError("");
-    } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          `Unable to load customer retention data for ${date}`,
-      );
-      setCustomers([]);
-      setCounts({
-        all: 0,
-        stock_available: 0,
-        price_mismatch: 0,
-        other_vendor: 0,
-      });
-      setDates(getPastThreeDatesPlusToday(date));
-    } finally {
-      if (showLoader) {
+        setCurrentPage(1);
+        setError("");
         setLoading(false);
+        return;
       }
-    }
-  }, [selectedDate, selectedCategory]);
 
+      // Cache miss - fetch from backend
+      if (showLoader) {
+        setLoading(true);
+      }
+
+      try {
+        // ⭐ OPTIMIZED: Fetch ALL categories at once, filter on frontend
+        const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
+          params: { date },
+        });
+
+        const payload = res?.data || {};
+        const nextDates = Array.isArray(payload.dates) && payload.dates.length
+          ? payload.dates
+          : getPastThreeDatesPlusToday(date);
+        const nextCustomers = Array.isArray(payload.customers)
+          ? payload.customers.map((customer) => {
+              const dayStatuses = {};
+              nextDates.forEach((dateKey) => {
+                dayStatuses[dateKey] = getStatusFromDelivery(
+                  customer?.days?.[dateKey] || null,
+                );
+              });
+              return {
+                ...customer,
+                phone: customer.phone || "",
+                zone: customer.zone || "UNASSIGNED",
+                todayCategory: customer.todayCategory || "",
+                todayCategoryLabel: customer.todayCategoryLabel || "-",
+                todayReason: customer.todayReason || "",
+                days: dayStatuses,
+              };
+            })
+          : [];
+
+        // Cache the result
+        cacheRef.current[cacheKey] = {
+          savedAt: Date.now(),
+          dates: nextDates,
+          customers: nextCustomers,
+          counts: payload.counts || {
+            all: 0,
+            stock_available: 0,
+            price_mismatch: 0,
+            other_vendor: 0,
+          },
+        };
+
+        setDates(nextDates);
+        setCustomers(nextCustomers);
+        setCounts(payload.counts || {
+          all: 0,
+          stock_available: 0,
+          price_mismatch: 0,
+          other_vendor: 0,
+        });
+        setCurrentPage(1);
+        setError("");
+      } catch (err) {
+        setError(
+          err?.response?.data?.message ||
+            `Unable to load customer retention data for ${date}`,
+        );
+        setCustomers([]);
+        setCounts({
+          all: 0,
+          stock_available: 0,
+          price_mismatch: 0,
+          other_vendor: 0,
+        });
+        setDates(getPastThreeDatesPlusToday(date));
+      } finally {
+        if (showLoader) {
+          setLoading(false);
+        }
+      }
+    },
+    [selectedDate],
+  );
+
+  // ⭐ OPTIMIZED: Load once on mount (empty dependency array)
   useEffect(() => {
     fetchRetentionCustomers();
   }, []);
@@ -366,59 +326,59 @@ const CustomerRetention = () => {
     const nextDate = e.target.value;
     setSelectedDate(nextDate);
     setDates(getPastThreeDatesPlusToday(nextDate));
-    await fetchRetentionCustomers({
-      date: nextDate,
-      category: selectedCategory,
-    });
+    // ⭐ OPTIMIZED: Fetch with cache check, not with category filter
+    await fetchRetentionCustomers({ date: nextDate });
   };
 
-  const handleCategoryChange = useCallback(async (category) => {
+  // ⭐ OPTIMIZED: Category change does NOT make API call - just updates state
+  const handleCategoryChange = useCallback((category) => {
     setSelectedCategory(category);
-    await fetchRetentionCustomers({
-      date: selectedDate,
-      category,
-    });
-  }, [selectedDate, fetchRetentionCustomers]);
+    setCurrentPage(1); // Reset to first page on category change
+  }, []);
 
-  const handleReset = useCallback(async (customer) => {
-    const confirmed = window.confirm(
-      `Reset ${customer.name} to pending for ${selectedDate}?`,
-    );
-    if (!confirmed) return;
-
-    try {
-      setResettingId(customer.id);
-      const resetPayload = {
-        customerId: customer.id,
-        date: selectedDate,
-      };
+  const handleReset = useCallback(
+    async (customer) => {
+      const confirmed = window.confirm(
+        `Reset ${customer.name} to pending for ${selectedDate}?`,
+      );
+      if (!confirmed) return;
 
       try {
-        await axios.post(`${ADMIN_PATH}/customer-retention/reset`, resetPayload);
-      } catch (requestError) {
-        if (requestError?.response?.status !== 404) {
-          throw requestError;
+        setResettingId(customer.id);
+        const resetPayload = {
+          customerId: customer.id,
+          date: selectedDate,
+        };
+
+        try {
+          await axios.post(
+            `${ADMIN_PATH}/customer-retention/reset`,
+            resetPayload,
+          );
+        } catch (requestError) {
+          if (requestError?.response?.status !== 404) {
+            throw requestError;
+          }
+          await axios.post(`${ADMIN_PATH}/customer/retention/reset`, resetPayload);
         }
 
-        await axios.post(`${ADMIN_PATH}/customer/retention/reset`, resetPayload);
+        // ⭐ OPTIMIZED: Invalidate cache for this date after reset
+        const cacheKey = `retention:${selectedDate}`;
+        delete cacheRef.current[cacheKey];
+
+        // Refetch without loader
+        await fetchRetentionCustomers({
+          date: selectedDate,
+          showLoader: false,
+        });
+      } catch (err) {
+        alert(err?.response?.data?.message || "Reset failed");
+      } finally {
+        setResettingId("");
       }
-
-      // OPTIMIZATION: Clear batch cache on reset
-      dates.forEach((dateKey) => {
-        sessionStorage.removeItem(`customer-retention:v2:all-deliveries:${dateKey}`);
-      });
-      const sortedDates = [...dates].sort().join(",");
-      sessionStorage.removeItem(`customer-retention:v2:batch:${sortedDates}`);
-
-      setCustomers((prev) => prev.filter((item) => item.id !== customer.id));
-    } catch (err) {
-      alert(err?.response?.data?.message || "Reset failed");
-    } finally {
-      setResettingId("");
-    }
-  }, [selectedDate, dates]);
-
-  const todayKey = dates[dates.length - 1] || selectedDate;
+    },
+    [selectedDate, fetchRetentionCustomers],
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
@@ -445,25 +405,37 @@ const CustomerRetention = () => {
         </div>
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {CATEGORY_OPTIONS.map((category) => {
-          const isActive = selectedCategory === category.value;
-          return (
-            <button
-              key={category.value}
-              type="button"
-              onClick={() => handleCategoryChange(category.value)}
-              className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                isActive
-                  ? "border-blue-600 bg-blue-600 text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-              }`}
-            >
-              {category.label} ({counts[category.value] || 0})
-            </button>
-          );
-        })}
-      </div>
+      {/* ⭐ OPTIMIZED: Compute counts from frontend-filtered data */}
+      {useMemo(() => {
+        const computedCounts = {
+          all: customers.length,
+          stock_available: customers.filter((c) => c.todayCategory === "stock_available").length,
+          price_mismatch: customers.filter((c) => c.todayCategory === "price_mismatch").length,
+          other_vendor: customers.filter((c) => c.todayCategory === "other_vendor").length,
+        };
+
+        return (
+          <div className="mb-5 flex flex-wrap gap-2">
+            {CATEGORY_OPTIONS.map((category) => {
+              const isActive = selectedCategory === category.value;
+              return (
+                <button
+                  key={category.value}
+                  type="button"
+                  onClick={() => handleCategoryChange(category.value)}
+                  className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${
+                    isActive
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                  }`}
+                >
+                  {category.label} ({computedCounts[category.value] || 0})
+                </button>
+              );
+            })}
+          </div>
+        );
+      }, [customers, selectedCategory, handleCategoryChange])}
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
