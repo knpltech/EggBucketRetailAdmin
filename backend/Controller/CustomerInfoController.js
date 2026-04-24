@@ -536,6 +536,8 @@ const getAllCustomerDeliveries = async (req, res) => {
       });
     });
 
+    // OPTIMIZATION: Filter to only customers with deliveries on the requested date
+    // This significantly reduces payload when date is specified
     const customersWithDeliveries = await Promise.all(
       customersSnap.docs.map(async (doc) => {
         const deliveriesCollection = db
@@ -592,13 +594,21 @@ const getAllCustomerDeliveries = async (req, res) => {
           );
         }
 
-        return {
-          id: doc.id,
-          ...doc.data(),
-          deliveries,
-        };
+        // OPTIMIZATION: Return customer with delivery data only if delivery exists
+        // This prevents sending empty delivery records to frontend
+        if (deliveries.length > 0 || !date) {
+          return {
+            id: doc.id,
+            custid: doc.data()?.custid || "",
+            name: doc.data()?.name || "",
+            phone: doc.data()?.phone || "",
+            zone: doc.data()?.zone || "UNASSIGNED",
+            deliveries,
+          };
+        }
+        return null;
       }),
-    );
+    ).then((results) => results.filter((r) => r !== null));
 
     // ✅ Auto-flip todayOverride to OFF when delivery is marked DELIVERED (if currently ON)
     const getDateStringInTimeZone = (
