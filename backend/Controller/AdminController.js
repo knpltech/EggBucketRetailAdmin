@@ -299,14 +299,12 @@ const getRetentionCustomers = async (req, res) => {
 
     const db = getFirestore();
     
-    // ⭐ OPTIMIZED QUERY: Only fetch deliveries from today's collection
-    // Instead of reading ALL customers, we only read customers with deliveries today
-    const deliveriesRef = db.collectionGroup("deliveries");
-    const todayDeliveriesSnap = await deliveriesRef
-      .where("date", "==", todayKey)
-      .get();
+    // ⭐ FIXED QUERY: Avoid collectionGroup + where (requires missing composite index)
+    // Instead, query all customers and check their deliveries for today's date
+    const customersRef = db.collection("customers");
+    const customersSnap = await customersRef.get();
 
-    console.log(`Found ${todayDeliveriesSnap.size} deliveries for ${todayKey}`);
+    console.log(`Checking ${customersSnap.size} customers for ${todayKey} deliveries`);
 
     const rows = [];
     const counts = {
@@ -316,33 +314,19 @@ const getRetentionCustomers = async (req, res) => {
       other_vendor: 0,
     };
 
-    const customerIds = new Set();
+    const customerIds = [];
     const deliveryMap = {}; // Store deliveries by customerId for later use
 
-    // First pass: collect unique customer IDs and delivery data
-    todayDeliveriesSnap.forEach((deliveryDoc) => {
-      const customerId = deliveryDoc.ref.parent.parent.id;
-      const deliveryData = deliveryDoc.data();
-      const status = getRetentionStatus(deliveryData);
-      
-      // Only track "checked" customers
-      if (status.key === "checked") {
-        customerIds.add(customerId);
-        deliveryMap[customerId] = { status, data: deliveryData };
-        counts.all += 1;
-        if (counts[status.category] !== undefined) {
-          counts[status.category] += 1;
-        }
-      }
+    // First pass: check each customer's delivery for today
+    customersSnap.forEach((customerDoc) => {
+      const customerId = customerDoc.id;
+      customerIds.push(customerId);
     });
 
-    console.log(`Found ${customerIds.size} customers with checked status`);
-
-    // Second pass: fetch customer details and previous dates
     const previousDates = dates.slice(0, -1);
-    const customerIds_array = Array.from(customerIds);
 
-    await runInBatches(customerIds_array, 50, async (customerId) => {
+    // Process customers in batches to avoid memory issues
+    await runInBatches(customerIds, 50, async (customerId) => {
       try {
         const customerRef = db.collection("customers").doc(customerId);
         const customerSnap = await customerRef.get();
@@ -351,7 +335,22 @@ const getRetentionCustomers = async (req, res) => {
 
         const customer = customerSnap.data() || {};
         const deliveriesRef = customerRef.collection("deliveries");
-        const todayStatus = deliveryMap[customerId].status;
+        
+        // Fetch today's delivery
+        const todayDeliverySnap = await deliveriesRef.doc(todayKey).get();
+        const todayDeliveryData = todayDeliverySnap.exists ? todayDeliverySnap.data() : null;
+        const todayStatus = getRetentionStatus(todayDeliveryData);
+        
+        // Only include customers with "checked" status
+        if (todayStatus.key !== "checked") {
+          return null;
+        }
+
+        deliveryMap[customerId] = { status: todayStatus, data: todayDeliveryData };
+        counts.all += 1;
+        if (counts[todayStatus.category] !== undefined) {
+          counts[todayStatus.category] += 1;
+        }
 
         // Fetch previous 3 dates
         const previousSnaps = await Promise.all(
