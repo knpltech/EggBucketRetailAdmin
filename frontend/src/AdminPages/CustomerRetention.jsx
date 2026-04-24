@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 
@@ -15,6 +15,7 @@ const CHECKED_TYPES = [
   "other_vendor",
 ];
 const RETENTION_CACHE_TTL_MS = 60 * 1000;
+const ROWS_PER_PAGE = 25;
 
 const getTodayDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -64,15 +65,13 @@ const formatDayHeader = (dateString) => {
   };
 };
 
-const getStatusClasses = (statusKey, isToday) => {
+const getStatusClasses = (statusKey) => {
   if (statusKey === "delivered") {
     return "bg-emerald-600 text-white";
   }
-
   if (statusKey === "checked") {
     return "bg-orange-500 text-white";
   }
-
   return "bg-red-600 text-white";
 };
 
@@ -199,8 +198,19 @@ const CustomerRetention = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [resettingId, setResettingId] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchRetentionCustomers = async ({
+  // OPTIMIZATION: Paginate customers for faster rendering
+  const { paginatedCustomers, totalPages } = useMemo(() => {
+    const start = (currentPage - 1) * ROWS_PER_PAGE;
+    const end = start + ROWS_PER_PAGE;
+    return {
+      paginatedCustomers: customers.slice(start, end),
+      totalPages: Math.ceil(customers.length / ROWS_PER_PAGE),
+    };
+  }, [customers, currentPage]);
+
+  const fetchRetentionCustomers = useCallback(async ({
     date = selectedDate,
     category = selectedCategory,
     showLoader = true,
@@ -273,6 +283,7 @@ const CustomerRetention = () => {
       setDates(expectedDates);
       setCustomers(filteredRows);
       setCounts(nextCounts);
+      setCurrentPage(1); // Reset to first page on filter/date change
       setError("");
     } catch (err) {
       setError(
@@ -292,7 +303,7 @@ const CustomerRetention = () => {
         setLoading(false);
       }
     }
-  };
+  }, [selectedDate, selectedCategory]);
 
   useEffect(() => {
     fetchRetentionCustomers();
@@ -308,15 +319,15 @@ const CustomerRetention = () => {
     });
   };
 
-  const handleCategoryChange = async (category) => {
+  const handleCategoryChange = useCallback(async (category) => {
     setSelectedCategory(category);
     await fetchRetentionCustomers({
       date: selectedDate,
       category,
     });
-  };
+  }, [selectedDate, fetchRetentionCustomers]);
 
-  const handleReset = async (customer) => {
+  const handleReset = useCallback(async (customer) => {
     const confirmed = window.confirm(
       `Reset ${customer.name} to pending for ${selectedDate}?`,
     );
@@ -340,7 +351,7 @@ const CustomerRetention = () => {
       }
 
       dates.forEach((dateKey) => {
-        sessionStorage.removeItem(`customer-retention:all-deliveries:${dateKey}`);
+        sessionStorage.removeItem(`customer-retention:v2:all-deliveries:${dateKey}`);
       });
       setCustomers((prev) => prev.filter((item) => item.id !== customer.id));
     } catch (err) {
@@ -348,7 +359,7 @@ const CustomerRetention = () => {
     } finally {
       setResettingId("");
     }
-  };
+  }, [selectedDate, dates]);
 
   const todayKey = dates[dates.length - 1] || selectedDate;
 
@@ -405,7 +416,7 @@ const CustomerRetention = () => {
 
       <div className="overflow-x-auto rounded-lg bg-white shadow">
         <table className="w-full min-w-[980px] text-sm">
-          <thead className="bg-slate-100 text-slate-700">
+          <thead className="sticky top-0 bg-slate-100 text-slate-700">
             <tr>
               <th className="px-4 py-3 text-left">Name</th>
               <th className="px-4 py-3 text-left">Phone</th>
@@ -433,8 +444,8 @@ const CustomerRetention = () => {
                   Loading...
                 </td>
               </tr>
-            ) : customers.length ? (
-              customers.map((customer) => (
+            ) : paginatedCustomers.length ? (
+              paginatedCustomers.map((customer) => (
                 <tr key={customer.id} className="border-t hover:bg-slate-50">
                   <td className="px-4 py-4 font-semibold text-slate-900">
                     {customer.name}
@@ -447,14 +458,12 @@ const CustomerRetention = () => {
                       key: "pending",
                       label: "PENDING",
                     };
-                    const isToday = date === todayKey;
 
                     return (
                       <td key={date} className="px-4 py-4 text-center">
                         <span
                           className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-2 text-xs font-bold tracking-wide ${getStatusClasses(
                             status.key,
-                            isToday,
                           )}`}
                         >
                           {status.label}
@@ -488,6 +497,72 @@ const CustomerRetention = () => {
           </tbody>
         </table>
       </div>
+
+      {/* OPTIMIZATION: Pagination controls */}
+      {!loading && customers.length > ROWS_PER_PAGE && (
+        <div className="mt-6 flex items-center justify-between">
+          <div className="text-sm text-slate-600">
+            Showing {(currentPage - 1) * ROWS_PER_PAGE + 1} to{" "}
+            {Math.min(currentPage * ROWS_PER_PAGE, customers.length)} of{" "}
+            {customers.length} customers
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <div className="flex items-center gap-2">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                (page) => {
+                  // OPTIMIZATION: Show only nearby pages to avoid too many buttons
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`h-9 w-9 rounded-lg border text-sm font-medium transition ${
+                          currentPage === page
+                            ? "border-blue-600 bg-blue-600 text-white"
+                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  }
+                  if (page === currentPage - 2 || page === currentPage + 2) {
+                    return (
+                      <span key={page} className="text-slate-400">
+                        ...
+                      </span>
+                    );
+                  }
+                  return null;
+                },
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage(Math.min(totalPages, currentPage + 1))
+              }
+              disabled={currentPage === totalPages}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
