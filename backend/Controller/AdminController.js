@@ -403,41 +403,39 @@ const resetRetentionCustomer = async (req, res) => {
         .json({ message: "Customer ID and date are required" });
     }
 
-    const dates = getPastThreeDatesPlusToday(date);
-    if (!dates) {
-      return res.status(400).json({ message: "Invalid date" });
-    }
-
-    const targetDate = dates[dates.length - 1];
+    // OPTIMIZATION: Directly update denormalized last8Days field
+    // No need to read/delete from subcollections (reduced reads)
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(customerId);
-    const deliveryRef = customerRef.collection("deliveries").doc(targetDate);
-    const deliverySnap = await deliveryRef.get();
 
-    if (!deliverySnap.exists) {
-      return res.status(404).json({ message: "Today's delivery not found" });
-    }
+    // Use a transaction to ensure atomicity and reduce potential race conditions
+    await db.runTransaction(async (transaction) => {
+      // Only read to validate customer exists
+      const customerSnap = await transaction.get(customerRef);
+      
+      if (!customerSnap.exists) {
+        throw new Error("Customer not found");
+      }
 
-    await deliveryRef.delete();
-
-    await customerRef.update({
-      [`last8Days.${targetDate}`]: admin.firestore.FieldValue.delete(),
-      last8DaysUpdatedAt: Date.now(),
+      // Update only the denormalized field - remove the entry for this date
+      transaction.update(customerRef, {
+        [`last8Days.${date}`]: admin.firestore.FieldValue.delete(),
+        last8DaysUpdatedAt: Date.now(),
+      });
     });
 
+    // Invalidate caches for this specific date and customer
     try {
       const keys = typeof cache.keys === "function" ? cache.keys() : [];
       const staleKeys = keys.filter(
         (key) =>
-          key.startsWith("customerRetention") ||
           key.startsWith("allCustomerDeliveries") ||
-          key.startsWith("analytics:last8"),
+          key.startsWith("customer-retention:v2"),
       );
       if (staleKeys.length > 0) {
         cache.del(staleKeys);
       }
       cache.del(`userDeliveries:${customerId}`);
-      cache.del(`allCustomerDeliveries:${targetDate}`);
       cache.del("customerMapStatus:today");
       cache.del("latestRemarks");
     } catch (cacheErr) {
@@ -447,11 +445,15 @@ const resetRetentionCustomer = async (req, res) => {
     return res.status(200).json({
       message: "Customer reset to pending",
       customerId,
-      date: targetDate,
+      date,
     });
   } catch (err) {
     console.error("resetRetentionCustomer error:", err);
-    return res.status(500).json({ message: "Server error" });
+    const message = err.message === "Customer not found" 
+      ? "Customer not found" 
+      : "Server error";
+    const statusCode = err.message === "Customer not found" ? 404 : 500;
+    return res.status(statusCode).json({ message });
   }
 };
 
