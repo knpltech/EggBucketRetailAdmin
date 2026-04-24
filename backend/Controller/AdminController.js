@@ -285,8 +285,9 @@ const getRetentionCustomers = async (req, res) => {
     }
 
     const todayKey = dates[dates.length - 1];
-    const selectedCategory = normalizeRetentionCategory(req.query.category);
-    const cacheKey = `customerRetention:v3:${todayKey}:${selectedCategory}`;
+    // ⭐ OPTIMIZED: Cache per date only, not per category
+    // Frontend will filter by category, reducing cache entries and cache misses
+    const cacheKey = `customerRetention:v4:${todayKey}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.status(200).json(cached);
@@ -321,15 +322,12 @@ const getRetentionCustomers = async (req, res) => {
         counts[todayStatus.category] += 1;
       }
 
-      if (
-        selectedCategory === "all" ||
-        todayStatus.category === selectedCategory
-      ) {
-        candidates.push({
-          customerDoc,
-          todayStatus,
-        });
-      }
+      // ⭐ OPTIMIZED: Always include in candidates (no category filter on backend)
+      // Frontend will filter by category
+      candidates.push({
+        customerDoc,
+        todayStatus,
+      });
 
       return null;
     });
@@ -386,7 +384,9 @@ const getRetentionCustomers = async (req, res) => {
       customers: rows,
     };
 
-    cache.set(cacheKey, payload, 60);
+    // ⭐ OPTIMIZED: Cache for 5 minutes (300 seconds) since we're now caching all data per date
+    // This prevents redundant Firestore reads when users switch between categories
+    cache.set(cacheKey, payload, 300);
     return res.status(200).json(payload);
   } catch (err) {
     console.error("getRetentionCustomers error:", err);
@@ -403,34 +403,38 @@ const resetRetentionCustomer = async (req, res) => {
         .json({ message: "Customer ID and date are required" });
     }
 
-    // OPTIMIZATION: Directly update denormalized last8Days field
-    // No need to read/delete from subcollections (reduced reads)
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(customerId);
+    const deliveryRef = customerRef.collection("deliveries").doc(date);
 
-    // Use a transaction to ensure atomicity and reduce potential race conditions
     await db.runTransaction(async (transaction) => {
-      // Only read to validate customer exists
       const customerSnap = await transaction.get(customerRef);
-      
+
       if (!customerSnap.exists) {
         throw new Error("Customer not found");
       }
 
-      // Update only the denormalized field - remove the entry for this date
+      const deliverySnap = await transaction.get(deliveryRef);
+
+      if (deliverySnap.exists) {
+        transaction.delete(deliveryRef);
+      }
+
       transaction.update(customerRef, {
         [`last8Days.${date}`]: admin.firestore.FieldValue.delete(),
         last8DaysUpdatedAt: Date.now(),
       });
     });
 
-    // Invalidate caches for this specific date and customer
     try {
       const keys = typeof cache.keys === "function" ? cache.keys() : [];
       const staleKeys = keys.filter(
         (key) =>
           key.startsWith("allCustomerDeliveries") ||
-          key.startsWith("customer-retention:v2"),
+          key.startsWith("customer-retention:v2") ||
+          key.startsWith("customerRetention:v3") ||
+          key.startsWith("customerRetention:v4") ||
+          key.startsWith("analytics:last8"),
       );
       if (staleKeys.length > 0) {
         cache.del(staleKeys);
