@@ -8,6 +8,12 @@ const CATEGORY_OPTIONS = [
   { value: "price_mismatch", label: "Price Mismatch" },
   { value: "other_vendor", label: "Other Vendor" },
 ];
+const CHECKED_TYPES = [
+  "reached",
+  "price_mismatch",
+  "stock_available",
+  "other_vendor",
+];
 const RETENTION_CACHE_TTL_MS = 60 * 1000;
 
 const getTodayDate = () => {
@@ -27,6 +33,13 @@ const getTodayDate = () => {
     : new Date().toISOString().slice(0, 10);
 };
 
+const formatDateKey = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const getPastThreeDatesPlusToday = (dateString) => {
   const endDate = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(endDate.getTime())) return [];
@@ -34,7 +47,7 @@ const getPastThreeDatesPlusToday = (dateString) => {
   return [3, 2, 1, 0].map((offset) => {
     const date = new Date(endDate);
     date.setDate(endDate.getDate() - offset);
-    return date.toISOString().slice(0, 10);
+    return formatDateKey(date);
   });
 };
 
@@ -83,6 +96,9 @@ const getStatusFromDelivery = (delivery) => {
     };
   }
 
+  const apiStatus = String(delivery.status || "")
+    .trim()
+    .toLowerCase();
   const type = String(delivery.type || "")
     .trim()
     .toLowerCase();
@@ -103,7 +119,7 @@ const getStatusFromDelivery = (delivery) => {
           ? "Other Vendor"
           : "-";
 
-  if (type === "delivered") {
+  if (apiStatus === "delivered" || type === "delivered") {
     return {
       key: "delivered",
       label: "Delivered",
@@ -113,7 +129,7 @@ const getStatusFromDelivery = (delivery) => {
     };
   }
 
-  if (type === "reached" || category) {
+  if (apiStatus === "checked" || CHECKED_TYPES.includes(type) || category) {
     return {
       key: "checked",
       label: "Checked",
@@ -133,7 +149,7 @@ const getStatusFromDelivery = (delivery) => {
 };
 
 const fetchDeliveriesForDate = async (dateKey) => {
-  const cacheKey = `customer-retention:all-deliveries:${dateKey}`;
+  const cacheKey = `customer-retention:v2:all-deliveries:${dateKey}`;
   const cached = sessionStorage.getItem(cacheKey);
 
   if (cached) {
