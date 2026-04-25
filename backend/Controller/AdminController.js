@@ -35,7 +35,7 @@ const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
 // HELPER: Maintain denormalized last8Days field in customer doc
 
-const updateLast8Days = async (db, customerId, deliveryDate, type) => {
+const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {}) => {
   try {
     if (!customerId || !deliveryDate || !type) return;
 
@@ -74,7 +74,17 @@ const updateLast8Days = async (db, customerId, deliveryDate, type) => {
         ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
         : String(deliveryDate);
 
-    last8Days[dateStr] = status;
+    // ⭐ OPTIMIZED: Preserve existing object structure and append new data
+    const existingEntry = last8Days[dateStr] || {};
+    const newEntry = typeof existingEntry === 'object' ? { ...existingEntry } : { status: existingEntry };
+
+    newEntry.status = status;
+    newEntry.time = extraData.time || Date.now();
+    if (extraData.agentId) newEntry.agentId = extraData.agentId;
+    if (extraData.agentName) newEntry.agentName = extraData.agentName;
+    if (extraData.reason) newEntry.reason = extraData.reason;
+
+    last8Days[dateStr] = newEntry;
 
     // Remove entries older than 8 days
     Object.keys(last8Days).forEach((key) => {
@@ -296,19 +306,23 @@ const getRetentionCustomers = async (req, res) => {
   try {
     const selectedDate =
       req.query.date || getDateStringInTimeZone(new Date(), INDIA_TZ);
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 25;
+    const categoryFilter = req.query.category || "all";
+
     const dates = getPastThreeDatesPlusToday(selectedDate);
     if (!dates) {
       return res.status(400).json({ message: "Invalid date" });
     }
 
     const todayKey = dates[dates.length - 1];
+    const previousDates = dates.slice(0, -1);
     
-    // ⭐ AGGRESSIVE CACHING: 1 hour TTL to minimize Firestore reads
-    // This is critical since data rarely changes within an hour
-    const cacheKey = `customerRetention:v4:${todayKey}`;
+    // ⭐ AGGRESSIVE CACHING: Include page and category in cache key
+    const cacheKey = `customerRetention:v12:${todayKey}:${categoryFilter}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
-      console.log(`[CACHE HIT] Retention data for ${todayKey} served from cache`);
+      console.log(`[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`);
       return res.status(200).json(cached);
     }
 
@@ -324,14 +338,27 @@ const getRetentionCustomers = async (req, res) => {
       deliveryPartnerMap.set(doc.id, data.name || data.display_name || doc.id);
     });
 
-    // ⭐ FIXED QUERY: Avoid collectionGroup + where (requires missing composite index)
-    // Instead, query all customers and check their deliveries for today's date
+    // ⭐ OPTIMIZATION: Query customers who have a "checked" status today
+    // We do two queries to handle BOTH new object format and legacy string format in last8Days
     const customersRef = db.collection("customers");
-    const customersSnap = await customersRef.get();
+    const statuses = ["reached", "price_mismatch", "stock_available", "other_vendor"];
+    
+    const q1 = customersRef.where(`last8Days.${todayKey}.status`, "in", statuses).get();
+    const q2 = customersRef.where(`last8Days.${todayKey}`, "in", statuses).get();
+    
+    const [snap1, snap2] = await Promise.all([q1, q2]);
 
-    console.log(`Checking ${customersSnap.size} customers for ${todayKey} deliveries`);
+    let allMatchedCustomers = [];
+    const seen = new Set();
+    [...(snap1.docs || []), ...(snap2.docs || [])].forEach((doc) => {
+      if (!seen.has(doc.id)) {
+        seen.add(doc.id);
+        allMatchedCustomers.push({ id: doc.id, ...doc.data() });
+      }
+    });
+    
+    console.log(`Checking ${allMatchedCustomers.length} customers for ${todayKey} deliveries`);
 
-    const rows = [];
     const counts = {
       all: 0,
       stock_available: 0,
@@ -339,65 +366,131 @@ const getRetentionCustomers = async (req, res) => {
       other_vendor: 0,
     };
 
-    const customerIds = [];
-    const deliveryMap = {}; // Store deliveries by customerId for later use
+    const todayDeliveriesMap = {};
+    const customerCategories = {};
 
-    // First pass: check each customer's delivery for today
-    customersSnap.forEach((customerDoc) => {
-      const customerId = customerDoc.id;
-      customerIds.push(customerId);
-    });
-
-    const previousDates = dates.slice(0, -1);
-
-    // Process customers in batches to avoid memory issues
-    await runInBatches(customerIds, 50, async (customerId) => {
+    // ⭐ ZERO SUBCOLLECTION READS: Compute exact categories/counts directly from last8Days!
+    for (const customer of allMatchedCustomers) {
       try {
-        const customerRef = db.collection("customers").doc(customerId);
-        const customerSnap = await customerRef.get();
+        const todayEntry = customer.last8Days?.[todayKey];
+        if (!todayEntry) {
+          customerCategories[customer.id] = "ignored";
+          continue;
+        }
 
-        if (!customerSnap.exists) return null;
-
-        const customer = customerSnap.data() || {};
-        const deliveriesRef = customerRef.collection("deliveries");
+        // Normalize legacy string format to object format
+        const entryObj = typeof todayEntry === 'string' ? { status: todayEntry } : todayEntry;
         
-        // Fetch today's delivery
-        const todayDeliverySnap = await deliveriesRef.doc(todayKey).get();
-        const todayDeliveryData = todayDeliverySnap.exists ? todayDeliverySnap.data() : null;
+        // Construct faux delivery doc to pass to getRetentionStatus
+        const todayDeliveryData = {
+          type: entryObj.status,
+          checkReason: entryObj.reason || "",
+          status: entryObj.status,
+          time: entryObj.time || null,
+          deliveredBy: entryObj.agentId || null
+        };
+
         const todayStatus = getRetentionStatus(todayDeliveryData);
-        
-        // Only include customers with "checked" status
-        if (todayStatus.key !== "checked") {
-          return null;
-        }
 
-        deliveryMap[customerId] = { status: todayStatus, data: todayDeliveryData };
-        counts.all += 1;
-        if (counts[todayStatus.category] !== undefined) {
-          counts[todayStatus.category] += 1;
-        }
+        if (todayStatus.key === "checked") {
+          todayDeliveriesMap[customer.id] = { status: todayStatus, data: todayDeliveryData };
+          customerCategories[customer.id] = todayStatus.category;
 
-        // Fetch previous 3 dates
-        const previousSnaps = await Promise.all(
-          previousDates.map((dateKey) => deliveriesRef.doc(dateKey).get()),
-        );
+          counts.all += 1;
+          if (counts[todayStatus.category] !== undefined) {
+            counts[todayStatus.category] += 1;
+          }
+        } else {
+           customerCategories[customer.id] = "ignored";
+        }
+      } catch (err) {
+        console.error(`Error processing today delivery for ${customer.id}:`, err);
+        customerCategories[customer.id] = "ignored";
+      }
+    }
+
+    // Filter out ignored ones and apply category filter
+    let filteredCustomers = allMatchedCustomers.filter(c => customerCategories[c.id] !== "ignored");
+    if (categoryFilter !== "all") {
+      filteredCustomers = filteredCustomers.filter(
+        (c) => customerCategories[c.id] === categoryFilter
+      );
+    }
+
+    filteredCustomers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    const total = filteredCustomers.length;
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    // Apply pagination
+    const startIndex = (page - 1) * limit;
+    const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + limit);
+
+    const rows = [];
+    
+    // ⭐ Fetch today's delivery doc for the paginated customers to get the EXACT timestamp!
+    const paginatedDeliveryRefs = paginatedCustomers.map(c => 
+      db.collection("customers").doc(c.id).collection("deliveries").doc(todayKey).get()
+    );
+    const paginatedDeliverySnaps = await Promise.all(paginatedDeliveryRefs);
+
+    for (let i = 0; i < paginatedCustomers.length; i++) {
+      const customer = paginatedCustomers[i];
+      const todayDeliverySnap = paginatedDeliverySnaps[i];
+      const actualTodayDeliveryData = todayDeliverySnap.exists ? todayDeliverySnap.data() : null;
+      try {
+        const todayData = todayDeliveriesMap[customer.id];
+        const todayStatus = todayData.status;
+        const todayDeliveryData = todayData.data;
 
         const dayStatuses = {};
-        previousDates.forEach((dateKey, index) => {
-          dayStatuses[dateKey] = getRetentionStatus(
-            previousSnaps[index].exists ? previousSnaps[index].data() : null,
-          );
+        previousDates.forEach((dateKey) => {
+          const entry = customer.last8Days?.[dateKey];
+          const entryObj = typeof entry === 'string' ? { status: entry } : (entry || null);
+          
+          let previousDeliveryData = null;
+          if (entryObj) {
+            previousDeliveryData = {
+              type: entryObj.status,
+              checkReason: entryObj.reason || "",
+              status: entryObj.status
+            };
+          }
+          
+          dayStatuses[dateKey] = getRetentionStatus(previousDeliveryData);
         });
+        
         dayStatuses[todayKey] = todayStatus;
 
-        // Extract delivery time and agent from today's delivery
-        const deliveryTime = todayDeliveryData?.deliveryTime || todayDeliveryData?.timestamp || null;
-        const deliveryAgentId = todayDeliveryData?.deliveredBy || todayDeliveryData?.deliveryMan || null;
+        // Process delivery time into ISO string
+        // We extract the exact timestamp from the actual delivery document
+        let deliveryTime = actualTodayDeliveryData?.timestamp || actualTodayDeliveryData?.deliveryTime || actualTodayDeliveryData?.checkReasonAt || todayDeliveryData.time || null;
+        
+        // Add TEMP fallback for old data as explicitly requested
+        if (!deliveryTime && customer.last8DaysUpdatedAt) {
+          deliveryTime = customer.last8DaysUpdatedAt;
+        }
+        if (deliveryTime) {
+          if (typeof deliveryTime.toDate === "function") {
+            deliveryTime = deliveryTime.toDate().toISOString();
+          } else if (deliveryTime && typeof deliveryTime === "object" && deliveryTime._seconds !== undefined) {
+            deliveryTime = new Date(deliveryTime._seconds * 1000).toISOString();
+          } else if (typeof deliveryTime === "number") {
+            const ms = deliveryTime < 1e12 ? deliveryTime * 1000 : deliveryTime;
+            deliveryTime = new Date(ms).toISOString();
+          } else if (typeof deliveryTime === "string") {
+            const parsedDate = new Date(deliveryTime);
+            if (!Number.isNaN(parsedDate.getTime())) {
+              deliveryTime = parsedDate.toISOString();
+            }
+          }
+        }
+
+        const deliveryAgentId = todayDeliveryData.deliveredBy || null;
         let deliveryAgent = "-";
         
         if (deliveryAgentId) {
           if (typeof deliveryAgentId === "string") {
-            // Lookup agent name from map, fallback to ID if not found
             deliveryAgent = deliveryPartnerMap.get(deliveryAgentId) || deliveryAgentId;
           } else if (typeof deliveryAgentId === "object" && (deliveryAgentId.name || deliveryAgentId.display_name)) {
             deliveryAgent = deliveryAgentId.name || deliveryAgentId.display_name || "-";
@@ -405,7 +498,7 @@ const getRetentionCustomers = async (req, res) => {
         }
 
         rows.push({
-          id: customerId,
+          id: customer.id,
           custid: customer.custid || "",
           name: customer.name || "",
           phone: customer.phone || "",
@@ -417,13 +510,13 @@ const getRetentionCustomers = async (req, res) => {
           deliveryAgent: deliveryAgent,
           days: dayStatuses,
         });
-      } catch (batchErr) {
-        console.error(`Error processing customer ${customerId}:`, batchErr);
+      } catch (err) {
+        console.error(`Error processing paginated customer ${customer.id}:`, err);
       }
-      return null;
-    });
+    }
 
-    rows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    // Ensure ordering matches the sorted slice
+    const orderedRows = paginatedCustomers.map((c) => rows.find((r) => r.id === c.id)).filter(Boolean);
 
     const payload = {
       date: todayKey,
@@ -435,13 +528,12 @@ const getRetentionCustomers = async (req, res) => {
         { value: "other_vendor", label: "Other Vendor" },
       ],
       counts,
-      customers: rows,
+      total,
+      totalPages,
+      currentPage: page,
+      customers: orderedRows,
     };
 
-    // ⭐ SUPER AGGRESSIVE CACHING: 1 hour (3600 seconds) TTL
-    // Since retention data rarely changes within an hour, this dramatically reduces reads
-    // If manual refresh needed, user can change the date picker
-    console.log(`[CACHE SET] Storing ${rows.length} customers for ${todayKey} with 1-hour TTL`);
     cache.set(cacheKey, payload, 3600);
     return res.status(200).json(payload);
   } catch (err) {
@@ -508,6 +600,14 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customer-retention:v2") ||
           key.startsWith("customerRetention:v3") ||
           key.startsWith("customerRetention:v4") ||
+          key.startsWith("customerRetention:v5") ||
+          key.startsWith("customerRetention:v6") ||
+          key.startsWith("customerRetention:v7") ||
+          key.startsWith("customerRetention:v8") ||
+          key.startsWith("customerRetention:v9") ||
+          key.startsWith("customerRetention:v10") ||
+          key.startsWith("customerRetention:v11") ||
+          key.startsWith("customerRetention:v12") ||
           key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );
@@ -1031,7 +1131,7 @@ const saveDeliveredTrays = async (req, res) => {
 
     // 🔄 Update denormalized last8Days
     const deliveryDate = new Date(deliveryId);
-    await updateLast8Days(db, customerId, deliveryDate, "delivered");
+    await updateLast8Days(db, customerId, deliveryDate, "delivered", { time: Date.now() });
 
     // ⭐ Denormalize to customer document with actual tray count & sync todayOverride
     const todayDate = getTodayDateString();
@@ -1127,7 +1227,7 @@ const saveCheckedReason = async (req, res) => {
     });
 
     // 🔄 Update denormalized last8Days
-    await updateLast8Days(db, customerId, deliveryId, "reached");
+    await updateLast8Days(db, customerId, deliveryId, "reached", { reason, time: Date.now() });
 
     // ⭐ Denormalize to customer document
     await db.collection("customers").doc(customerId).update({
