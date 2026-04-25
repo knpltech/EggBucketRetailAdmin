@@ -583,63 +583,80 @@ const getAllCustomerDeliveries = async (req, res) => {
       const today = new Date();
       const todayStr = today.toISOString().split("T")[0];
       
-      // Cutoff: 8 days ago. Dates before this will trigger subcollection fetch.
-      const cutoffDateObj = new Date();
-      cutoffDateObj.setDate(today.getDate() - 8);
-      const cutoffStr = cutoffDateObj.toISOString().split("T")[0];
-
       // We use Promise.all to handle potential subcollection fetches in parallel
       await Promise.all(customersSnap.docs.map(async (doc) => {
         const customerData = doc.data() || {};
         const last8Days = customerData.last8Days || {};
         let deliveries = [];
+        const shouldHydrateFromSubcollection = (entry) => {
+          if (!entry || typeof entry !== "object") return true;
+
+          const hasStatus = Boolean(String(entry.status || "").trim());
+          const hasTimestamp = Boolean(entry.timestamp);
+          const hasAgent = Boolean(
+            entry.agentName ||
+              entry.agentId ||
+              entry.deliveredBy ||
+              entry.deliveryMan,
+          );
+          const hasReason = entry.reason !== undefined;
+          const hasTrays = entry.traysDelivered !== undefined;
+
+          return !(hasStatus && hasTimestamp && hasAgent && hasReason && hasTrays);
+        };
 
         if (date) {
-          // HYBRID LOGIC:
-          const isRecent = date >= cutoffStr;
+          // First preference: use denormalized last8Days entry (cheaper).
+          const entry = last8Days[date];
+          if (entry) {
+            const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
+            const entryReason = typeof entry === "object" ? entry?.reason : "";
+            let subData = null;
 
-          if (isRecent) {
-            // Case A: Recent date -> Use optimized Map (Fast/Cheap)
-            if (last8Days[date]) {
-              const entry = last8Days[date];
-              const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
-              const entryReason = typeof entry === "object" ? entry?.reason : "";
+            if (shouldHydrateFromSubcollection(entry)) {
+              const deliveryDoc = await doc.ref.collection("deliveries").doc(date).get();
+              if (deliveryDoc.exists) {
+                subData = deliveryDoc.data() || {};
+              }
+            }
 
-              // Fetch same-day delivery doc to get actual delivery timestamp when available.
-              const recentDeliveryDoc = await doc.ref
-                .collection("deliveries")
-                .doc(date)
-                .get();
-              const recentDeliveryData = recentDeliveryDoc.exists
-                ? recentDeliveryDoc.data() || {}
-                : {};
-              
-              // Resolve Delivery Agent: Priority 1: From last8Days entry, Priority 2: From Customer record
-              const resolvedAgent = resolveDeliveryAgent(
-                recentDeliveryDoc.exists ? recentDeliveryData : entry,
+            const resolvedAgent =
+              resolveDeliveryAgent(
+                entry,
+                customerData.deliveredBy || customerData.deliveryMan,
+                deliveryManMap,
+              ) ||
+              resolveDeliveryAgent(
+                subData,
                 customerData.deliveredBy || customerData.deliveryMan,
                 deliveryManMap,
               );
 
-              deliveries = [{
-                id: date,
-                timestamp:
-                  recentDeliveryData.timestamp ||
-                  (typeof entry === "object" ? entry?.timestamp || null : null),
-                type: entryStatus,
-                status: entryStatus,
-                checkReason:
-                  recentDeliveryData.checkReason ||
-                  entryReason ||
-                  customerData.checkReason ||
-                  "",
-                traysDelivered:
-                  recentDeliveryData.traysDelivered ?? customerData.traysDelivered ?? null,
-                deliveryMan: resolvedAgent,
-              }];
-            }
+            const mergedStatus =
+              entryStatus ||
+              String(subData?.status || subData?.type || "")
+                .trim()
+                .toLowerCase();
+            const subReason = subData?.checkReason || subData?.reason || "";
+
+            deliveries = [{
+              id: date,
+              timestamp:
+                (typeof entry === "object" ? entry?.timestamp || null : null) ||
+                subData?.timestamp ||
+                null,
+              type: mergedStatus,
+              status: mergedStatus,
+              checkReason: entryReason || subReason || customerData.checkReason || "",
+              traysDelivered:
+                (typeof entry === "object" ? entry?.traysDelivered : null) ??
+                subData?.traysDelivered ??
+                customerData.traysDelivered ??
+                null,
+              deliveryMan: resolvedAgent,
+            }];
           } else {
-            // Case B: Historical date -> Fallback to Subcollection fetch (Accurate)
+            // Fallback: if date entry is not in last8Days, read historical subcollection doc.
             const deliveryDoc = await doc.ref.collection("deliveries").doc(date).get();
             if (deliveryDoc.exists) {
               const d = deliveryDoc.data();
@@ -664,25 +681,54 @@ const getAllCustomerDeliveries = async (req, res) => {
           }
         } else {
           // No specific date -> Return all recent activity from Map
-          deliveries = Object.entries(last8Days).map(([d, entry]) => {
+          deliveries = await Promise.all(Object.entries(last8Days).map(async ([d, entry]) => {
             const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
-            
-            const resolvedAgent = resolveDeliveryAgent(
-              entry,
-              customerData.deliveredBy || customerData.deliveryMan,
-              deliveryManMap,
-            );
+            const entryReason = typeof entry === "object" ? entry?.reason : "";
+            let subData = null;
+
+            if (shouldHydrateFromSubcollection(entry)) {
+              const deliveryDoc = await doc.ref.collection("deliveries").doc(d).get();
+              if (deliveryDoc.exists) {
+                subData = deliveryDoc.data() || {};
+              }
+            }
+
+            const resolvedAgent =
+              resolveDeliveryAgent(
+                entry,
+                customerData.deliveredBy || customerData.deliveryMan,
+                deliveryManMap,
+              ) ||
+              resolveDeliveryAgent(
+                subData,
+                customerData.deliveredBy || customerData.deliveryMan,
+                deliveryManMap,
+              );
+
+            const mergedStatus =
+              entryStatus ||
+              String(subData?.status || subData?.type || "")
+                .trim()
+                .toLowerCase();
+            const subReason = subData?.checkReason || subData?.reason || "";
 
             return {
               id: d,
-              timestamp: typeof entry === "object" ? entry?.timestamp || null : null,
-              type: entryStatus,
-              status: entryStatus,
-              checkReason: (typeof entry === "object" ? entry?.reason : "") || customerData.checkReason || "",
-              traysDelivered: customerData.traysDelivered ?? null,
+              timestamp:
+                (typeof entry === "object" ? entry?.timestamp || null : null) ||
+                subData?.timestamp ||
+                null,
+              type: mergedStatus,
+              status: mergedStatus,
+              checkReason: entryReason || subReason || customerData.checkReason || "",
+              traysDelivered:
+                (typeof entry === "object" ? entry?.traysDelivered : null) ??
+                subData?.traysDelivered ??
+                customerData.traysDelivered ??
+                null,
               deliveryMan: resolvedAgent,
             };
-          });
+          }));
         }
 
       if (deliveries.length > 0) {

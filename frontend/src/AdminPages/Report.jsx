@@ -41,6 +41,13 @@ const Report = () => {
     return trays === 1 ? "1 Tray" : `${trays} Trays`;
   };
 
+  const getDeliveryRemark = (row) => {
+    if (row.statusKey === "delivered") {
+      return "";
+    }
+    return row.latestRemark || row.reason || row.checkReason || "";
+  };
+
   const [selectedDate, setSelectedDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState("all");
   const [startRange, setStartRange] = useState("");
@@ -244,13 +251,14 @@ const Report = () => {
     const trays = Number(traysValue);
     if (!Number.isInteger(trays) || !TRAY_OPTIONS.includes(trays)) return;
 
+    const trayActionKey = `${customerId}-${deliveryId}`;
     const previousTrays =
       data
         .find((customer) => customer.id === customerId)
         ?.deliveries?.find((delivery) => delivery.id === deliveryId)
         ?.traysDelivered ?? null;
 
-    setSavingTraysId(deliveryId);
+    setSavingTraysId(trayActionKey);
     updateDeliveryValue(customerId, deliveryId, { traysDelivered: trays });
 
     try {
@@ -830,9 +838,69 @@ const Report = () => {
                               {row.statusLabel}
                             </span>
 
-                            {(row.latestRemark || row.reason || row.checkReason) && (
+                            {row.statusKey === "delivered" && (
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  const trayActionKey = `${row.customerId}-${row.deliveryId}`;
+                                  const hasTraysAssigned = Number.isInteger(row.traysDelivered);
+                                  const showDropdown =
+                                    !hasTraysAssigned || editingTraysId === trayActionKey;
+
+                                  if (!showDropdown) {
+                                    return (
+                                      <>
+                                        <span className="text-[11px] text-gray-600 font-medium">
+                                          {formatTrayLabel(row.traysDelivered)}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingTraysId(trayActionKey)}
+                                          className="p-1 rounded hover:bg-gray-100"
+                                          aria-label="Edit trays delivered"
+                                        >
+                                          <FiEdit2 className="text-xs text-gray-600" />
+                                        </button>
+                                      </>
+                                    );
+                                  }
+
+                                  return (
+                                  <select
+                                    value={
+                                      Number.isInteger(row.traysDelivered)
+                                        ? String(row.traysDelivered)
+                                        : ""
+                                    }
+                                    onChange={(e) => {
+                                      handleSelectDeliveredTrays(
+                                        row.customerId,
+                                        row.deliveryId,
+                                        e.target.value,
+                                      );
+                                    }}
+                                    disabled={savingTraysId === trayActionKey}
+                                    className="text-xs border rounded-md px-2 py-1"
+                                  >
+                                    <option value="" disabled>
+                                      Select trays
+                                    </option>
+                                    {TRAY_OPTIONS.map((option) => (
+                                      <option key={option} value={option}>
+                                        {formatTrayLabel(option)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  );
+                                })()}
+                                {savingTraysId === `${row.customerId}-${row.deliveryId}` && (
+                                  <span className="text-[11px] text-gray-500">Saving...</span>
+                                )}
+                              </div>
+                            )}
+
+                            {getDeliveryRemark(row) && (
                               <span className="text-[11px] text-gray-500 font-medium">
-                                {(row.latestRemark || row.reason || row.checkReason).toUpperCase()}
+                                {getDeliveryRemark(row).toUpperCase()}
                               </span>
                             )}
                           </div>

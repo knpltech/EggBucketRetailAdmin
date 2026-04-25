@@ -83,6 +83,9 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
     if (extraData.agentId) newEntry.agentId = extraData.agentId;
     if (extraData.agentName) newEntry.agentName = extraData.agentName;
     if (extraData.reason) newEntry.reason = extraData.reason;
+    if (extraData.traysDelivered !== undefined) {
+      newEntry.traysDelivered = extraData.traysDelivered;
+    }
 
     last8Days[dateStr] = newEntry;
 
@@ -918,7 +921,10 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
             type: status,
             status: status,
             checkReason: (typeof entry === "object" ? entry?.reason : "") || c.checkReason || "",
-            traysDelivered: c.traysDelivered ?? null,
+            traysDelivered:
+              (typeof entry === "object" ? entry?.traysDelivered : null) ??
+              c.traysDelivered ??
+              null,
             deliveryMan: resolvedAgent,
           };
         });
@@ -1124,16 +1130,17 @@ const getCustomersByDeliveryCount = async (req, res) => {
 const saveDeliveredTrays = async (req, res) => {
   try {
     const { customerId, deliveryId, traysDelivered } = req.body;
+    const allowedTrayValues = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100];
 
     if (!customerId || !deliveryId || traysDelivered === undefined) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
     const trays = Number(traysDelivered);
-    if (!Number.isInteger(trays) || trays < 1 || trays > 10) {
+    if (!Number.isInteger(trays) || !allowedTrayValues.includes(trays)) {
       return res
         .status(400)
-        .json({ message: "Trays must be an integer between 1 and 10" });
+        .json({ message: "Invalid trays value selected" });
     }
 
     const db = getFirestore();
@@ -1159,7 +1166,10 @@ const saveDeliveredTrays = async (req, res) => {
 
     // 🔄 Update denormalized last8Days
     const deliveryDate = new Date(deliveryId);
-    await updateLast8Days(db, customerId, deliveryDate, "delivered", { time: Date.now() });
+    await updateLast8Days(db, customerId, deliveryDate, "delivered", {
+      time: Date.now(),
+      traysDelivered: trays,
+    });
 
     // ⭐ Denormalize to customer document with actual tray count & sync todayOverride
     const todayDate = getTodayDateString();
