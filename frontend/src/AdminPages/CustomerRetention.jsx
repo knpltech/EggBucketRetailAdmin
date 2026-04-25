@@ -84,6 +84,30 @@ const getStatusRemark = (status) => {
   return "";
 };
 
+const parseTimestamp = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date) return value;
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (typeof value === "number") {
+    // Treat 10-digit numbers as seconds, otherwise milliseconds.
+    const ms = value < 1e12 ? value * 1000 : value;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === "string") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+};
+
 const getStatusFromDelivery = (delivery) => {
   if (!delivery) {
     return {
@@ -218,6 +242,8 @@ const CustomerRetention = () => {
                 todayCategory: customer.todayCategory || "",
                 todayCategoryLabel: customer.todayCategoryLabel || "-",
                 todayReason: customer.todayReason || "",
+                deliveryTime: customer.deliveryTime || null,
+                deliveryAgent: customer.deliveryAgent || "-",
                 days: dayStatuses,
               };
             })
@@ -267,6 +293,8 @@ const CustomerRetention = () => {
                 todayCategory: customer.todayCategory || "",
                 todayCategoryLabel: customer.todayCategoryLabel || "-",
                 todayReason: customer.todayReason || "",
+                deliveryTime: customer.deliveryTime || null,
+                deliveryAgent: customer.deliveryAgent || "-",
                 days: dayStatuses,
               };
             })
@@ -481,12 +509,14 @@ const CustomerRetention = () => {
       )}
 
       <div className="overflow-x-auto rounded-lg bg-white shadow">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full min-w-[1400px] text-sm">
           <thead className="sticky top-0 bg-slate-100 text-slate-700">
             <tr>
               <th className="px-4 py-3 text-left">Name</th>
               <th className="px-4 py-3 text-left">Phone</th>
               <th className="px-4 py-3 text-left">Zone</th>
+              <th className="px-4 py-3 text-left">Delivery Time</th>
+              <th className="px-4 py-3 text-left">Delivery Agent</th>
               {dates.map((date, index) => {
                 const label = formatDayHeader(date);
                 const isTodayColumn = index === dates.length - 1;
@@ -506,20 +536,38 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={5 + dates.length + 1} className="px-4 py-16 text-center text-slate-500">
                   Loading...
                 </td>
               </tr>
             ) : paginatedCustomers.length ? (
-              paginatedCustomers.map((customer) => (
-                <tr key={customer.id} className="border-t hover:bg-slate-50">
-                  <td className="px-4 py-4 font-semibold text-slate-900">
-                    {customer.name}
-                  </td>
-                  <td className="px-4 py-4 text-slate-700">{customer.phone}</td>
-                  <td className="px-4 py-4 text-slate-700">{customer.zone}</td>
+              paginatedCustomers.map((customer) => {
+                // Format delivery time
+                const formatDeliveryTime = (timestamp) => {
+                  const date = parseTimestamp(timestamp);
+                  if (!date) return "-";
+                  return date.toLocaleTimeString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  });
+                };
 
-                  {dates.map((date) => {
+                return (
+                  <tr key={customer.id} className="border-t hover:bg-slate-50">
+                    <td className="px-4 py-4 font-semibold text-slate-900">
+                      {customer.name}
+                    </td>
+                    <td className="px-4 py-4 text-slate-700">{customer.phone}</td>
+                    <td className="px-4 py-4 text-slate-700">{customer.zone}</td>
+                    <td className="px-4 py-4 text-slate-700 text-sm">
+                      {formatDeliveryTime(customer.deliveryTime)}
+                    </td>
+                    <td className="px-4 py-4 text-slate-700 text-sm">
+                      {customer.deliveryAgent}
+                    </td>
+
+                    {dates.map((date) => {
                     const status = customer.days?.[date] || {
                       key: "pending",
                       label: "PENDING",
@@ -552,10 +600,11 @@ const CustomerRetention = () => {
                     </button>
                   </td>
                 </tr>
-              ))
+                );
+              })
             ) : (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={5 + dates.length + 1} className="px-4 py-16 text-center text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>

@@ -13,7 +13,7 @@ const env = {
   frontendOrigins:
     process.env.FRONTEND_ORIGINS ||
     process.env.FRONTEND_ORIGIN ||
-    "https://egg-bucket-retail-admin.vercel.app,http://localhost:5174",
+    "https://egg-bucket-retail-admin.vercel.app,http://localhost:5173",
 };
 
 initializeFirebaseAdmin();
