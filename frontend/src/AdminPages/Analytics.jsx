@@ -68,8 +68,9 @@ const Analytics = () => {
   }, []);
 
   // UI: compute last 8 days statuses (including today) for each customer
+  // If today's delivery is missing, derive status from latestRemark
   const computeLast7Days = useCallback(
-    (deliveries) => {
+    (deliveries, latestRemark) => {
       const result = [];
       const today = new Date();
 
@@ -81,8 +82,22 @@ const Analytics = () => {
 
         const found = deliveries.find((entry) => entry.id === dateStr);
 
+        // If today's delivery is missing, derive type from latestRemark
+        let type = found ? found.type : null;
+        
+        if (!type && i === 0 && latestRemark) {
+          // Today: check latestRemark to determine type
+          const remark = (latestRemark || "").trim();
+          const isTrayFormat = /^\d+\s+trays?$|^10\+\s+trays$/i.test(remark);
+          if (isTrayFormat) {
+            type = "delivered";
+          } else if (remark && remark !== "-") {
+            type = "reached"; // Assume checked status for non-tray remarks
+          }
+        }
+
         result.push({
-          type: found ? found.type : null,
+          type,
           date: d,
         });
       }
@@ -100,7 +115,7 @@ const Analytics = () => {
 
       const full = customers.map((c) => ({
         ...c,
-        last7: computeLast7Days(c.deliveries || []),
+        last7: computeLast7Days(c.deliveries || [], c.latestRemark),
       }));
 
       setAllCustomers(full);

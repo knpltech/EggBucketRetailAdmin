@@ -136,6 +136,23 @@ const normalizeCustomerPotential = (value) => {
   return "T1";
 };
 
+const resolveLast8DaysDeliveryType = (entry) => {
+  if (typeof entry === "string" && entry.trim()) {
+    return entry;
+  }
+
+  if (
+    entry &&
+    typeof entry === "object" &&
+    typeof entry.status === "string" &&
+    entry.status.trim()
+  ) {
+    return entry.status;
+  }
+
+  return "pending";
+};
+
 const getStatusAndReasonFromType = (type, checkReason) => {
   const normalizedType = String(type || "")
     .trim()
@@ -650,7 +667,7 @@ const getZones = async (req, res) => {
 };
 
 const getAnalyticsLast8 = async (req, res) => {
-  const cacheKey = "analytics:last8:v1";
+  const cacheKey = "analytics:last8:v2";
 
   // CHECK CACHE FIRST (avoid Firestore read)
   const cachedData = cache.get(cacheKey);
@@ -677,9 +694,10 @@ const getAnalyticsLast8 = async (req, res) => {
       const last8Days = c.last8Days || {};
 
       // Convert to deliveries array for frontend compatibility
-      const deliveries = Object.entries(last8Days).map(([date, type]) => ({
+      // Handle BOTH old format (string) and new format (object with status field)
+      const deliveries = Object.entries(last8Days).map(([date, entry]) => ({
         id: date,
-        type,
+        type: resolveLast8DaysDeliveryType(entry),
       }));
 
       return {
