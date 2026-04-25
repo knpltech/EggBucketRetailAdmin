@@ -153,6 +153,31 @@ const resolveLast8DaysDeliveryType = (entry) => {
   return "pending";
 };
 
+const resolveDeliveryAgent = (entry, fallbackAgent, deliveryManMap = null) => {
+  const entryIsObject = entry && typeof entry === "object";
+
+  const directAgentName = entryIsObject
+    ? String(entry.agentName || "").trim()
+    : "";
+  if (directAgentName) {
+    return { name: directAgentName };
+  }
+
+  const agentId =
+    (entryIsObject ? (entry.agentId || entry.deliveredBy) : null) ||
+    fallbackAgent;
+
+  if (typeof agentId === "string") {
+    return deliveryManMap?.get(agentId) || { name: agentId };
+  }
+
+  if (agentId && typeof agentId === "object") {
+    return agentId;
+  }
+
+  return null;
+};
+
 const getStatusAndReasonFromType = (type, checkReason) => {
   const normalizedType = String(type || "")
     .trim()
@@ -758,8 +783,11 @@ const getAllCustomerDeliveriesRange = async (req, res) => {
           const status = typeof entry === "string" ? entry : entry?.status || "";
           
           // Resolve Delivery Agent
-          const agentId = (typeof entry === "object" ? entry?.deliveredBy : null) || c.deliveredBy || c.deliveryMan;
-          const resolvedAgent = typeof agentId === "string" ? deliveryManMap.get(agentId) : (agentId || null);
+          const resolvedAgent = resolveDeliveryAgent(
+            entry,
+            c.deliveredBy || c.deliveryMan,
+            deliveryManMap,
+          );
 
           return {
             id: dateKey,

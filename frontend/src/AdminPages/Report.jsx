@@ -115,6 +115,18 @@ const Report = () => {
     return null;
   };
 
+  const getDeliveryAgentName = (deliveryMan) => {
+    if (!deliveryMan) return "";
+    if (typeof deliveryMan === "string") return deliveryMan.trim();
+
+    return String(
+      deliveryMan.name ||
+        deliveryMan.display_name ||
+        deliveryMan.agentName ||
+        "",
+    ).trim();
+  };
+
   const fetchData = useCallback(async (date, shouldShowLoader = true) => {
     if (shouldShowLoader) {
       setLoading(true);
@@ -382,7 +394,7 @@ const Report = () => {
     () =>
       [...new Set(
         filteredDeliveries
-          .map((d) => (d.deliveryMan?.name || "").trim())
+          .map((d) => getDeliveryAgentName(d.deliveryMan))
           .filter(Boolean),
       )].sort((a, b) => a.localeCompare(b)),
     [filteredDeliveries],
@@ -397,7 +409,7 @@ const Report = () => {
 
     if (selectedAgent !== "all") {
       temp = temp.filter(
-        (d) => (d.deliveryMan?.name || "").trim() === selectedAgent,
+        (d) => getDeliveryAgentName(d.deliveryMan) === selectedAgent,
       );
     }
 
@@ -462,7 +474,7 @@ const Report = () => {
         ? null
         : filteredDeliveries.reduce(
           (stats, delivery) => {
-            const agentName = (delivery.deliveryMan?.name || "").trim();
+            const agentName = getDeliveryAgentName(delivery.deliveryMan);
 
             if (agentName !== selectedAgent) {
               return stats;
@@ -807,7 +819,7 @@ const Report = () => {
                           {row.zone || "UNASSIGNED"}
                         </td>
                         <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                          {row.deliveryMan?.name || "Not assigned"}
+                          {getDeliveryAgentName(row.deliveryMan) || "Not assigned"}
                         </td>
                         <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
                           <div className="flex flex-col items-start gap-1.5">

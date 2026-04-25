@@ -84,6 +84,48 @@ const getStatusAndReasonFromType = (type, checkReason = "") => {
   return { status: "Pending", reason: "" };
 };
 
+const resolveDeliveryAgent = (entry, fallbackAgent, deliveryManMap) => {
+  const entryIsObject = entry && typeof entry === "object";
+
+  const nestedAgent = entryIsObject ? entry.deliveryMan || entry.agent : null;
+  if (typeof nestedAgent === "string" && nestedAgent.trim()) {
+    return deliveryManMap.get(nestedAgent.trim()) || { name: nestedAgent.trim() };
+  }
+  if (nestedAgent && typeof nestedAgent === "object") {
+    const nestedName =
+      String(
+        nestedAgent.name ||
+          nestedAgent.display_name ||
+          nestedAgent.agentName ||
+          "",
+      ).trim();
+    if (nestedName) {
+      return { ...nestedAgent, name: nestedName };
+    }
+  }
+
+  const directAgentName = entryIsObject
+    ? String(entry.agentName || "").trim()
+    : "";
+  if (directAgentName) {
+    return { name: directAgentName };
+  }
+
+  const agentId =
+    (entryIsObject ? (entry.agentId || entry.deliveredBy) : null) ||
+    fallbackAgent;
+
+  if (typeof agentId === "string") {
+    return deliveryManMap.get(agentId) || { name: agentId };
+  }
+
+  if (agentId && typeof agentId === "object") {
+    return agentId;
+  }
+
+  return null;
+};
+
 const parsePageLimit = (value) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -512,8 +554,8 @@ const getAllCustomerDeliveries = async (req, res) => {
 
     // ✅ OPTIMIZATION: Separate cache keys and increased TTL (5 mins)
     const cacheKey = date
-      ? `allCustomerDeliveries:${date}:v5`
-      : "allCustomerDeliveries:v5";
+      ? `allCustomerDeliveries:${date}:v6`
+      : "allCustomerDeliveries:v6";
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -562,24 +604,37 @@ const getAllCustomerDeliveries = async (req, res) => {
               const entry = last8Days[date];
               const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
               const entryReason = typeof entry === "object" ? entry?.reason : "";
+
+              // Fetch same-day delivery doc to get actual delivery timestamp when available.
+              const recentDeliveryDoc = await doc.ref
+                .collection("deliveries")
+                .doc(date)
+                .get();
+              const recentDeliveryData = recentDeliveryDoc.exists
+                ? recentDeliveryDoc.data() || {}
+                : {};
               
               // Resolve Delivery Agent: Priority 1: From last8Days entry, Priority 2: From Customer record
-              const agentId = (typeof entry === "object" ? entry?.deliveredBy : null) || customerData.deliveredBy || customerData.deliveryMan;
-              
-              let resolvedAgent = null;
-              if (typeof agentId === "string") {
-                resolvedAgent = deliveryManMap.get(agentId) || { name: agentId }; // Fallback to raw string if not in map
-              } else if (agentId && typeof agentId === "object") {
-                resolvedAgent = agentId;
-              }
+              const resolvedAgent = resolveDeliveryAgent(
+                recentDeliveryDoc.exists ? recentDeliveryData : entry,
+                customerData.deliveredBy || customerData.deliveryMan,
+                deliveryManMap,
+              );
 
               deliveries = [{
                 id: date,
-                timestamp: entry?.timestamp || Date.now(),
+                timestamp:
+                  recentDeliveryData.timestamp ||
+                  (typeof entry === "object" ? entry?.timestamp || null : null),
                 type: entryStatus,
                 status: entryStatus,
-                checkReason: entryReason || customerData.checkReason || "",
-                traysDelivered: customerData.traysDelivered ?? null,
+                checkReason:
+                  recentDeliveryData.checkReason ||
+                  entryReason ||
+                  customerData.checkReason ||
+                  "",
+                traysDelivered:
+                  recentDeliveryData.traysDelivered ?? customerData.traysDelivered ?? null,
                 deliveryMan: resolvedAgent,
               }];
             }
@@ -590,17 +645,15 @@ const getAllCustomerDeliveries = async (req, res) => {
               const d = deliveryDoc.data();
               const { status, reason } = getStatusAndReasonFromType(d.type, d.checkReason);
               
-              const agentId = d.deliveredBy || d.deliveryMan;
-              let resolvedAgent = null;
-              if (typeof agentId === "string") {
-                resolvedAgent = deliveryManMap.get(agentId) || { name: agentId };
-              } else if (agentId && typeof agentId === "object") {
-                resolvedAgent = agentId;
-              }
+              const resolvedAgent = resolveDeliveryAgent(
+                d,
+                customerData.deliveredBy || customerData.deliveryMan,
+                deliveryManMap,
+              );
 
               deliveries = [{
                 id: deliveryDoc.id,
-                timestamp: d.timestamp || Date.now(),
+                timestamp: d.timestamp || null,
                 type: d.type || "",
                 status: status,
                 checkReason: d.checkReason || reason || "",
@@ -614,17 +667,15 @@ const getAllCustomerDeliveries = async (req, res) => {
           deliveries = Object.entries(last8Days).map(([d, entry]) => {
             const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
             
-            const agentId = (typeof entry === "object" ? entry?.deliveredBy : null) || customerData.deliveredBy || customerData.deliveryMan;
-            let resolvedAgent = null;
-            if (typeof agentId === "string") {
-              resolvedAgent = deliveryManMap.get(agentId) || { name: agentId };
-            } else if (agentId && typeof agentId === "object") {
-              resolvedAgent = agentId;
-            }
+            const resolvedAgent = resolveDeliveryAgent(
+              entry,
+              customerData.deliveredBy || customerData.deliveryMan,
+              deliveryManMap,
+            );
 
             return {
               id: d,
-              timestamp: entry?.timestamp || Date.now(),
+              timestamp: typeof entry === "object" ? entry?.timestamp || null : null,
               type: entryStatus,
               status: entryStatus,
               checkReason: (typeof entry === "object" ? entry?.reason : "") || customerData.checkReason || "",
