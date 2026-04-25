@@ -541,56 +541,116 @@ const getAllCustomerDeliveries = async (req, res) => {
       cache.set(deliveryManCacheKey, deliveryManData, 86400);
     }
 
-    // OPTIMIZATION: Use denormalized last8Days field instead of reading subcollections
-    // This reduces reads from N+2 to 2 (one-time) or 0 (with cache)
+    // OPTIMIZATION: Use fast denormalized last8Days to filter, then fetch full delivery data only for relevant customers
     const customersSnap = await db.collection("customers").get();
+    const customersWithDeliveries = [];
 
-    const customersWithDeliveries = customersSnap.docs
-      .map((doc) => {
-        const customerData = doc.data() || {};
-        const last8Days = customerData.last8Days || {};
+    // First pass: Use last8Days to identify customers with deliveries for the requested date
+    const customersToFetch = [];
 
-        // Extract delivery data for the requested date or all dates
-        let deliveries = [];
+    for (const customerDoc of customersSnap.docs) {
+      const customerData = customerDoc.data() || {};
+      const last8Days = customerData.last8Days || {};
 
+      // If date is specified, only fetch customers with deliveries on that date
+      if (date) {
+        if (last8Days[date]) {
+          customersToFetch.push({
+            doc: customerDoc,
+            data: customerData,
+            hasDeliveryOnDate: true,
+          });
+        }
+      } else {
+        // If no date specified, fetch customers with any deliveries
+        if (Object.keys(last8Days).length > 0) {
+          customersToFetch.push({
+            doc: customerDoc,
+            data: customerData,
+            hasDeliveryOnDate: false,
+          });
+        }
+      }
+    }
+
+    // Second pass: Fetch full delivery details only for filtered customers
+    for (const { doc: customerDoc, data: customerData } of customersToFetch) {
+      const deliveriesSnap = await customerDoc.ref.collection("deliveries").get();
+      let deliveries = [];
+
+      for (const deliveryDoc of deliveriesSnap.docs) {
+        const deliveryData = deliveryDoc.data() || {};
+
+        // Filter by date if provided
         if (date) {
-          // Only return if this customer has data for the requested date
-          if (last8Days[date]) {
-            deliveries = [
-              {
-                id: date,
-                type: last8Days[date],
-                status: last8Days[date], // Simplified: use type as status
-              },
-            ];
-          } else {
-            // Customer has no delivery for this date - skip
-            return null;
+          let deliveryDate = null;
+
+          if (deliveryData.timestamp) {
+            const deliveryTime = deliveryData.timestamp;
+            let tempDate;
+
+            if (typeof deliveryTime === "object" && deliveryTime.seconds) {
+              tempDate = new Date(deliveryTime.seconds * 1000);
+            } else if (typeof deliveryTime === "number") {
+              const ms = deliveryTime < 1e12 ? deliveryTime * 1000 : deliveryTime;
+              tempDate = new Date(ms);
+            } else if (typeof deliveryTime === "string") {
+              tempDate = new Date(deliveryTime);
+            }
+
+            if (tempDate && !isNaN(tempDate.getTime())) {
+              deliveryDate = tempDate.toISOString().split("T")[0];
+            }
           }
-        } else {
-          // Return all dates in last8Days
-          deliveries = Object.entries(last8Days).map(([dateKey, type]) => ({
-            id: dateKey,
-            type,
-            status: type,
-          }));
+
+          // Skip if date doesn't match
+          if (deliveryDate !== date) {
+            continue;
+          }
         }
 
-        // Only return customer if they have deliveries
-        if (deliveries.length === 0) {
-          return null;
+        // Get DeliveryMan info
+        let deliveryMan = null;
+        const deliveredByUID = deliveryData.deliveredBy;
+
+        if (deliveredByUID && deliveryManData.has(deliveredByUID)) {
+          deliveryMan = deliveryManData.get(deliveredByUID);
         }
 
-        return {
-          id: doc.id,
+        const { status, reason } = getStatusAndReasonFromType(
+          deliveryData.type,
+          deliveryData.checkReason,
+        );
+
+        deliveries.push({
+          id: deliveryDoc.id,
+          deliveredBy: deliveredByUID,
+          timestamp: deliveryData.timestamp,
+          type: deliveryData.type,
+          status,
+          reason,
+          checkReason: deliveryData.checkReason || "",
+          traysDelivered:
+            typeof deliveryData.traysDelivered === "number"
+              ? deliveryData.traysDelivered
+              : null,
+          deliveryMan,
+        });
+      }
+
+      // Only include customers with deliveries
+      if (deliveries.length > 0) {
+        customersWithDeliveries.push({
+          id: customerDoc.id,
           custid: customerData.custid || "",
           name: customerData.name || "",
           phone: customerData.phone || "",
           zone: customerData.zone || "UNASSIGNED",
+          createdAt: customerData.createdAt || null,
           deliveries,
-        };
-      })
-      .filter((c) => c !== null);
+        });
+      }
+    }
 
     // ✅ Auto-flip todayOverride to OFF when delivery is marked DELIVERED (if currently ON)
     const getDateStringInTimeZone = (
@@ -624,7 +684,7 @@ const getAllCustomerDeliveries = async (req, res) => {
       const deliveries = customer.deliveries || [];
 
       const todayDelivered = deliveries.some(
-        (d) => d.id === todayDate && d.type === "delivered",
+        (d) => d.type === "delivered",
       );
 
       if (todayDelivered) {

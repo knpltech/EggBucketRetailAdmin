@@ -389,9 +389,7 @@ const Report = () => {
   const displayedDeliveries = useMemo(() => {
     let temp = [...filteredDeliveries];
 
-    if (statusFilter === "all") {
-      temp = temp.filter((d) => isCompletedStatus(d.statusKey));
-    } else {
+    if (statusFilter !== "all") {
       temp = temp.filter((d) => d.statusKey === statusFilter);
     }
 
@@ -447,8 +445,7 @@ const Report = () => {
 
   const statusCounts = useMemo(
     () => ({
-      all: filteredDeliveries.filter((d) => isCompletedStatus(d.statusKey))
-        .length,
+      all: filteredDeliveries.length,
       delivered: filteredDeliveries.filter((d) => d.statusKey === "delivered")
         .length,
       checked: filteredDeliveries.filter((d) => d.statusKey === "checked").length,
