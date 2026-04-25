@@ -341,6 +341,14 @@ const getRetentionCustomers = async (req, res) => {
 
     const db = getFirestore();
     
+    // ⭐ OPTIMIZATION: Fetch delivery partners once to lookup names
+    const deliveryPartnerSnap = await db.collection("DeliveryMan").get();
+    const deliveryPartnerMap = new Map();
+    deliveryPartnerSnap.forEach((doc) => {
+      const data = doc.data();
+      deliveryPartnerMap.set(doc.id, data.name || data.display_name || doc.id);
+    });
+
     // ⭐ FIXED QUERY: Avoid collectionGroup + where (requires missing composite index)
     // Instead, query all customers and check their deliveries for today's date
     const customersRef = db.collection("customers");
@@ -407,6 +415,20 @@ const getRetentionCustomers = async (req, res) => {
         });
         dayStatuses[todayKey] = todayStatus;
 
+        // Extract delivery time and agent from today's delivery
+        const deliveryTime = todayDeliveryData?.deliveryTime || todayDeliveryData?.timestamp || null;
+        const deliveryAgentId = todayDeliveryData?.deliveredBy || todayDeliveryData?.deliveryMan || null;
+        let deliveryAgent = "-";
+        
+        if (deliveryAgentId) {
+          if (typeof deliveryAgentId === "string") {
+            // Lookup agent name from map, fallback to ID if not found
+            deliveryAgent = deliveryPartnerMap.get(deliveryAgentId) || deliveryAgentId;
+          } else if (typeof deliveryAgentId === "object" && (deliveryAgentId.name || deliveryAgentId.display_name)) {
+            deliveryAgent = deliveryAgentId.name || deliveryAgentId.display_name || "-";
+          }
+        }
+
         rows.push({
           id: customerId,
           custid: customer.custid || "",
@@ -416,6 +438,8 @@ const getRetentionCustomers = async (req, res) => {
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
+          deliveryTime: deliveryTime,
+          deliveryAgent: deliveryAgent,
           days: dayStatuses,
         });
       } catch (batchErr) {
