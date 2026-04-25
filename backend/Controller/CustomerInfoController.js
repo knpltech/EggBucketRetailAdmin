@@ -506,229 +506,174 @@ const getUserDeliveries = async (req, res) => {
 };
 
 // Controller to get all customers along with their deliveries
+// Controller to get all customers along with their deliveries
 const getAllCustomerDeliveries = async (req, res) => {
   const date = req.query.date;
 
-  // OPTIMIZATION: Separate cache keys for different date queries
-  const cacheKey = date
-    ? `allCustomerDeliveries:${date}`
-    : "allCustomerDeliveries";
+    // ✅ OPTIMIZATION: Separate cache keys and increased TTL (5 mins)
+    const cacheKey = date
+      ? `allCustomerDeliveries:${date}:v5`
+      : "allCustomerDeliveries:v5";
 
-  const cached = cache.get(cacheKey);
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ customers: cached });
+    }
 
-  if (cached) {
-    return res.status(200).json({ customers: cached });
-  }
+    try {
+      const db = getFirestore();
 
-  try {
-    const db = getFirestore();
-
-    // OPTIMIZATION: Cache DeliveryMan longer (rarely changes) - separate longer TTL
-    const deliveryManCacheKey = "deliveryManCache";
-    let deliveryManData = cache.get(deliveryManCacheKey);
-
-    if (!deliveryManData) {
+      // 1. Fetch all customers
+      const customersSnap = await db.collection("customers").get();
+      
+      // 2. Fetch Delivery Partners (pre-cache for lookup)
       const deliveryManSnap = await db.collection("DeliveryMan").get();
-      deliveryManData = new Map();
-      deliveryManSnap.docs.forEach((doc) => {
-        const data = doc.data() || {};
-        deliveryManData.set(doc.id, {
-          name: data.name || "",
-          phone: data.phone || "",
-        });
+      const deliveryManMap = new Map();
+      deliveryManSnap.docs.forEach(doc => {
+        const d = doc.data();
+        deliveryManMap.set(doc.id, { name: d.name || d.display_name || "", phone: d.phone || "" });
       });
-      // Cache DeliveryMan for 24 hours (86400 seconds) since it changes rarely
-      cache.set(deliveryManCacheKey, deliveryManData, 86400);
-    }
 
-    // OPTIMIZATION: Use fast denormalized last8Days to filter, then fetch full delivery data only for relevant customers
-    const customersSnap = await db.collection("customers").get();
-    const customersWithDeliveries = [];
+      const customersWithDeliveries = [];
+      const autoFlipQueries = [];
+      
+      // Date Calculations for Hybrid Approach
+      const today = new Date();
+      const todayStr = today.toISOString().split("T")[0];
+      
+      // Cutoff: 8 days ago. Dates before this will trigger subcollection fetch.
+      const cutoffDateObj = new Date();
+      cutoffDateObj.setDate(today.getDate() - 8);
+      const cutoffStr = cutoffDateObj.toISOString().split("T")[0];
 
-    // First pass: Use last8Days to identify customers with deliveries for the requested date
-    const customersToFetch = [];
+      // We use Promise.all to handle potential subcollection fetches in parallel
+      await Promise.all(customersSnap.docs.map(async (doc) => {
+        const customerData = doc.data() || {};
+        const last8Days = customerData.last8Days || {};
+        let deliveries = [];
 
-    for (const customerDoc of customersSnap.docs) {
-      const customerData = customerDoc.data() || {};
-      const last8Days = customerData.last8Days || {};
-
-      // If date is specified, only fetch customers with deliveries on that date
-      if (date) {
-        if (last8Days[date]) {
-          customersToFetch.push({
-            doc: customerDoc,
-            data: customerData,
-            hasDeliveryOnDate: true,
-          });
-        }
-      } else {
-        // If no date specified, fetch customers with any deliveries
-        if (Object.keys(last8Days).length > 0) {
-          customersToFetch.push({
-            doc: customerDoc,
-            data: customerData,
-            hasDeliveryOnDate: false,
-          });
-        }
-      }
-    }
-
-    // Second pass: Fetch full delivery details only for filtered customers
-    for (const { doc: customerDoc, data: customerData } of customersToFetch) {
-      const deliveriesSnap = await customerDoc.ref.collection("deliveries").get();
-      let deliveries = [];
-
-      for (const deliveryDoc of deliveriesSnap.docs) {
-        const deliveryData = deliveryDoc.data() || {};
-
-        // Filter by date if provided
         if (date) {
-          let deliveryDate = null;
+          // HYBRID LOGIC:
+          const isRecent = date >= cutoffStr;
 
-          if (deliveryData.timestamp) {
-            const deliveryTime = deliveryData.timestamp;
-            let tempDate;
+          if (isRecent) {
+            // Case A: Recent date -> Use optimized Map (Fast/Cheap)
+            if (last8Days[date]) {
+              const entry = last8Days[date];
+              const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
+              const entryReason = typeof entry === "object" ? entry?.reason : "";
+              
+              // Resolve Delivery Agent: Priority 1: From last8Days entry, Priority 2: From Customer record
+              const agentId = (typeof entry === "object" ? entry?.deliveredBy : null) || customerData.deliveredBy || customerData.deliveryMan;
+              
+              let resolvedAgent = null;
+              if (typeof agentId === "string") {
+                resolvedAgent = deliveryManMap.get(agentId) || { name: agentId }; // Fallback to raw string if not in map
+              } else if (agentId && typeof agentId === "object") {
+                resolvedAgent = agentId;
+              }
 
-            if (typeof deliveryTime === "object" && deliveryTime.seconds) {
-              tempDate = new Date(deliveryTime.seconds * 1000);
-            } else if (typeof deliveryTime === "number") {
-              const ms = deliveryTime < 1e12 ? deliveryTime * 1000 : deliveryTime;
-              tempDate = new Date(ms);
-            } else if (typeof deliveryTime === "string") {
-              tempDate = new Date(deliveryTime);
+              deliveries = [{
+                id: date,
+                timestamp: entry?.timestamp || Date.now(),
+                type: entryStatus,
+                status: entryStatus,
+                checkReason: entryReason || customerData.checkReason || "",
+                traysDelivered: customerData.traysDelivered ?? null,
+                deliveryMan: resolvedAgent,
+              }];
             }
+          } else {
+            // Case B: Historical date -> Fallback to Subcollection fetch (Accurate)
+            const deliveryDoc = await doc.ref.collection("deliveries").doc(date).get();
+            if (deliveryDoc.exists) {
+              const d = deliveryDoc.data();
+              const { status, reason } = getStatusAndReasonFromType(d.type, d.checkReason);
+              
+              const agentId = d.deliveredBy || d.deliveryMan;
+              let resolvedAgent = null;
+              if (typeof agentId === "string") {
+                resolvedAgent = deliveryManMap.get(agentId) || { name: agentId };
+              } else if (agentId && typeof agentId === "object") {
+                resolvedAgent = agentId;
+              }
 
-            if (tempDate && !isNaN(tempDate.getTime())) {
-              deliveryDate = tempDate.toISOString().split("T")[0];
+              deliveries = [{
+                id: deliveryDoc.id,
+                timestamp: d.timestamp || Date.now(),
+                type: d.type || "",
+                status: status,
+                checkReason: d.checkReason || reason || "",
+                traysDelivered: d.traysDelivered ?? null,
+                deliveryMan: resolvedAgent,
+              }];
             }
           }
+        } else {
+          // No specific date -> Return all recent activity from Map
+          deliveries = Object.entries(last8Days).map(([d, entry]) => {
+            const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
+            
+            const agentId = (typeof entry === "object" ? entry?.deliveredBy : null) || customerData.deliveredBy || customerData.deliveryMan;
+            let resolvedAgent = null;
+            if (typeof agentId === "string") {
+              resolvedAgent = deliveryManMap.get(agentId) || { name: agentId };
+            } else if (agentId && typeof agentId === "object") {
+              resolvedAgent = agentId;
+            }
 
-          // Skip if date doesn't match
-          if (deliveryDate !== date) {
-            continue;
-          }
+            return {
+              id: d,
+              timestamp: entry?.timestamp || Date.now(),
+              type: entryStatus,
+              status: entryStatus,
+              checkReason: (typeof entry === "object" ? entry?.reason : "") || customerData.checkReason || "",
+              traysDelivered: customerData.traysDelivered ?? null,
+              deliveryMan: resolvedAgent,
+            };
+          });
         }
 
-        // Get DeliveryMan info
-        let deliveryMan = null;
-        const deliveredByUID = deliveryData.deliveredBy;
-
-        if (deliveredByUID && deliveryManData.has(deliveredByUID)) {
-          deliveryMan = deliveryManData.get(deliveredByUID);
-        }
-
-        const { status, reason } = getStatusAndReasonFromType(
-          deliveryData.type,
-          deliveryData.checkReason,
-        );
-
-        deliveries.push({
-          id: deliveryDoc.id,
-          deliveredBy: deliveredByUID,
-          timestamp: deliveryData.timestamp,
-          type: deliveryData.type,
-          status,
-          reason,
-          checkReason: deliveryData.checkReason || "",
-          traysDelivered:
-            typeof deliveryData.traysDelivered === "number"
-              ? deliveryData.traysDelivered
-              : null,
-          deliveryMan,
-        });
-      }
-
-      // Only include customers with deliveries
       if (deliveries.length > 0) {
-        customersWithDeliveries.push({
-          id: customerDoc.id,
+        const customerPayload = {
+          id: doc.id,
           custid: customerData.custid || "",
           name: customerData.name || "",
           phone: customerData.phone || "",
           zone: customerData.zone || "UNASSIGNED",
           createdAt: customerData.createdAt || null,
           deliveries,
-        });
-      }
-    }
+        };
+        customersWithDeliveries.push(customerPayload);
 
-    // ✅ Auto-flip todayOverride to OFF when delivery is marked DELIVERED (if currently ON)
-    const getDateStringInTimeZone = (
-      dateObj = new Date(),
-      timeZone = "Asia/Kolkata",
-    ) => {
-      try {
-        const parts = new Intl.DateTimeFormat("en-CA", {
-          timeZone,
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).formatToParts(dateObj);
-
-        const year = parts.find((p) => p.type === "year")?.value;
-        const month = parts.find((p) => p.type === "month")?.value;
-        const day = parts.find((p) => p.type === "day")?.value;
-
-        if (year && month && day) return `${year}-${month}-${day}`;
-      } catch (e) {
-        // fall through
-      }
-
-      return new Date().toISOString().slice(0, 10);
-    };
-
-    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-    const queries = [];
-
-    for (const customer of customersWithDeliveries) {
-      const deliveries = customer.deliveries || [];
-
-      const todayDelivered = deliveries.some(
-        (d) => d.type === "delivered",
-      );
-
-      if (todayDelivered) {
-        const customerDataFromDb = customersSnap.docs.find(
-          (doc) => doc.id === customer.id,
-        );
-        const customerSnapshot = customerDataFromDb?.data() || {};
-        const currentOverride = customerSnapshot.todayOverride || {};
-        const currentStatus = String(
-          currentOverride.status || "",
-        ).toUpperCase();
-
-        if (currentStatus === "ON") {
-          const customerRef = db.collection("customers").doc(customer.id);
-          queries.push(
-            customerRef.update({
-              todayOverride: {
-                date: todayDate,
-                status: "OFF",
-              },
-            }),
+        // ✅ AUTO-FLIP LOGIC: (Only if current date matches today)
+        const todayEntry = last8Days[todayStr];
+        const isDeliveredToday = (typeof todayEntry === "string" ? todayEntry : todayEntry?.status) === "delivered";
+        
+        if (isDeliveredToday && customerData.todayOverride?.status === "ON") {
+          autoFlipQueries.push(
+            doc.ref.update({
+              "todayOverride.status": "OFF",
+              "todayOverride.date": todayStr
+            })
           );
         }
       }
+    }));
+
+    // Run auto-flips in background
+    if (autoFlipQueries.length > 0) {
+      Promise.all(autoFlipQueries).catch(err => console.error("Auto-flip error:", err));
     }
 
-    if (queries.length > 0) {
-      await Promise.all(queries);
-      cache.del(cacheKey);
-      if (date) {
-        cache.del("allCustomerDeliveries");
-      }
-    }
-
-    // OPTIMIZATION: Extended cache TTL to 5 minutes (300 seconds)
-    // This reduces reads significantly when users switch between dates/filters
-    cache.set(cacheKey, customersWithDeliveries, 300);
-
+    cache.set(cacheKey, customersWithDeliveries, 300); // 5 min cache
     res.json({ customers: customersWithDeliveries });
   } catch (err) {
-    console.error("API Error:", err);
+    console.error("getAllCustomerDeliveries Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // Controller to add a new customer with location and image
 const addCustomer = async (req, res) => {

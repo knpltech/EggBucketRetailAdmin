@@ -501,57 +501,29 @@ const resetRetentionCustomer = async (req, res) => {
 
 const getCustomerMapStatus = async (req, res) => {
   try {
-    const cacheKey = "customerMapStatus:today";
-
-    //  Cache check
+    const cacheKey = "customerMapStatus:today:v2";
     const cached = cache.get(cacheKey);
-    if (cached) {
-      return res.status(200).json(cached);
-    }
+    if (cached) return res.status(200).json(cached);
 
     const db = getFirestore();
+    const todayStr = new Date().toISOString().split("T")[0]; // Use ISO string to match last8Days keys
 
-    //  TODAY (start of day)
-    const targetDate = new Date();
-    targetDate.setHours(0, 0, 0, 0);
-
+    // ⭐ OPTIMIZATION: ONE read for all customers. Status is derived from last8Days map.
     const customersSnap = await db.collection("customers").get();
     const result = [];
 
-    for (const doc of customersSnap.docs) {
+    customersSnap.forEach((doc) => {
       const c = doc.data();
-      if (!c.location) continue;
+      if (!c.location) return;
 
-      //  Parse lat/lng
-      const parts = c.location
-        .replace("Lat:", "")
-        .replace("Lng:", "")
-        .split(",");
-
+      const parts = c.location.replace("Lat:", "").replace("Lng:", "").split(",");
       const lat = parseFloat(parts[0]?.trim());
       const lng = parseFloat(parts[1]?.trim());
-      if (isNaN(lat) || isNaN(lng)) continue;
+      if (isNaN(lat) || isNaN(lng)) return;
 
-      let status = "pending";
-
-      const deliveriesSnap = await db
-        .collection("customers")
-        .doc(doc.id)
-        .collection("deliveries")
-        .get();
-
-      deliveriesSnap.forEach((d) => {
-        const data = d.data();
-        if (!data.timestamp?._seconds) return;
-
-        const deliveryDate = new Date(data.timestamp._seconds * 1000);
-        deliveryDate.setHours(0, 0, 0, 0);
-
-        if (deliveryDate.getTime() === targetDate.getTime()) {
-          if (data.type === "delivered") status = "delivered";
-          else if (data.type === "reached") status = "reached";
-        }
-      });
+      // Check today's status in last8Days map
+      const entry = c.last8Days?.[todayStr];
+      const todayStatus = (typeof entry === "string" ? entry : entry?.status || "pending").toLowerCase();
 
       result.push({
         id: doc.id,
@@ -561,10 +533,11 @@ const getCustomerMapStatus = async (req, res) => {
         location: c.location,
         lat,
         lng,
-        status,
+        status: todayStatus,
       });
-    }
+    });
 
+    cache.set(cacheKey, result, 300);
     return res.status(200).json(result);
   } catch (err) {
     console.error("Customer map status error:", err);
@@ -734,78 +707,64 @@ const getAnalyticsLast8 = async (req, res) => {
 // Get deliveries between date range (For Excel)
 const getAllCustomerDeliveriesRange = async (req, res) => {
   const { start, end } = req.query;
-
   if (!start || !end) {
-    return res.status(400).json({
-      message: "Start and End date required",
-    });
+    return res.status(400).json({ message: "Start and End date required" });
   }
 
   try {
     const db = getFirestore();
 
-    //  Fetch all delivery boys once
+    // 1. Fetch all delivery boys once
     const deliveryManSnap = await db.collection("DeliveryMan").get();
-
-    const deliveryManMap = {};
-
+    const deliveryManMap = new Map();
     deliveryManSnap.docs.forEach((doc) => {
       const data = doc.data();
-
-      deliveryManMap[doc.id] = {
+      deliveryManMap.set(doc.id, {
         name: data.name || "",
         phone: data.phone || "",
-      };
+      });
     });
 
-    //  Fetch customers
     const customersSnap = await db.collection("customers").get();
 
-    const customersWithDeliveries = await Promise.all(
-      customersSnap.docs.map(async (doc) => {
-        const deliveriesRef = db
-          .collection("customers")
-          .doc(doc.id)
-          .collection("deliveries");
+    // ⭐ OPTIMIZATION: Use last8Days map for range queries. 
+    // This avoids fetching subcollections for every customer.
+    const customersWithDeliveries = customersSnap.docs.map((doc) => {
+      const c = doc.data() || {};
+      const last8Days = c.last8Days || {};
 
-        //  Fetch deliveries in range
-        const snap = await deliveriesRef
-          .where(admin.firestore.FieldPath.documentId(), ">=", start)
-          .where(admin.firestore.FieldPath.documentId(), "<=", end)
-          .get();
-
-        //  Attach delivery boy details
-        const deliveries = snap.docs.map((d) => {
-          const data = d.data();
+      // Filter dates that fall within the range [start, end]
+      const deliveries = Object.entries(last8Days)
+        .filter(([dateKey]) => dateKey >= start && dateKey <= end)
+        .map(([dateKey, entry]) => {
+          const status = typeof entry === "string" ? entry : entry?.status || "";
+          
+          // Resolve Delivery Agent
+          const agentId = (typeof entry === "object" ? entry?.deliveredBy : null) || c.deliveredBy || c.deliveryMan;
+          const resolvedAgent = typeof agentId === "string" ? deliveryManMap.get(agentId) : (agentId || null);
 
           return {
-            id: d.id,
-            ...data,
-            deliveryMan: data.deliveredBy
-              ? deliveryManMap[data.deliveredBy] || null
-              : null,
+            id: dateKey,
+            type: status,
+            status: status,
+            checkReason: (typeof entry === "object" ? entry?.reason : "") || c.checkReason || "",
+            traysDelivered: c.traysDelivered ?? null,
+            deliveryMan: resolvedAgent,
           };
         });
 
-        const customerData = doc.data() || {};
-        return {
-          id: doc.id,
-          ...customerData,
-          priority: normalizeCustomerPriority(customerData?.priority),
-          deliveries,
-        };
-      }),
-    );
+      return {
+        id: doc.id,
+        ...c,
+        priority: normalizeCustomerPriority(c.priority),
+        deliveries,
+      };
+    }).filter(c => c.deliveries.length > 0);
 
-    return res.status(200).json({
-      customers: customersWithDeliveries,
-    });
+    return res.status(200).json({ customers: customersWithDeliveries });
   } catch (err) {
     console.error("Range API error:", err);
-
-    return res.status(500).json({
-      message: "Server error",
-    });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 

@@ -52,8 +52,9 @@ const Report = () => {
       .trim()
       .toLowerCase();
 
-    if (["delivered", "checked", "pending"].includes(apiStatus)) {
-      return apiStatus;
+    if (apiStatus === "delivered") return "delivered";
+    if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(apiStatus)) {
+      return "checked";
     }
 
     const type = String(delivery?.type || "")
@@ -371,6 +372,7 @@ const Report = () => {
             typeof delivery?.traysDelivered === "number"
               ? delivery.traysDelivered
               : null,
+          latestRemark: customer.latestRemark || "",
         };
       }),
     [data, zoneSet],
@@ -817,106 +819,10 @@ const Report = () => {
                               {row.statusLabel}
                             </span>
 
-                            {row.statusKey === "checked" && (
-                              <div>
-                                {!row.canEditReason ? (
-                                  <span className="text-sm text-gray-700 items-center">
-                                    {row.reason || "-"}
-                                  </span>
-                                ) : row.checkReason &&
-                                  editingReasonId !== row.deliveryId ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-700 items-center">
-                                      {row.checkReason}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="text-slate-500 hover:text-slate-700 transition-colors"
-                                      onClick={() =>
-                                        setEditingReasonId(row.deliveryId)
-                                      }
-                                      title="Edit reason"
-                                      aria-label="Edit reason"
-                                    >
-                                      <FiEdit2 className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <select
-                                    className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                    value={row.checkReason || ""}
-                                    disabled={savingReasonId === row.deliveryId}
-                                    onChange={(e) =>
-                                      handleSelectCheckedReason(
-                                        row.customerId,
-                                        row.deliveryId,
-                                        e.target.value,
-                                      )
-                                    }
-                                  >
-                                    <option value="" disabled>
-                                      Select reason
-                                    </option>
-                                    {CHECK_REASONS.map((reason) => (
-                                      <option key={reason} value={reason}>
-                                        {reason}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
-                            )}
-
-                            {row.statusKey === "delivered" && (
-                              <div>
-                                {row.traysDelivered !== null &&
-                                editingTraysId !== row.deliveryId ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-700">
-                                      {formatTrayLabel(row.traysDelivered)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="text-slate-500 hover:text-slate-700 transition-colors"
-                                      onClick={() =>
-                                        setEditingTraysId(row.deliveryId)
-                                      }
-                                      title="Edit trays"
-                                      aria-label="Edit trays"
-                                    >
-                                      <FiEdit2 className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <select
-                                    className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                    value={
-                                      row.traysDelivered === null
-                                        ? ""
-                                        : row.traysDelivered >= 10
-                                          ? 10
-                                          : row.traysDelivered
-                                    }
-                                    disabled={savingTraysId === row.deliveryId}
-                                    onChange={(e) =>
-                                      handleSelectDeliveredTrays(
-                                        row.customerId,
-                                        row.deliveryId,
-                                        e.target.value,
-                                      )
-                                    }
-                                  >
-                                    <option value="" disabled>
-                                      Select trays
-                                    </option>
-                                    {TRAY_OPTIONS.map((trayCount) => (
-                                      <option key={trayCount} value={trayCount}>
-                                        {formatTrayLabel(trayCount)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
+                            {(row.latestRemark || row.reason || row.checkReason) && (
+                              <span className="text-[11px] text-gray-500 font-medium">
+                                {(row.latestRemark || row.reason || row.checkReason).toUpperCase()}
+                              </span>
                             )}
                           </div>
                         </td>

@@ -74,34 +74,40 @@ export default function CustomerManagement() {
   const getDeliveredCount = (customer) => {
     const last8Days = customer.last8Days || {};
     let count = 0;
-
     const today = new Date();
 
-    // Iterate through last 7 days (i=1 is yesterday, i=2 is 2 days ago, etc.)
-    // i starts at 1 to exclude today, goes to 7 for exactly 7 days back
     for (let i = 1; i <= 7; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-
-      // Use timezone-aware date string (Asia/Kolkata) - matches Firestore key format exactly
       const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
 
-      // Only count if this date has "delivered" status
-      if (last8Days[dateStr] === "delivered") {
+      const entry = last8Days[dateStr];
+      const status = typeof entry === "string" ? entry : entry?.status;
+      if (status === "delivered") {
         count++;
       }
     }
-
     return count;
   };
 
-  // ⭐ HELPER: Get today's status or latest from last8Days
+  // ⭐ HELPER: Get today's status from last8Days, or derive from latestRemark
+  // If no today entry, use latestRemark to determine status
   const getLatestStatus = (customer) => {
     const last8Days = customer.last8Days || {};
-    const todayStatus = last8Days[todayDate];
+    const entry = last8Days[todayDate];
+    const todayStatus = (typeof entry === "string" ? entry : entry?.status || "")
+      .trim()
+      .toLowerCase();
 
     if (todayStatus === "delivered") return "Delivered";
-    if (todayStatus === "reached") return "Checked";
+    if (
+      ["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(
+        todayStatus,
+      )
+    ) {
+      return "Checked";
+    }
+
     return "Pending";
   };
 
@@ -110,27 +116,28 @@ export default function CustomerManagement() {
   // - If Checked: show reason (e.g., "PRICE MISMATCH")
   // - If Pending: show nothing
   const getRemarkDisplay = (customer) => {
+    const last8Days = customer.last8Days || {};
+    const entry = last8Days[todayDate];
+    const todayReason = typeof entry === "object" ? entry?.reason : null;
+
     const status = getLatestStatus(customer);
     const remark = customer.latestRemark || "";
 
     if (status === "Delivered") {
-      // Extract tray count from "2 trays" format
       const match = remark.match(/^(\d+)\s+trays?$/i);
       if (match) {
         const count = parseInt(match[1], 10);
-        if (count > 0) {
-          return count === 1 ? "1 tray" : `${count} trays`;
-        }
+        if (count > 0) return count === 1 ? "1 tray" : `${count} trays`;
       }
       return "";
     }
 
     if (status === "Checked") {
-      // Show reason only if it exists
-      return remark && remark !== "-" ? remark : "";
+      return (
+        todayReason || (remark && remark !== "-" ? remark : "")
+      ).toUpperCase();
     }
 
-    // Pending: show nothing
     return "";
   };
 
@@ -138,9 +145,10 @@ export default function CustomerManagement() {
     const last8Days = customer?.last8Days || {};
     const override = customer?.todayOverride;
 
-    // ✅ PRIORITY 1: Delivery status is primary source of truth
-    // If delivered today, always return OFF (regardless of override)
-    if (last8Days[todayDate] === "delivered") {
+    const entry = last8Days[todayDate];
+    const status = typeof entry === "string" ? entry : entry?.status;
+
+    if (status === "delivered") {
       return "OFF";
     }
 
@@ -482,7 +490,7 @@ export default function CustomerManagement() {
       Name: getName(c),
       Zone: c.zone || "",
       Priority: normalizePriority(c.priority),
-      Status: normalizeStatus(c.latestStatus),
+      Status: getLatestStatus(c),
       Remarks: getRemarkDisplay(c),
     }));
 
@@ -569,7 +577,6 @@ export default function CustomerManagement() {
               <th className="p-3">Priority</th>
               <th className="p-3">Potential</th>
               <th className="p-3">Status</th>
-              <th className="p-3">Remarks</th>
             </tr>
           </thead>
 
@@ -661,14 +668,17 @@ export default function CustomerManagement() {
                 </td>
 
                 <td className="p-3">
-                  <span
-                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
-                  >
-                    {getLatestStatus(c)}
-                  </span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
+                    >
+                      {getLatestStatus(c)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-medium">
+                      {getRemarkDisplay(c)}
+                    </span>
+                  </div>
                 </td>
-
-                <td className="p-3 text-left">{getRemarkDisplay(c)}</td>
               </tr>
             ))}
           </tbody>
