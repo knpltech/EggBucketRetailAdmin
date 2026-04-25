@@ -105,6 +105,12 @@ const parseTimestamp = (value) => {
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
+  // Handle raw Firestore Timestamp object that lost its prototype
+  if (value && typeof value === "object" && value._seconds !== undefined) {
+    const date = new Date(value._seconds * 1000);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   return null;
 };
 
@@ -171,12 +177,60 @@ const getStatusFromDelivery = (delivery) => {
   };
 };
 
+const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
+  // Format delivery time safely
+  const formatDeliveryTime = (timestamp) => {
+    const date = parseTimestamp(timestamp);
+    if (!date) return "-";
+    return date.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  return (
+    <tr className="border-t hover:bg-slate-50">
+      <td className="px-4 py-4 font-semibold text-slate-900">{customer.name}</td>
+      <td className="px-4 py-4 text-slate-700">{customer.phone}</td>
+      <td className="px-4 py-4 text-slate-700">{customer.zone}</td>
+      <td className="px-4 py-4 text-slate-700 text-sm">{formatDeliveryTime(customer.deliveryTime)}</td>
+      <td className="px-4 py-4 text-slate-700 text-sm">{customer.deliveryAgent}</td>
+
+      {dates.map((date) => {
+        const status = customer.days?.[date] || { key: "pending", label: "PENDING" };
+        return (
+          <td key={date} className="px-4 py-4 text-center">
+            <span
+              className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-2 text-xs font-bold tracking-wide ${getStatusClasses(status.key)}`}
+            >
+              {status.label}
+            </span>
+            <div className="mt-2 min-h-[18px] text-sm font-medium text-slate-700">
+              {getStatusRemark(status)}
+            </div>
+          </td>
+        );
+      })}
+
+      <td className="px-4 py-4 text-center">
+        <button
+          type="button"
+          onClick={() => onReset(customer)}
+          disabled={resettingId === customer.id}
+          className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold uppercase text-white shadow hover:bg-red-700 disabled:opacity-50"
+        >
+          {resettingId === customer.id ? "..." : "Reset"}
+        </button>
+      </td>
+    </tr>
+  );
+});
+
 const CustomerRetention = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [dates, setDates] = useState(() =>
-    getPastThreeDatesPlusToday(getTodayDate()),
-  );
+  const [dates, setDates] = useState(() => getPastThreeDatesPlusToday(getTodayDate()));
   const [customers, setCustomers] = useState([]);
   const [counts, setCounts] = useState({
     all: 0,
@@ -188,180 +242,107 @@ const CustomerRetention = () => {
   const [error, setError] = useState("");
   const [resettingId, setResettingId] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCustomers, setTotalCustomers] = useState(0);
 
-  // ⭐ CACHE: Store fetched data per date with TTL to avoid repeated API calls
+  // ⭐ CACHE: Store fetched data per key to avoid repeated API calls
   const cacheRef = useRef({});
 
-  // ⭐ OPTIMIZATION: Filter by category on frontend (no API call)
-  const filteredCustomers = useMemo(() => {
-    if (selectedCategory === "all") {
-      return customers;
-    }
-    return customers.filter(
-      (c) => c.todayCategory === selectedCategory,
-    );
-  }, [customers, selectedCategory]);
-
-  // ⭐ OPTIMIZATION: Paginate filtered customers
-  const { paginatedCustomers, totalPages } = useMemo(() => {
-    const start = (currentPage - 1) * ROWS_PER_PAGE;
-    const end = start + ROWS_PER_PAGE;
-    return {
-      paginatedCustomers: filteredCustomers.slice(start, end),
-      totalPages: Math.ceil(filteredCustomers.length / ROWS_PER_PAGE),
-    };
-  }, [filteredCustomers, currentPage]);
-
-  // ⭐ OPTIMIZED: Fetch retention data with caching by date
-  // Only calls backend if data is not cached or cache is stale
+  // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
-    async ({ date = selectedDate, showLoader = true } = {}) => {
-      // Check cache first
-      const cacheKey = `retention:${date}`;
+    async ({ date = selectedDate, page = currentPage, category = selectedCategory, showLoader = true } = {}) => {
+      const cacheKey = `retention:${date}:${category}:${page}`;
       const cached = cacheRef.current[cacheKey];
-      if (
-        cached &&
-        Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS
-      ) {
-        // Use cached data
-        const nextDates = Array.isArray(cached.dates)
-          ? cached.dates
-          : getPastThreeDatesPlusToday(date);
-        const nextCustomers = Array.isArray(cached.customers)
-          ? cached.customers.map((customer) => {
-              const dayStatuses = {};
-              nextDates.forEach((dateKey) => {
-                dayStatuses[dateKey] = getStatusFromDelivery(
-                  customer?.days?.[dateKey] || null,
-                );
-              });
-              return {
-                ...customer,
-                phone: customer.phone || "",
-                zone: customer.zone || "UNASSIGNED",
-                todayCategory: customer.todayCategory || "",
-                todayCategoryLabel: customer.todayCategoryLabel || "-",
-                todayReason: customer.todayReason || "",
-                deliveryTime: customer.deliveryTime || null,
-                deliveryAgent: customer.deliveryAgent || "-",
-                days: dayStatuses,
-              };
-            })
-          : [];
 
-        setDates(nextDates);
-        setCustomers(nextCustomers);
-        setCounts(cached.counts || {
-          all: 0,
-          stock_available: 0,
-          price_mismatch: 0,
-          other_vendor: 0,
-        });
-        setCurrentPage(1);
+      if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
+        setDates(cached.dates || getPastThreeDatesPlusToday(date));
+        setCustomers(cached.customers || []);
+        setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 });
+        setTotalPages(cached.totalPages || 1);
+        setTotalCustomers(cached.total || 0);
         setError("");
         setLoading(false);
         return;
       }
 
-      // Cache miss - fetch from backend
-      if (showLoader) {
-        setLoading(true);
-      }
+      if (showLoader) setLoading(true);
 
       try {
-        // ⭐ OPTIMIZED: Fetch ALL categories at once, filter on frontend
         const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
-          params: { date },
+          params: { date, page, limit: ROWS_PER_PAGE, category },
         });
 
         const payload = res?.data || {};
-        const nextDates = Array.isArray(payload.dates) && payload.dates.length
-          ? payload.dates
-          : getPastThreeDatesPlusToday(date);
+        const nextDates = payload.dates?.length ? payload.dates : getPastThreeDatesPlusToday(date);
         const nextCustomers = Array.isArray(payload.customers)
           ? payload.customers.map((customer) => {
-              const dayStatuses = {};
-              nextDates.forEach((dateKey) => {
-                dayStatuses[dateKey] = getStatusFromDelivery(
-                  customer?.days?.[dateKey] || null,
-                );
-              });
-              return {
-                ...customer,
-                phone: customer.phone || "",
-                zone: customer.zone || "UNASSIGNED",
-                todayCategory: customer.todayCategory || "",
-                todayCategoryLabel: customer.todayCategoryLabel || "-",
-                todayReason: customer.todayReason || "",
-                deliveryTime: customer.deliveryTime || null,
-                deliveryAgent: customer.deliveryAgent || "-",
-                days: dayStatuses,
-              };
-            })
+            const dayStatuses = {};
+            nextDates.forEach((dateKey) => {
+              dayStatuses[dateKey] = getStatusFromDelivery(customer?.days?.[dateKey] || null);
+            });
+            return {
+              ...customer,
+              phone: customer.phone || "",
+              zone: customer.zone || "UNASSIGNED",
+              todayCategory: customer.todayCategory || "",
+              todayCategoryLabel: customer.todayCategoryLabel || "-",
+              todayReason: customer.todayReason || "",
+              deliveryTime: customer.deliveryTime || customer.delivery_time || customer.time || null,
+              deliveryAgent: customer.deliveryAgent || "-",
+              days: dayStatuses,
+            };
+          })
           : [];
 
-        // Cache the result
+        const newCounts = payload.counts || { all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 };
+        const newTotalPages = payload.totalPages || 1;
+        const newTotal = payload.total || 0;
+
         cacheRef.current[cacheKey] = {
           savedAt: Date.now(),
           dates: nextDates,
           customers: nextCustomers,
-          counts: payload.counts || {
-            all: 0,
-            stock_available: 0,
-            price_mismatch: 0,
-            other_vendor: 0,
-          },
+          counts: newCounts,
+          totalPages: newTotalPages,
+          total: newTotal,
         };
 
         setDates(nextDates);
         setCustomers(nextCustomers);
-        setCounts(payload.counts || {
-          all: 0,
-          stock_available: 0,
-          price_mismatch: 0,
-          other_vendor: 0,
-        });
-        setCurrentPage(1);
+        setCounts(newCounts);
+        setTotalPages(newTotalPages);
+        setTotalCustomers(newTotal);
         setError("");
       } catch (err) {
-        setError(
-          err?.response?.data?.message ||
-            `Unable to load customer retention data for ${date}`,
-        );
+        setError(err?.response?.data?.message || `Unable to load customer retention data for ${date}`);
         setCustomers([]);
-        setCounts({
-          all: 0,
-          stock_available: 0,
-          price_mismatch: 0,
-          other_vendor: 0,
-        });
+        setCounts({ all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 });
+        setTotalPages(1);
+        setTotalCustomers(0);
         setDates(getPastThreeDatesPlusToday(date));
       } finally {
-        if (showLoader) {
-          setLoading(false);
-        }
+        if (showLoader) setLoading(false);
       }
     },
-    [selectedDate],
+    [selectedDate, currentPage, selectedCategory],
   );
 
-  // ⭐ OPTIMIZED: Load once on mount (empty dependency array)
+  // Load data whenever relevant state changes
   useEffect(() => {
-    fetchRetentionCustomers();
-  }, []);
+    fetchRetentionCustomers({ date: selectedDate, page: currentPage, category: selectedCategory });
+  }, [selectedDate, currentPage, selectedCategory]);
 
-  const handleDateChange = async (e) => {
+  const handleDateChange = (e) => {
     const nextDate = e.target.value;
     setSelectedDate(nextDate);
     setDates(getPastThreeDatesPlusToday(nextDate));
-    // ⭐ OPTIMIZED: Fetch with cache check, not with category filter
-    await fetchRetentionCustomers({ date: nextDate });
+    setCurrentPage(1);
+    setSelectedCategory("all");
   };
 
-  // ⭐ OPTIMIZED: Category change does NOT make API call - just updates state
   const handleCategoryChange = useCallback((category) => {
     setSelectedCategory(category);
-    setCurrentPage(1); // Reset to first page on category change
+    setCurrentPage(1);
   }, []);
 
   const handleReset = useCallback(
@@ -373,7 +354,7 @@ const CustomerRetention = () => {
 
       try {
         setResettingId(customer.id);
-        
+
         // Verify customer has required ID
         if (!customer.id) {
           throw new Error("Customer ID is missing");
@@ -398,7 +379,7 @@ const CustomerRetention = () => {
           resetSuccess = true;
         } catch (primaryError) {
           console.error("Primary endpoint failed:", primaryError);
-          
+
           // Only try fallback if it's a 404
           if (primaryError?.response?.status === 404) {
             console.log("Trying fallback endpoint...");
@@ -419,13 +400,18 @@ const CustomerRetention = () => {
         }
 
         if (resetSuccess) {
-          // ⭐ OPTIMIZED: Invalidate cache for this date after reset
-          const cacheKey = `retention:${selectedDate}`;
-          delete cacheRef.current[cacheKey];
+          // Clear all retention caches to force fresh data on next load
+          Object.keys(cacheRef.current).forEach((key) => {
+            if (key.startsWith("retention:")) {
+              delete cacheRef.current[key];
+            }
+          });
 
           // Refetch without loader
           await fetchRetentionCustomers({
             date: selectedDate,
+            page: currentPage,
+            category: selectedCategory,
             showLoader: false,
           });
 
@@ -433,9 +419,9 @@ const CustomerRetention = () => {
         }
       } catch (err) {
         console.error("Reset error details:", err);
-        const errorMessage = 
-          err?.response?.data?.message || 
-          err?.message || 
+        const errorMessage =
+          err?.response?.data?.message ||
+          err?.message ||
           "Reset failed. Please try again.";
         alert(errorMessage);
       } finally {
@@ -470,37 +456,25 @@ const CustomerRetention = () => {
         </div>
       </div>
 
-      {/* ⭐ OPTIMIZED: Compute counts from frontend-filtered data */}
-      {useMemo(() => {
-        const computedCounts = {
-          all: customers.length,
-          stock_available: customers.filter((c) => c.todayCategory === "stock_available").length,
-          price_mismatch: customers.filter((c) => c.todayCategory === "price_mismatch").length,
-          other_vendor: customers.filter((c) => c.todayCategory === "other_vendor").length,
-        };
-
-        return (
-          <div className="mb-5 flex flex-wrap gap-2">
-            {CATEGORY_OPTIONS.map((category) => {
-              const isActive = selectedCategory === category.value;
-              return (
-                <button
-                  key={category.value}
-                  type="button"
-                  onClick={() => handleCategoryChange(category.value)}
-                  className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                    isActive
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-                  }`}
-                >
-                  {category.label} ({computedCounts[category.value] || 0})
-                </button>
-              );
-            })}
-          </div>
-        );
-      }, [customers, selectedCategory, handleCategoryChange])}
+      {/* ⭐ OPTIMIZED: Use backend-provided counts directly */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {CATEGORY_OPTIONS.map((category) => {
+          const isActive = selectedCategory === category.value;
+          return (
+            <button
+              key={category.value}
+              type="button"
+              onClick={() => handleCategoryChange(category.value)}
+              className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${isActive
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                }`}
+            >
+              {category.label} ({counts[category.value] || 0})
+            </button>
+          );
+        })}
+      </div>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -540,68 +514,16 @@ const CustomerRetention = () => {
                   Loading...
                 </td>
               </tr>
-            ) : paginatedCustomers.length ? (
-              paginatedCustomers.map((customer) => {
-                // Format delivery time
-                const formatDeliveryTime = (timestamp) => {
-                  const date = parseTimestamp(timestamp);
-                  if (!date) return "-";
-                  return date.toLocaleTimeString("en-IN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true,
-                  });
-                };
-
-                return (
-                  <tr key={customer.id} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-4 font-semibold text-slate-900">
-                      {customer.name}
-                    </td>
-                    <td className="px-4 py-4 text-slate-700">{customer.phone}</td>
-                    <td className="px-4 py-4 text-slate-700">{customer.zone}</td>
-                    <td className="px-4 py-4 text-slate-700 text-sm">
-                      {formatDeliveryTime(customer.deliveryTime)}
-                    </td>
-                    <td className="px-4 py-4 text-slate-700 text-sm">
-                      {customer.deliveryAgent}
-                    </td>
-
-                    {dates.map((date) => {
-                    const status = customer.days?.[date] || {
-                      key: "pending",
-                      label: "PENDING",
-                    };
-
-                    return (
-                      <td key={date} className="px-4 py-4 text-center">
-                        <span
-                          className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-2 text-xs font-bold tracking-wide ${getStatusClasses(
-                            status.key,
-                          )}`}
-                        >
-                          {status.label}
-                        </span>
-                        <div className="mt-2 min-h-[18px] text-sm font-medium text-slate-700">
-                          {getStatusRemark(status)}
-                        </div>
-                      </td>
-                    );
-                  })}
-
-                  <td className="px-4 py-4 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleReset(customer)}
-                      disabled={resettingId === customer.id}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold uppercase text-white shadow hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {resettingId === customer.id ? "..." : "Reset"}
-                    </button>
-                  </td>
-                </tr>
-                );
-              })
+            ) : customers.length ? (
+              customers.map((customer) => (
+                <CustomerRow
+                  key={customer.id}
+                  customer={customer}
+                  dates={dates}
+                  onReset={handleReset}
+                  resettingId={resettingId}
+                />
+              ))
             ) : (
               <tr>
                 <td colSpan={5 + dates.length + 1} className="px-4 py-16 text-center text-slate-500">
@@ -613,13 +535,13 @@ const CustomerRetention = () => {
         </table>
       </div>
 
-      {/* OPTIMIZATION: Pagination controls */}
-      {!loading && customers.length > ROWS_PER_PAGE && (
+      {/* OPTIMIZATION: Pagination controls using backend values */}
+      {!loading && totalCustomers > 0 && (
         <div className="mt-6 flex items-center justify-between">
           <div className="text-sm text-slate-600">
             Showing {(currentPage - 1) * ROWS_PER_PAGE + 1} to{" "}
-            {Math.min(currentPage * ROWS_PER_PAGE, customers.length)} of{" "}
-            {customers.length} customers
+            {Math.min(currentPage * ROWS_PER_PAGE, totalCustomers)} of{" "}
+            {totalCustomers} customers
           </div>
           <div className="flex gap-2">
             <button
@@ -644,11 +566,10 @@ const CustomerRetention = () => {
                         key={page}
                         type="button"
                         onClick={() => setCurrentPage(page)}
-                        className={`h-9 w-9 rounded-lg border text-sm font-medium transition ${
-                          currentPage === page
-                            ? "border-blue-600 bg-blue-600 text-white"
-                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                        }`}
+                        className={`h-9 w-9 rounded-lg border text-sm font-medium transition ${currentPage === page
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
                       >
                         {page}
                       </button>
