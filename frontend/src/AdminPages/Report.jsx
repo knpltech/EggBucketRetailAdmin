@@ -5,7 +5,7 @@ import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 
 const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
-const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
+const TRAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100];
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
@@ -38,8 +38,7 @@ const Report = () => {
   const formatTrayLabel = (value) => {
     const trays = Number(value);
     if (!Number.isFinite(trays) || trays < 1) return "";
-    if (trays >= 10) return "10+ trays";
-    return trays === 1 ? "1 tray" : `${trays} trays`;
+    return trays === 1 ? "1 Tray" : `${trays} Trays`;
   };
 
   const [selectedDate, setSelectedDate] = useState(today);
@@ -231,7 +230,7 @@ const Report = () => {
     if (!customerId || !deliveryId || !traysValue) return;
 
     const trays = Number(traysValue);
-    if (!Number.isInteger(trays) || trays < 1 || trays > 10) return;
+    if (!Number.isInteger(trays) || !TRAY_OPTIONS.includes(trays)) return;
 
     const previousTrays =
       data
