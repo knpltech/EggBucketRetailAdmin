@@ -191,36 +191,41 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
 
   return (
     <tr className="border-t hover:bg-slate-50">
-      <td className="px-4 py-4 font-semibold text-slate-900">{customer.name}</td>
-      <td className="px-4 py-4 text-slate-700">{customer.phone}</td>
-      <td className="px-4 py-4 text-slate-700">{customer.zone}</td>
-      <td className="px-4 py-4 text-slate-700 text-sm">{formatDeliveryTime(customer.deliveryTime)}</td>
-      <td className="px-4 py-4 text-slate-700 text-sm">{customer.deliveryAgent}</td>
+      <td className="px-2 py-2 font-semibold text-slate-900 text-xs">{customer.name}</td>
+      <td className="px-2 py-2 text-slate-700 text-xs">{customer.phone}</td>
+      <td className="px-2 py-2 text-slate-700 text-xs">{customer.zone}</td>
+      <td className="px-2 py-2 text-slate-700 text-xs whitespace-nowrap">{formatDeliveryTime(customer.deliveryTime)}</td>
+      <td className="px-2 py-2 text-slate-700 text-xs truncate max-w-[80px]">{customer.deliveryAgent}</td>
 
       {dates.map((date) => {
         const status = customer.days?.[date] || { key: "pending", label: "PENDING" };
+        const shortLabel = status.label.length > 8 ? status.label.substring(0, 6) + '.' : status.label;
+        const remark = getStatusRemark(status);
+        const shortRemark = remark.length > 12 ? remark.substring(0, 10) + '.' : remark;
         return (
-          <td key={date} className="px-4 py-4 text-center">
+          <td key={date} className="px-1 py-2 text-center">
             <span
-              className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-2 text-xs font-bold tracking-wide ${getStatusClasses(status.key)}`}
+              className={`inline-flex min-w-[70px] items-center justify-center rounded-full px-2 py-1 text-xs font-bold tracking-tight ${getStatusClasses(status.key)}`}
+              title={status.label}
             >
-              {status.label}
+              {shortLabel}
             </span>
-            <div className="mt-2 min-h-[18px] text-sm font-medium text-slate-700">
-              {getStatusRemark(status)}
+            <div className="min-h-[16px] text-xs font-medium text-slate-700 truncate" title={remark}>
+              {shortRemark}
             </div>
           </td>
         );
       })}
 
-      <td className="px-4 py-4 text-center">
+      <td className="px-2 py-2 text-center">
         <button
           type="button"
           onClick={() => onReset(customer)}
           disabled={resettingId === customer.id}
-          className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold uppercase text-white shadow hover:bg-red-700 disabled:opacity-50"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-600 text-[8px] font-bold uppercase text-white shadow hover:bg-red-700 disabled:opacity-50"
+          title="Reset to pending"
         >
-          {resettingId === customer.id ? "..." : "Reset"}
+          {resettingId === customer.id ? ".." : "R"}
         </button>
       </td>
     </tr>
@@ -482,20 +487,20 @@ const CustomerRetention = () => {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg bg-white shadow">
-        <table className="w-full min-w-[1400px] text-sm">
+      <div className="rounded-lg bg-white shadow">
+        <table className="w-full text-xs">
           <thead className="sticky top-0 bg-slate-100 text-slate-700">
             <tr>
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Phone</th>
-              <th className="px-4 py-3 text-left">Zone</th>
-              <th className="px-4 py-3 text-left">Delivery Time</th>
-              <th className="px-4 py-3 text-left">Delivery Agent</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Name</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Phone</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Zone</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
               {dates.map((date, index) => {
                 const label = formatDayHeader(date);
                 const isTodayColumn = index === dates.length - 1;
                 return (
-                  <th key={date} className="px-4 py-3 text-center">
+                  <th key={date} className="px-1 py-2 text-center text-xs font-semibold">
                     <div className="font-semibold">
                       {isTodayColumn ? "Today" : label.day}
                     </div>
@@ -503,14 +508,14 @@ const CustomerRetention = () => {
                   </th>
                 );
               })}
-              <th className="px-4 py-3 text-center">Today's Status Reset</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Reset</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5 + dates.length + 1} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={5 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -526,7 +531,7 @@ const CustomerRetention = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={5 + dates.length + 1} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={5 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>
