@@ -201,7 +201,6 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
         const status = customer.days?.[date] || { key: "pending", label: "PENDING" };
         const shortLabel = status.label.length > 8 ? status.label.substring(0, 6) + '.' : status.label;
         const remark = getStatusRemark(status);
-        const shortRemark = remark.length > 12 ? remark.substring(0, 10) + '.' : remark;
         return (
           <td key={date} className="px-1 py-2 text-center">
             <span
@@ -210,8 +209,8 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
             >
               {shortLabel}
             </span>
-            <div className="min-h-[16px] text-xs font-medium text-slate-700 truncate" title={remark}>
-              {shortRemark}
+            <div className="min-h-[14px] text-[10px] font-medium text-slate-700 leading-tight" title={remark}>
+              {remark}
             </div>
           </td>
         );
