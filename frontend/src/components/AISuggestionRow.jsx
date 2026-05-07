@@ -63,6 +63,11 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
     <tr className="border-t hover:bg-gray-50 bg-white">
       <td className="p-4 py-5 text-gray-700">{customer.custid}</td>
       <td className="p-4 py-5 text-gray-900 font-bold">{customer.name}</td>
+      <td className="p-4 py-5 text-gray-700 font-medium">
+        <span className={`px-2 py-1 rounded text-xs ${customer.priority === "P1" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"}`}>
+          {customer.priority || "P0"}
+        </span>
+      </td>
       
       {/* Current Toggle Column */}
       <td className="p-4 py-5">

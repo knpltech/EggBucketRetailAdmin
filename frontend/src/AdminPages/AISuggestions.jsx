@@ -11,13 +11,14 @@ const AISuggestions = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOption, setFilterOption] = useState("ALL");
+  const [sortOption, setSortOption] = useState("DEFAULT");
 
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterOption]);
+  }, [searchQuery, filterOption, sortOption]);
 
   useEffect(() => {
     fetchData();
@@ -87,8 +88,34 @@ const AISuggestions = () => {
     });
   }, [customers, searchQuery, filterOption]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / PAGE_SIZE));
-  const currentData = filteredData.slice(
+  const sortedData = useMemo(() => {
+    const dataToSort = [...filteredData];
+    
+    switch (sortOption) {
+      case "NAME_ASC":
+        return dataToSort.sort((a, b) => (a.customer.name || "").localeCompare(b.customer.name || ""));
+      case "NAME_DESC":
+        return dataToSort.sort((a, b) => (b.customer.name || "").localeCompare(a.customer.name || ""));
+      case "TOGGLE_ON_FIRST":
+        return dataToSort.sort((a, b) => {
+          const aOn = a.customer.todayOverride?.status === "ON" ? 1 : 0;
+          const bOn = b.customer.todayOverride?.status === "ON" ? 1 : 0;
+          return bOn - aOn;
+        });
+      case "TOGGLE_OFF_FIRST":
+        return dataToSort.sort((a, b) => {
+          const aOn = a.customer.todayOverride?.status === "ON" ? 1 : 0;
+          const bOn = b.customer.todayOverride?.status === "ON" ? 1 : 0;
+          return aOn - bOn;
+        });
+      case "DEFAULT":
+      default:
+        return dataToSort;
+    }
+  }, [filteredData, sortOption]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE));
+  const currentData = sortedData.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
   );
@@ -113,6 +140,17 @@ const AISuggestions = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
           />
+          <select
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+            className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="DEFAULT">Sort: Default (AI Confidence)</option>
+            <option value="NAME_ASC">Name (A-Z)</option>
+            <option value="NAME_DESC">Name (Z-A)</option>
+            <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
+            <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
+          </select>
           <select
             value={filterOption}
             onChange={(e) => setFilterOption(e.target.value)}
