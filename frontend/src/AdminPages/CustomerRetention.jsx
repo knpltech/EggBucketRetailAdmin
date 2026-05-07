@@ -1,5 +1,7 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 const CATEGORY_OPTIONS = [
@@ -7,6 +9,12 @@ const CATEGORY_OPTIONS = [
   { value: "stock_available", label: "Stock Available" },
   { value: "price_mismatch", label: "Price Mismatch" },
   { value: "other_vendor", label: "Other Vendor" },
+];
+const SORT_OPTIONS = [
+  { value: "name", label: "Name" },
+  { value: "zone", label: "Zone" },
+  { value: "deliveryTime", label: "Delivery Time" },
+  { value: "deliveryAgent", label: "Delivery Agent" },
 ];
 const CHECKED_TYPES = [
   "reached",
@@ -52,6 +60,22 @@ const getPastThreeDatesPlusToday = (dateString) => {
   });
 };
 
+const getDatesInRange = (startDate, endDate) => {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    return [];
+  }
+
+  const dates = [];
+  const current = new Date(start);
+  while (current <= end) {
+    dates.push(formatDateKey(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+};
+
 const formatDayHeader = (dateString) => {
   const date = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(date.getTime())) return { day: "-", date: dateString };
@@ -82,6 +106,22 @@ const getStatusRemark = (status) => {
     return status.categoryLabel;
   }
   return "";
+};
+
+const formatDeliveryTime = (timestamp) => {
+  const date = parseTimestamp(timestamp);
+  if (!date) return "-";
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const getStatusText = (status) => {
+  if (!status) return "Pending";
+  const remark = getStatusRemark(status);
+  return remark ? `${status.label} - ${remark}` : status.label;
 };
 
 const parseTimestamp = (value) => {
@@ -178,17 +218,6 @@ const getStatusFromDelivery = (delivery) => {
 };
 
 const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
-  // Format delivery time safely
-  const formatDeliveryTime = (timestamp) => {
-    const date = parseTimestamp(timestamp);
-    if (!date) return "-";
-    return date.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
-
   return (
     <tr className="border-t hover:bg-slate-50">
       <td className="px-2 py-2 font-semibold text-slate-900 text-xs">{customer.name}</td>
@@ -234,6 +263,11 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
 const CustomerRetention = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [sortBy, setSortBy] = useState("name");
+  const [selectedAgent, setSelectedAgent] = useState("all");
+  const [deliveryAgentOptions, setDeliveryAgentOptions] = useState([]);
+  const [startRange, setStartRange] = useState("");
+  const [endRange, setEndRange] = useState("");
   const [dates, setDates] = useState(() => getPastThreeDatesPlusToday(getTodayDate()));
   const [customers, setCustomers] = useState([]);
   const [counts, setCounts] = useState({
@@ -248,20 +282,22 @@ const CustomerRetention = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCustomers, setTotalCustomers] = useState(0);
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
 
   // ⭐ CACHE: Store fetched data per key to avoid repeated API calls
   const cacheRef = useRef({});
 
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
-    async ({ date = selectedDate, page = currentPage, category = selectedCategory, showLoader = true } = {}) => {
-      const cacheKey = `retention:${date}:${category}:${page}`;
+    async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
+      const cacheKey = `retention:${date}:${category}:${agent}:${sort}:${page}`;
       const cached = cacheRef.current[cacheKey];
 
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
         setCustomers(cached.customers || []);
         setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 });
+        setDeliveryAgentOptions(cached.deliveryAgentOptions || []);
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
         setError("");
@@ -273,7 +309,7 @@ const CustomerRetention = () => {
 
       try {
         const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
-          params: { date, page, limit: ROWS_PER_PAGE, category },
+          params: { date, page, limit: ROWS_PER_PAGE, category, sortBy: sort, agent },
         });
 
         const payload = res?.data || {};
@@ -299,6 +335,9 @@ const CustomerRetention = () => {
           : [];
 
         const newCounts = payload.counts || { all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 };
+        const newDeliveryAgentOptions = Array.isArray(payload.deliveryAgentOptions)
+          ? payload.deliveryAgentOptions
+          : [];
         const newTotalPages = payload.totalPages || 1;
         const newTotal = payload.total || 0;
 
@@ -307,6 +346,7 @@ const CustomerRetention = () => {
           dates: nextDates,
           customers: nextCustomers,
           counts: newCounts,
+          deliveryAgentOptions: newDeliveryAgentOptions,
           totalPages: newTotalPages,
           total: newTotal,
         };
@@ -314,6 +354,7 @@ const CustomerRetention = () => {
         setDates(nextDates);
         setCustomers(nextCustomers);
         setCounts(newCounts);
+        setDeliveryAgentOptions(newDeliveryAgentOptions);
         setTotalPages(newTotalPages);
         setTotalCustomers(newTotal);
         setError("");
@@ -321,6 +362,7 @@ const CustomerRetention = () => {
         setError(err?.response?.data?.message || `Unable to load customer retention data for ${date}`);
         setCustomers([]);
         setCounts({ all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 });
+        setDeliveryAgentOptions([]);
         setTotalPages(1);
         setTotalCustomers(0);
         setDates(getPastThreeDatesPlusToday(date));
@@ -328,13 +370,13 @@ const CustomerRetention = () => {
         if (showLoader) setLoading(false);
       }
     },
-    [selectedDate, currentPage, selectedCategory],
+    [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent],
   );
 
   // Load data whenever relevant state changes
   useEffect(() => {
-    fetchRetentionCustomers({ date: selectedDate, page: currentPage, category: selectedCategory });
-  }, [selectedDate, currentPage, selectedCategory]);
+    fetchRetentionCustomers({ date: selectedDate, page: currentPage, category: selectedCategory, sort: sortBy, agent: selectedAgent });
+  }, [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent, fetchRetentionCustomers]);
 
   const handleDateChange = (e) => {
     const nextDate = e.target.value;
@@ -342,12 +384,23 @@ const CustomerRetention = () => {
     setDates(getPastThreeDatesPlusToday(nextDate));
     setCurrentPage(1);
     setSelectedCategory("all");
+    setSelectedAgent("all");
   };
 
   const handleCategoryChange = useCallback((category) => {
     setSelectedCategory(category);
     setCurrentPage(1);
   }, []);
+
+  const handleSortChange = (e) => {
+    setSortBy(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleAgentChange = (e) => {
+    setSelectedAgent(e.target.value);
+    setCurrentPage(1);
+  };
 
   const handleReset = useCallback(
     async (customer) => {
@@ -416,6 +469,8 @@ const CustomerRetention = () => {
             date: selectedDate,
             page: currentPage,
             category: selectedCategory,
+            sort: sortBy,
+            agent: selectedAgent,
             showLoader: false,
           });
 
@@ -432,8 +487,87 @@ const CustomerRetention = () => {
         setResettingId("");
       }
     },
-    [selectedDate, fetchRetentionCustomers],
+    [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent, fetchRetentionCustomers],
   );
+
+  const downloadRetentionExcel = async () => {
+    const exportDates = getDatesInRange(startRange, endRange);
+    if (!exportDates.length) {
+      alert("Please select a valid start and end date.");
+      return;
+    }
+
+    try {
+      setDownloadingExcel(true);
+      const rows = [];
+
+      for (const date of exportDates) {
+        let page = 1;
+        let pages = 1;
+
+        do {
+          const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
+            params: {
+              date,
+              page,
+              limit: 500,
+              category: selectedCategory,
+              sortBy,
+              agent: selectedAgent,
+            },
+          });
+          const payload = res?.data || {};
+          const payloadDates = payload.dates?.length
+            ? payload.dates
+            : getPastThreeDatesPlusToday(date);
+
+          (payload.customers || []).forEach((customer) => {
+            const row = {
+              Date: date,
+              Name: customer.name || "",
+              Phone: customer.phone || "",
+              Zone: customer.zone || "UNASSIGNED",
+              "Delivery Time": formatDeliveryTime(
+                customer.deliveryTime || customer.delivery_time || customer.time,
+              ),
+              "Delivery Agent": customer.deliveryAgent || "-",
+            };
+
+            payloadDates.forEach((dateKey) => {
+              const label = dateKey === date ? "Today" : dateKey;
+              row[label] = getStatusText(
+                getStatusFromDelivery(customer?.days?.[dateKey] || null),
+              );
+            });
+
+            rows.push(row);
+          });
+
+          pages = payload.totalPages || 1;
+          page += 1;
+        } while (page <= pages);
+      }
+
+      if (!rows.length) {
+        alert("No customer retention data found for the selected range.");
+        return;
+      }
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Customer Retention");
+      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(blob, `customer-retention-${startRange}-to-${endRange}.xlsx`);
+    } catch (err) {
+      console.error("Retention Excel download failed:", err);
+      alert("Unable to download customer retention Excel. Please try again.");
+    } finally {
+      setDownloadingExcel(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
@@ -446,22 +580,10 @@ const CustomerRetention = () => {
             Shows 3 past dates plus the selected today date.
           </p>
         </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="text-sm font-medium text-slate-700">
-            Today Date
-          </label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={handleDateChange}
-            className="rounded-lg border border-slate-300 px-3 py-2 shadow-sm"
-          />
-        </div>
       </div>
 
       {/* ⭐ OPTIMIZED: Use backend-provided counts directly */}
-      <div className="mb-5 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {CATEGORY_OPTIONS.map((category) => {
           const isActive = selectedCategory === category.value;
           return (
@@ -478,6 +600,97 @@ const CustomerRetention = () => {
             </button>
           );
         })}
+      </div>
+
+      <div className="-mx-4 mb-5 overflow-hidden border-y border-slate-200 bg-white px-4 py-4 sm:-mx-6 sm:px-6">
+        <div className="grid grid-cols-6 items-end gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-slate-700">
+              Select Delivery Date
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              max={getTodayDate()}
+              onChange={handleDateChange}
+              className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-slate-700">
+              Sort By
+            </label>
+            <select
+              value={sortBy}
+              onChange={handleSortChange}
+              className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-slate-700">
+              Delivery Agent
+            </label>
+            <select
+              value={selectedAgent}
+              onChange={handleAgentChange}
+              className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All Delivery Agents</option>
+              {deliveryAgentOptions.map((agent) => (
+                <option key={agent} value={agent}>
+                  {agent}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-slate-700">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={startRange}
+              max={getTodayDate()}
+              onChange={(e) => setStartRange(e.target.value)}
+              className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="whitespace-nowrap text-xs font-medium text-slate-700">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endRange}
+              max={getTodayDate()}
+              onChange={(e) => setEndRange(e.target.value)}
+              className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={!startRange || !endRange || downloadingExcel}
+            onClick={downloadRetentionExcel}
+            className={`h-12 min-w-0 w-full whitespace-nowrap rounded-lg px-3 text-sm font-medium text-white shadow transition ${
+              !startRange || !endRange || downloadingExcel
+                ? "cursor-not-allowed bg-slate-400"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {downloadingExcel ? "Downloading..." : "Download Excel"}
+          </button>
+        </div>
       </div>
 
       {error && (

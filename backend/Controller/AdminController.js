@@ -337,6 +337,11 @@ const getRetentionCustomers = async (req, res) => {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 25;
     const categoryFilter = req.query.category || "all";
+    const agentFilter = req.query.agent || "all";
+    const allowedSorts = new Set(["name", "zone", "deliveryTime", "deliveryAgent"]);
+    const sortBy = allowedSorts.has(req.query.sortBy)
+      ? req.query.sortBy
+      : "name";
 
     const dates = getPastThreeDatesPlusToday(selectedDate);
     if (!dates) {
@@ -346,8 +351,8 @@ const getRetentionCustomers = async (req, res) => {
     const todayKey = dates[dates.length - 1];
     const previousDates = dates.slice(0, -1);
     
-    // ⭐ AGGRESSIVE CACHING: Include page and category in cache key
-    const cacheKey = `customerRetention:v12:${todayKey}:${categoryFilter}:${page}:${limit}`;
+    // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
+    const cacheKey = `customerRetention:v14:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(`[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`);
@@ -445,7 +450,68 @@ const getRetentionCustomers = async (req, res) => {
       );
     }
 
-    filteredCustomers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const getRetentionAgentName = (customer) => {
+      const entry = customer.last8Days?.[todayKey];
+      const entryObj = typeof entry === "string" ? { status: entry } : (entry || {});
+      const agentId = entryObj.agentId || "";
+      return deliveryPartnerMap.get(agentId) || entryObj.agentName || agentId || "";
+    };
+
+    const deliveryAgentOptions = [
+      ...new Set(filteredCustomers.map(getRetentionAgentName).filter(Boolean)),
+    ].sort((a, b) => a.localeCompare(b));
+
+    if (agentFilter !== "all") {
+      filteredCustomers = filteredCustomers.filter(
+        (customer) => getRetentionAgentName(customer) === agentFilter,
+      );
+    }
+
+    const parseSortableTime = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value.getTime();
+      if (typeof value?.toDate === "function") return value.toDate().getTime();
+      if (typeof value === "number") return value < 1e12 ? value * 1000 : value;
+      if (typeof value === "string") {
+        const parsed = new Date(value).getTime();
+        return Number.isNaN(parsed) ? null : parsed;
+      }
+      if (typeof value === "object") {
+        const seconds = value.seconds ?? value._seconds;
+        const nanoseconds = value.nanoseconds ?? value._nanoseconds ?? 0;
+        if (typeof seconds === "number") {
+          return seconds * 1000 + Math.floor(nanoseconds / 1e6);
+        }
+      }
+      return null;
+    };
+
+    filteredCustomers.sort((a, b) => {
+      if (sortBy === "deliveryTime") {
+        const aEntry = a.last8Days?.[todayKey];
+        const bEntry = b.last8Days?.[todayKey];
+        const aEntryObj = typeof aEntry === "string" ? { status: aEntry } : (aEntry || {});
+        const bEntryObj = typeof bEntry === "string" ? { status: bEntry } : (bEntry || {});
+        const aTime = parseSortableTime(aEntryObj.time || aEntryObj.timestamp || a.last8DaysUpdatedAt);
+        const bTime = parseSortableTime(bEntryObj.time || bEntryObj.timestamp || b.last8DaysUpdatedAt);
+
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+
+        return aTime - bTime;
+      }
+
+      if (sortBy === "zone") {
+        return (a.zone || "UNASSIGNED").localeCompare(b.zone || "UNASSIGNED");
+      }
+
+      if (sortBy === "deliveryAgent") {
+        return getRetentionAgentName(a).localeCompare(getRetentionAgentName(b));
+      }
+
+      return (a.name || "").localeCompare(b.name || "");
+    });
 
     const total = filteredCustomers.length;
     const totalPages = Math.ceil(total / limit) || 1;
@@ -556,6 +622,7 @@ const getRetentionCustomers = async (req, res) => {
         { value: "other_vendor", label: "Other Vendor" },
       ],
       counts,
+      deliveryAgentOptions,
       total,
       totalPages,
       currentPage: page,
@@ -636,6 +703,8 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customerRetention:v10") ||
           key.startsWith("customerRetention:v11") ||
           key.startsWith("customerRetention:v12") ||
+          key.startsWith("customerRetention:v13") ||
+          key.startsWith("customerRetention:v14") ||
           key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );
