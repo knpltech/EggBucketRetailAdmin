@@ -42,7 +42,7 @@ const CollectionSummary = () => {
     new Date().toISOString().split("T")[0],
   );
   const [selectedAgent, setSelectedAgent] = useState("all");
-  const [sortBy, setSortBy] = useState("default");
+  const [sortBy, setSortBy] = useState("delivery-time");
 
   // Get date string in Kolkata timezone
 
@@ -50,6 +50,20 @@ const CollectionSummary = () => {
   useEffect(() => {
     fetchCollectionSummary();
   }, []);
+
+  // Fetch delivery times when date changes
+  useEffect(() => {
+    fetchDeliveryTimes();
+  }, [selectedDate]);
+
+  const fetchDeliveryTimes = async () => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/delivery-times/${selectedDate}`);
+      setDeliveryTimes(res.data);
+    } catch (err) {
+      console.error("Error fetching delivery times:", err);
+    }
+  };
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -100,10 +114,10 @@ const CollectionSummary = () => {
           deliveryAgent = entryObj.agentName;
         }
 
-        // Extract delivery time from last8Days entry
+        // Extract delivery time from last8DaysUpdatedAt
         let deliveryTime = "-";
-        if (entryObj && entryObj.time) {
-          const parsedDate = parseTimestamp(entryObj.time);
+        if (customer.last8DaysUpdatedAt) {
+          const parsedDate = parseTimestamp(customer.last8DaysUpdatedAt);
           if (parsedDate && !isNaN(parsedDate.getTime())) {
             deliveryTime = parsedDate.toLocaleTimeString("en-IN", {
               hour: "2-digit",
@@ -123,7 +137,7 @@ const CollectionSummary = () => {
           amount: amount || "-",
           deliveryAgent,
           deliveryTime,
-          rawDeliveryTime: entryObj.time || null,
+          rawDeliveryTime: customer.last8DaysUpdatedAt || null,
         };
       })
       .filter(Boolean);
@@ -142,7 +156,7 @@ const CollectionSummary = () => {
       temp = temp.filter((c) => c.deliveryAgent === selectedAgent);
     }
 
-    // Apply sorting
+    // Apply sorting by creation time (newest first)
     if (sortBy === "delivery-time") {
       temp.sort((a, b) => {
         const aTime = parseTimestamp(a.rawDeliveryTime)?.getTime();
@@ -497,19 +511,6 @@ const CollectionSummary = () => {
                 {agent}
               </option>
             ))}
-          </select>
-        </div>
-
-        {/* Sort By */}
-        <div className="flex items-center gap-2 ml-2">
-          <label className="text-sm font-medium text-gray-600">Sort:</label>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
-          >
-            <option value="default">Default</option>
-            <option value="delivery-time">Delivery Creation Time</option>
           </select>
         </div>
 
