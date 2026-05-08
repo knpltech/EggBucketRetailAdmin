@@ -11,6 +11,7 @@ const AISuggestionTable = ({ data, loading }) => {
               <th className="p-3 text-left font-semibold text-gray-800">Customer ID</th>
               <th className="p-3 text-left font-semibold text-gray-800">Customer Name</th>
               <th className="p-3 text-left font-semibold text-gray-800">Priority</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Apply AI Suggestion</th>
@@ -24,6 +25,9 @@ const AISuggestionTable = ({ data, loading }) => {
                 </td>
                 <td className="p-4 py-6">
                   <div className="h-4 bg-gray-200 rounded w-32"></div>
+                </td>
+                <td className="p-4 py-6">
+                  <div className="h-4 bg-gray-200 rounded w-12"></div>
                 </td>
                 <td className="p-4 py-6">
                   <div className="h-4 bg-gray-200 rounded w-12"></div>
@@ -59,6 +63,7 @@ const AISuggestionTable = ({ data, loading }) => {
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Customer ID</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Customer Name</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Priority</th>
+              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Current Toggle</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Apply AI Suggestion</th>
