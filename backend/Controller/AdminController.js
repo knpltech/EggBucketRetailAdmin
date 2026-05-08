@@ -33,6 +33,55 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
+const normalizePeakFrequency = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (/^D[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `D${raw}`;
+
+  return "";
+};
+
+const getPeakFrequencyNumber = (value) => {
+  const peak = normalizePeakFrequency(value);
+  const n = Number(peak.slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : -1;
+};
+
+const getCurrentDeliveryFrequency = (last8Days = {}) => {
+  let count = 0;
+  const today = new Date();
+
+  for (let i = 1; i <= 7; i += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - i);
+    const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
+    const entry = last8Days[dateKey];
+    const status = typeof entry === "string" ? entry : entry?.status;
+
+    if (String(status || "").toLowerCase() === "delivered") {
+      count += 1;
+    }
+  }
+
+  return `D${count}`;
+};
+
+const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
+  const currentPeak = getCurrentDeliveryFrequency(last8Days);
+  const savedPeak = normalizePeakFrequency(
+    customerData.Peak_Frequency ||
+      customerData.peakFrequency ||
+      customerData.peak_frequency,
+  );
+
+  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
+    ? savedPeak
+    : currentPeak;
+};
+
 // HELPER: Maintain denormalized last8Days field in customer doc
 
 const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {}) => {
@@ -96,18 +145,36 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
       }
     });
 
-    // Update customer document
-    await customerRef.update({
+    const peakFrequency = resolvePeakFrequency(customerData, last8Days);
+    const savedPeak = normalizePeakFrequency(
+      customerData.Peak_Frequency ||
+        customerData.peakFrequency ||
+        customerData.peak_frequency,
+    );
+
+    const updateData = {
       last8Days,
       last8DaysUpdatedAt: Date.now(),
-    });
+    };
+
+    if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)) {
+      updateData.Peak_Frequency = peakFrequency;
+    }
+
+    // Update customer document
+    await customerRef.update(updateData);
 
     // Invalidate analytics cache
     try {
       const keys = typeof cache.keys === "function" ? cache.keys() : [];
-      const analyticsKeys = keys.filter((k) => k.startsWith("analytics:last8"));
-      if (analyticsKeys.length) {
-        cache.del(analyticsKeys);
+      const staleKeys = keys.filter(
+        (k) =>
+          k.startsWith("analytics:last8") ||
+          k.startsWith("customerInfo:userInfo") ||
+          k === `customer:${customerId}`,
+      );
+      if (staleKeys.length) {
+        cache.del(staleKeys);
       }
     } catch (cacheErr) {
       // Silently fail if cache delete fails
