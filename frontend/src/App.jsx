@@ -13,6 +13,7 @@ import Report from "./AdminPages/Report";
 import Analytics from "./AdminPages/Analytics";
 import CustomerRetention from "./AdminPages/CustomerRetention";
 import AISuggestions from "./AdminPages/AISuggestions";
+import CollectionSummary from "./AdminPages/CollectionSummary";
 import CustomerView from "./Admin-View/CustomerView";
 import CustomerDetails from "./CustomerPages/CustomerDetails";
 import PersonnelView from "./Admin-View/PersonalView";
@@ -87,6 +88,7 @@ function App() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="customer-retention" element={<CustomerRetention />} />
         <Route path="ai-suggestions" element={<AISuggestions />} />
+        <Route path="collections" element={<CollectionSummary />} />
         <Route path="customer-management" element={<CustomerManagement />} />
         <Route
           path="customer-map-for-delivery"

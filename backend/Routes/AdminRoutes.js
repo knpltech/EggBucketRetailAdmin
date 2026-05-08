@@ -61,6 +61,8 @@ import {
   getLatestRemarks,
   toggleTodayDelivery,
   saveSkipConfig,
+  getCollectionSummary,
+  recalculateCollectionData,
 } from "../Controller/AdminController.js";
 
 // Customer routes 
@@ -90,6 +92,8 @@ router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
+router.get("/collection-summary", getCollectionSummary);
+router.post("/recalculate-collection-data", recalculateCollectionData);
 router.get("/customer-retention", getRetentionCustomers);
 router.post("/customer-retention/reset", resetRetentionCustomer);
 router.get("/customer/retention", getRetentionCustomers);
