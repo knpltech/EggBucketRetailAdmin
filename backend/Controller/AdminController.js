@@ -1783,6 +1783,176 @@ const toggleTodayDelivery = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+// ⭐ NEW: Get Collection Summary for today's deliveries with extreme Firestore optimization
+const getCollectionSummary = async (req, res) => {
+  try {
+    const cacheKey = "collectionSummary:today";
+
+    // CHECK CACHE FIRST (avoid Firestore read)
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      console.log("[CACHE HIT] Collection summary served from cache");
+      return res.status(200).json(cachedData);
+    }
+
+    console.log("[CACHE MISS] Fetching collection summary from Firestore");
+
+    const db = getFirestore();
+    const todayDate = getTodayDateString();
+
+    // ⭐ OPTIMIZATION: ONE Firestore query only - fetch all customers
+    const customersSnap = await db.collection("customers").get();
+
+    if (customersSnap.empty) {
+      const emptyResponse = {
+        success: true,
+        totals: {
+          totalTrays: 0,
+          totalCash: 0,
+          totalUpi: 0,
+          totalAmount: 0,
+        },
+        customers: [],
+      };
+      cache.set(cacheKey, emptyResponse, 600);
+      return res.status(200).json(emptyResponse);
+    }
+
+    let totalTrays = 0;
+    let totalCash = 0;
+    let totalUpi = 0;
+    let totalAmount = 0;
+
+    const customers = [];
+
+    // Process each customer - read from denormalized last8Days only
+    customersSnap.forEach((doc) => {
+      const customerData = doc.data();
+      const customerId = doc.id;
+
+      // Get today's entry from last8Days
+      const todayEntry = customerData.last8Days?.[todayDate];
+
+      // Skip if no entry for today
+      if (!todayEntry) return;
+
+      // Normalize entry (handle both string format and object format)
+      const entryObj =
+        typeof todayEntry === "string" ? { status: todayEntry } : todayEntry;
+
+      // Skip if not delivered
+      if (entryObj.status !== "delivered") return;
+
+      // Extract fields
+      const custid = customerData.id || customerData.custid || customerId;
+      const customerName = customerData.name || "N/A";
+      const quantity = entryObj.trays || 0;
+      const paymentMethod = entryObj.paymentMethod || "UNKNOWN";
+      const amount = entryObj.amount || 0;
+
+      // Determine cash vs UPI split
+      let cashAmount = "-";
+      let upiAmount = "-";
+
+      if (paymentMethod === "CASH" && amount > 0) {
+        cashAmount = amount;
+        totalCash += amount;
+      } else if (paymentMethod === "UPI" && amount > 0) {
+        upiAmount = amount;
+        totalUpi += amount;
+      }
+
+      // Accumulate totals
+      if (quantity > 0) {
+        totalTrays += quantity;
+      }
+      if (amount > 0) {
+        totalAmount += amount;
+      }
+
+      customers.push({
+        customerId: custid,
+        customerName,
+        quantity: quantity || "-",
+        paymentMethod,
+        cash: cashAmount,
+        upi: upiAmount,
+        amount: amount || "-",
+      });
+    });
+
+    const response = {
+      success: true,
+      totals: {
+        totalTrays,
+        totalCash,
+        totalUpi,
+        totalAmount,
+      },
+      customers: customers.sort((a, b) =>
+        String(a.customerName).localeCompare(String(b.customerName)),
+      ),
+    };
+
+    // CACHE for 10 minutes
+    cache.set(cacheKey, response, 600);
+
+    return res.status(200).json(response);
+  } catch (err) {
+    console.error("getCollectionSummary error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+const recalculateCollectionData = async (req, res) => {
+  try {
+    const { customers } = req.body;
+
+    if (!Array.isArray(customers) || customers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid customers data",
+      });
+    }
+
+    const db = getFirestore();
+    const batch = db.batch();
+    let updatedCount = 0;
+
+    // Update only received customers with cleaned last8Days (keeping latest 30 days)
+    customers.forEach((customerData) => {
+      const { id, last8Days } = customerData;
+      if (!id || !last8Days) return;
+
+      const customerRef = db.collection("customers").doc(id);
+      batch.update(customerRef, {
+        last8Days: last8Days,
+        updatedAt: new Date(),
+      });
+      updatedCount++;
+    });
+
+    await batch.commit();
+
+    // Clear cache after recalculation
+    cache.del("collectionSummary:today");
+
+    return res.status(200).json({
+      success: true,
+      message: `Updated ${updatedCount} customers with cleaned last8Days data (kept latest 30 days)`,
+      updatedCount,
+    });
+  } catch (err) {
+    console.error("recalculateCollectionData error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -1802,4 +1972,6 @@ export {
   resetAllCheckedReasons,
   saveDeliveredTrays,
   getLatestRemarks,
+   getCollectionSummary,
+  recalculateCollectionData,
 };
