@@ -56,6 +56,7 @@ export default function CustomerManagement() {
           rows.map((c) => ({
             ...c,
             priority: normalizePriority(c.priority),
+            peakFrequency: resolvePeakFrequency(c),
           })),
         );
       } catch (err) {
@@ -238,6 +239,12 @@ export default function CustomerManagement() {
 
       list.sort((a, b) => {
         const diff = rank(a.priority) - rank(b.priority);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
+    } else if (sortBy === "peakFrequency") {
+      list.sort((a, b) => {
+        const diff = getPeakFrequencyNumber(b) - getPeakFrequencyNumber(a);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
@@ -490,6 +497,7 @@ export default function CustomerManagement() {
       Name: getName(c),
       Zone: c.zone || "",
       Priority: normalizePriority(c.priority),
+      Peak_Frequency: getPeakFrequencyLabel(c),
       Status: getLatestStatus(c),
       Remarks: getRemarkDisplay(c),
     }));
@@ -532,6 +540,7 @@ export default function CustomerManagement() {
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
             <option value="priority">Priority</option>
+            <option value="peakFrequency">Peak Frequency</option>
             <option value="zone">Zone</option>
             <option value="delivery">Delivery Plan </option>
             <option value="status">Status </option>
@@ -576,6 +585,7 @@ export default function CustomerManagement() {
               <th className="p-3">Skip</th>
               <th className="p-3">Priority</th>
               <th className="p-3">Potential</th>
+              <th className="p-3">Peak_Frequency</th>
               <th className="p-3">Status</th>
             </tr>
           </thead>
@@ -665,6 +675,15 @@ export default function CustomerManagement() {
                   >
                     {normalizePotential(c.potential)}
                   </button>
+                </td>
+
+                <td className="p-3">
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getPeakFrequencyColor(c) }}
+                  >
+                    {getPeakFrequencyLabel(c)}
+                  </span>
                 </td>
 
                 <td className="p-3">
@@ -814,6 +833,72 @@ function getNextPotential(currentPotential) {
   const index = POTENTIALS.indexOf(normalized);
   const next = (index + 1) % POTENTIALS.length;
   return POTENTIALS[next];
+}
+
+function resolvePeakFrequency(customer) {
+  const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
+  const savedPeak = normalizePeakFrequency(
+    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
+  );
+
+  if (!savedPeak) return currentPeak;
+
+  return getFrequencyNumber(savedPeak) >= getFrequencyNumber(currentPeak)
+    ? savedPeak
+    : currentPeak;
+}
+
+function getPeakFrequencyLabel(customer) {
+  return normalizePeakFrequency(customer?.peakFrequency) || resolvePeakFrequency(customer);
+}
+
+function getPeakFrequencyNumber(customer) {
+  return getFrequencyNumber(getPeakFrequencyLabel(customer));
+}
+
+function normalizePeakFrequency(value) {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (/^D[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `D${raw}`;
+
+  return "";
+}
+
+function getFrequencyNumber(value) {
+  const normalized = normalizePeakFrequency(value);
+  const n = Number(String(normalized).slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
+}
+
+function getDeliveredCountForCustomer(customer) {
+  const last8Days = customer?.last8Days || {};
+  let count = 0;
+  const today = new Date();
+
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+
+    const entry = last8Days[dateStr];
+    const status = typeof entry === "string" ? entry : entry?.status;
+    if (status === "delivered") {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function getPeakFrequencyColor(customer) {
+  const n = getPeakFrequencyNumber(customer);
+
+  if (n <= 2) return "#FF3B30";
+  if (n <= 4) return "#FB8C00";
+  return "#0F9D58";
 }
 
 function getPotentialColor(value) {
