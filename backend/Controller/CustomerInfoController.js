@@ -6,6 +6,28 @@ import cache from "./cache.js";
 
 const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
+const INDIA_TZ = "Asia/Kolkata";
+
+const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {
+    // fall through
+  }
+
+  return new Date().toISOString().slice(0, 10);
+};
 
 const normalizeCustomerPriority = (value) => {
   const raw = String(value ?? "")
@@ -40,6 +62,88 @@ const normalizeCustomerPotential = (value) => {
   if (VALID_POTENTIALS.includes(withoutSpace)) return withoutSpace;
 
   return "T1";
+};
+
+const normalizePeakFrequency = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (/^D[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `D${raw}`;
+
+  return "";
+};
+
+const getPeakFrequencyNumber = (value) => {
+  const peak = normalizePeakFrequency(value);
+  const n = Number(peak.slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : -1;
+};
+
+const getCurrentDeliveryFrequency = (last8Days = {}) => {
+  let count = 0;
+  const today = new Date();
+
+  for (let i = 1; i <= 7; i += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - i);
+    const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
+    const entry = last8Days[dateKey];
+    const status = typeof entry === "string" ? entry : entry?.status;
+
+    if (String(status || "").toLowerCase() === "delivered") {
+      count += 1;
+    }
+  }
+
+  return `D${count}`;
+};
+
+const resolvePeakFrequency = (customerData = {}) => {
+  const currentPeak = getCurrentDeliveryFrequency(customerData.last8Days || {});
+  const savedPeak = normalizePeakFrequency(
+    customerData.Peak_Frequency ||
+      customerData.peakFrequency ||
+      customerData.peak_frequency,
+  );
+
+  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
+    ? savedPeak
+    : currentPeak;
+};
+
+const buildCustomerInfoPayload = (doc, peakUpdates = []) => {
+  const customerData = doc.data();
+  const peakFrequency = resolvePeakFrequency(customerData);
+  const savedPeak = normalizePeakFrequency(
+    customerData?.Peak_Frequency ||
+      customerData?.peakFrequency ||
+      customerData?.peak_frequency,
+  );
+
+  if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)) {
+    peakUpdates.push({ ref: doc.ref, Peak_Frequency: peakFrequency });
+  }
+
+  return {
+    id: doc.id,
+    ...customerData,
+    Peak_Frequency: peakFrequency,
+    priority: normalizeCustomerPriority(customerData?.priority),
+  };
+};
+
+const commitPeakFrequencyUpdates = async (db, peakUpdates = []) => {
+  if (!peakUpdates.length) return;
+
+  for (let i = 0; i < peakUpdates.length; i += 500) {
+    const batch = db.batch();
+    peakUpdates.slice(i, i + 500).forEach(({ ref, Peak_Frequency }) => {
+      batch.update(ref, { Peak_Frequency });
+    });
+    await batch.commit();
+  }
 };
 
 const getStatusAndReasonFromType = (type, checkReason = "") => {
@@ -324,14 +428,11 @@ const userInfo = async (req, res) => {
 
         const snapshot = await query.offset(offset).limit(limit).get();
 
-        const customers = snapshot.docs.map((doc) => {
-          const customerData = doc.data();
-          return {
-            id: doc.id,
-            ...customerData,
-            priority: normalizeCustomerPriority(customerData?.priority),
-          };
-        });
+        const peakUpdates = [];
+        const customers = snapshot.docs.map((doc) =>
+          buildCustomerInfoPayload(doc, peakUpdates),
+        );
+        await commitPeakFrequencyUpdates(db, peakUpdates);
 
         const payload = {
           customers,
@@ -379,14 +480,11 @@ const userInfo = async (req, res) => {
       const hasNextPage = docs.length > limit;
       const pageDocs = hasNextPage ? docs.slice(0, limit) : docs;
 
-      const customers = pageDocs.map((doc) => {
-        const customerData = doc.data();
-        return {
-          id: doc.id,
-          ...customerData,
-          priority: normalizeCustomerPriority(customerData?.priority),
-        };
-      });
+      const peakUpdates = [];
+      const customers = pageDocs.map((doc) =>
+        buildCustomerInfoPayload(doc, peakUpdates),
+      );
+      await commitPeakFrequencyUpdates(db, peakUpdates);
 
       let nextCursor = null;
       if (hasNextPage && pageDocs.length > 0) {
@@ -423,14 +521,11 @@ const userInfo = async (req, res) => {
     }
 
     const customersSnapshot = await db.collection("customers").get();
-    const customers = customersSnapshot.docs.map((doc) => {
-      const customerData = doc.data();
-      return {
-        id: doc.id,
-        ...customerData,
-        priority: normalizeCustomerPriority(customerData?.priority),
-      };
-    });
+    const peakUpdates = [];
+    const customers = customersSnapshot.docs.map((doc) =>
+      buildCustomerInfoPayload(doc, peakUpdates),
+    );
+    await commitPeakFrequencyUpdates(db, peakUpdates);
 
     const sortedCustomers = sortCustomers(customers, sortBy);
 
