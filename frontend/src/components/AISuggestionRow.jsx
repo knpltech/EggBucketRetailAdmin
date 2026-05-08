@@ -40,6 +40,26 @@ const getSuggestionConfig = (suggestion, reason, confidence) => {
   }
 };
 
+const normalizePeakFrequency = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (/^D[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `D${raw}`;
+
+  return "D0";
+};
+
+const getPeakFrequencyColor = (value) => {
+  const peak = normalizePeakFrequency(value);
+  const n = Number(peak.slice(1));
+
+  if (n <= 2) return "bg-red-500";
+  if (n <= 4) return "bg-orange-500";
+  return "bg-green-600";
+};
+
 const AISuggestionRow = ({ customer, suggestionData }) => {
   const [applied, setApplied] = useState(false);
 
@@ -53,6 +73,9 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
   };
 
   const isTodayOn = customer?.todayOverride?.status === "ON";
+  const peakFrequency = normalizePeakFrequency(
+    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
+  );
   const { colorClass, dotClass, text, subText } = getSuggestionConfig(
     suggestionData.suggestion,
     suggestionData.reason,
@@ -66,6 +89,12 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
       <td className="p-4 py-5 text-gray-700 font-medium">
         <span className={`px-2 py-1 rounded text-xs ${customer.priority === "P1" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"}`}>
           {customer.priority || "P0"}
+        </span>
+      </td>
+
+      <td className="p-4 py-5 text-gray-700 font-medium">
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${getPeakFrequencyColor(peakFrequency)}`}>
+          {peakFrequency}
         </span>
       </td>
       
