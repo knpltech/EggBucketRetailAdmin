@@ -291,6 +291,10 @@ export default function CustomerManagement() {
     return list;
   }, [customers, activeTab, sortBy, todayDate, getDeliveredCount]);
 
+  const totalOnCount = useMemo(() => {
+    return customers.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
+  }, [customers, todayDate]);
+
   // ================= ACTIONS =================
   const updatePriority = async (c) => {
     if (!c?.id || updatingPriorityId === c.id) return;
@@ -537,18 +541,19 @@ export default function CustomerManagement() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-start mb-6">
         <h1 className="text-3xl font-bold">Customer Management</h1>
 
-        <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
-          <FiUsers className="text-3xl text-blue-500" />
+        <div className="flex flex-col items-end gap-2">
+          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
+            <FiUsers className="text-3xl text-blue-500" />
 
-          <div>
-            <p className="text-sm text-gray-600">Total Customers</p>
-            <p className="text-2xl font-bold">
-              {loading ? "…" : filtered.length}
-            </p>
-          </div>
+            <div>
+              <p className="text-sm text-gray-600">Total Customers</p>
+              <p className="text-2xl font-bold">
+                {loading ? "…" : totalOnCount}
+              </p>
+            </div>
 
           <select
             value={sortBy}
@@ -574,7 +579,11 @@ export default function CustomerManagement() {
             </button>
           )}
         </div>
+        <span className="text-blue-600 font-bold mr-2 text-lg">
+          Total Active: {totalOnCount}
+        </span>
       </div>
+    </div>
 
       {/* TABS */}
       <div className="flex gap-2 mb-6 flex-wrap">
