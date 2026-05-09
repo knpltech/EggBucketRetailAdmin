@@ -43,18 +43,28 @@ export default function CustomerManagement() {
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
   // ================= LOAD =================
-  // ⭐ OPTIMIZED: Single API call only, no auto-refresh, no D0-D7 backend calls
+  // ⭐ OPTIMIZED: Load once, no auto-refresh, no D0-D7 backend calls
 
   useEffect(() => {
     const loadOnce = async () => {
       try {
         setLoading(true);
-        // ⭐ Single API call - reads from /user-info with backend cache
-        const res = await axios.get(`${ADMIN_PATH}/user-info`);
-        const rows = Array.isArray(res.data) ? res.data : [];
+        // Load customers plus fresh, date-scoped remarks for today's status text.
+        const [customersRes, remarksRes] = await Promise.all([
+          axios.get(`${ADMIN_PATH}/user-info`),
+          axios.get(`${ADMIN_PATH}/customer/latest-remarks`, {
+            params: { date: todayDate, _: Date.now() },
+          }).catch((err) => {
+            console.error("Load latest remarks error:", err);
+            return { data: {} };
+          }),
+        ]);
+        const remarksMap = remarksRes.data || {};
+        const rows = Array.isArray(customersRes.data) ? customersRes.data : [];
         setCustomers(
           rows.map((c) => ({
             ...c,
+            latestRemark: remarksMap[c.id] || "-",
             priority: normalizePriority(c.priority),
             peakFrequency: resolvePeakFrequency(c),
           })),
@@ -67,7 +77,7 @@ export default function CustomerManagement() {
     };
 
     loadOnce();
-  }, []); // ⭐ Empty dependency: load ONLY once on mount
+  }, [todayDate]); // Load once per date so today's remarks stay date-correct
 
   // ⭐ HELPER: Compute delivery count from last 7 days (EXCLUDING today)
   // Only counts entries where last8Days[date] === "delivered"
@@ -130,10 +140,12 @@ export default function CustomerManagement() {
     const status = getLatestStatus(customer);
 
     if (status === "Delivered") {
-      const trays = entryObj.trays || entryObj.quantity;
-      if (trays && Number(trays) > 0) {
-        const count = Number(trays);
-        return count === 1 ? "1 tray" : `${count} trays`;
+      const trays =
+        entryObj.traysDelivered ?? entryObj.trays ?? entryObj.quantity;
+      const trayRemark = formatTrayRemark(trays);
+      if (trayRemark) return trayRemark;
+      if (customer.latestRemark && customer.latestRemark !== "-") {
+        return customer.latestRemark;
       }
       return "";
     }
@@ -715,6 +727,12 @@ export default function CustomerManagement() {
 
 function getName(c) {
   return c.name || c.customerName || "Unknown";
+}
+
+function formatTrayRemark(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) return "";
+  return count === 1 ? "1 tray" : `${count} trays`;
 }
 
 function normalizePriority(value) {

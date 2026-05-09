@@ -1205,6 +1205,7 @@ const getCustomersByDeliveryCount = async (req, res) => {
 const getLatestRemarks = async (req, res) => {
   try {
     const db = getFirestore();
+    const requestedDate = String(req.query.date || "").trim();
 
     // Fetch ALL deliveries across all customers
     const allDeliveriesSnap = await db.collectionGroup("deliveries").get();
@@ -1215,10 +1216,23 @@ const getLatestRemarks = async (req, res) => {
       const customerId = doc.ref.parent.parent.id;
       const data = doc.data();
       const docId = doc.id; // date string like "2026-03-10"
+
+      if (requestedDate && docId !== requestedDate) {
+        return;
+      }
+
       const { status, reason } = getStatusAndReasonFromType(
         data.type,
         data.checkReason,
       );
+      const traysDelivered =
+        typeof data.traysDelivered === "number"
+          ? data.traysDelivered
+          : typeof data.trays === "number"
+            ? data.trays
+            : typeof data.quantity === "number"
+              ? data.quantity
+              : null;
 
       // Initialize array
       if (!customerDeliveries[customerId]) {
@@ -1228,13 +1242,13 @@ const getLatestRemarks = async (req, res) => {
       // Keep only deliveries that have remark data
       if (
         (status === "Checked" && reason) ||
-        (status === "Delivered" && typeof data.traysDelivered === "number")
+        (status === "Delivered" && typeof traysDelivered === "number")
       ) {
         customerDeliveries[customerId].push({
           docId,
           status,
           reason,
-          traysDelivered: data.traysDelivered,
+          traysDelivered,
         });
       }
     });
@@ -1259,7 +1273,10 @@ const getLatestRemarks = async (req, res) => {
         latest.status === "Delivered" &&
         typeof latest.traysDelivered === "number"
       ) {
-        remarks[customerId] = `${latest.traysDelivered} trays`;
+        remarks[customerId] =
+          latest.traysDelivered === 1
+            ? "1 tray"
+            : `${latest.traysDelivered} trays`;
       } else {
         remarks[customerId] = "-";
       }
