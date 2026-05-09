@@ -51,20 +51,6 @@ const CollectionSummary = () => {
     fetchCollectionSummary();
   }, []);
 
-  // Fetch delivery times when date changes
-  useEffect(() => {
-    fetchDeliveryTimes();
-  }, [selectedDate]);
-
-  const fetchDeliveryTimes = async () => {
-    try {
-      const res = await axios.get(`${ADMIN_PATH}/delivery-times/${selectedDate}`);
-      setDeliveryTimes(res.data);
-    } catch (err) {
-      console.error("Error fetching delivery times:", err);
-    }
-  };
-
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
     if (!data?.customers) return [];
@@ -85,44 +71,56 @@ const CollectionSummary = () => {
         // Extract fields
         const custid = customer.custid || customer.id || customer._id || "";
         const customerName = customer.name || customer.customerName || "N/A";
-        const quantity = entryObj.trays || 0;
-        const paymentMethod = entryObj.paymentMethod || "UNKNOWN";
-        const amount = entryObj.amount || 0;
 
-        // Determine cash vs UPI split
-        let cashAmount = "-";
-        let upiAmount = "-";
+        // Quantities
+        const quantity = entryObj.quantity ?? entryObj.trays ?? 0;
 
-        if (paymentMethod === "CASH" && amount > 0) {
-          cashAmount = amount;
-        } else if (paymentMethod === "UPI" && amount > 0) {
-          upiAmount = amount;
+        // Amounts
+        const totalAmount = entryObj.totalAmount ?? entryObj.amount ?? 0;
+        const cashAmount =
+          typeof entryObj.cashAmount === "number"
+            ? entryObj.cashAmount
+            : entryObj.paymentMethod === "CASH"
+              ? totalAmount
+              : 0;
+        const upiAmount =
+          typeof entryObj.upiAmount === "number"
+            ? entryObj.upiAmount
+            : entryObj.paymentMethod === "UPI"
+              ? totalAmount
+              : 0;
+
+        // Payment Method label
+        let paymentMethod = entryObj.paymentMethod || "UNKNOWN";
+        if (paymentMethod === "UNKNOWN") {
+          if (cashAmount > 0 && upiAmount > 0) paymentMethod = "SPLIT";
+          else if (cashAmount > 0) paymentMethod = "CASH";
+          else if (upiAmount > 0) paymentMethod = "UPI";
         }
 
-        // Extract delivery agent - handle object or nested structure
+        // Extract delivery agent
         let deliveryAgent = "-";
-        if (entryObj.deliveryMan) {
-          if (
-            typeof entryObj.deliveryMan === "object" &&
-            entryObj.deliveryMan.name
-          ) {
-            deliveryAgent = entryObj.deliveryMan.name;
-          } else if (typeof entryObj.deliveryMan === "string") {
-            deliveryAgent = entryObj.deliveryMan;
-          }
-        } else if (entryObj.agentName) {
+        if (entryObj.agentName) {
           deliveryAgent = entryObj.agentName;
+        } else if (entryObj.deliveryMan) {
+          deliveryAgent =
+            typeof entryObj.deliveryMan === "object"
+              ? entryObj.deliveryMan.name
+              : entryObj.deliveryMan;
         }
 
-        // Extract delivery time from last8DaysUpdatedAt
+        // Extract delivery time
         let deliveryTime = "-";
-        if (customer.last8DaysUpdatedAt) {
-          const parsedDate = parseTimestamp(customer.last8DaysUpdatedAt);
+        const timeVal =
+          entryObj.time || entryObj.timestamp || customer.last8DaysUpdatedAt;
+        if (timeVal) {
+          const parsedDate = parseTimestamp(timeVal);
           if (parsedDate && !isNaN(parsedDate.getTime())) {
             deliveryTime = parsedDate.toLocaleTimeString("en-IN", {
               hour: "2-digit",
               minute: "2-digit",
               second: "2-digit",
+              hour12: true,
             });
           }
         }
@@ -132,12 +130,12 @@ const CollectionSummary = () => {
           customerName,
           quantity: quantity || "-",
           paymentMethod,
-          cash: cashAmount,
-          upi: upiAmount,
-          amount: amount || "-",
+          cash: cashAmount || "-",
+          upi: upiAmount || "-",
+          amount: totalAmount || "-",
           deliveryAgent,
           deliveryTime,
-          rawDeliveryTime: customer.last8DaysUpdatedAt || null,
+          rawDeliveryTime: timeVal,
         };
       })
       .filter(Boolean);

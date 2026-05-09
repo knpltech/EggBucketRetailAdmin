@@ -45,8 +45,10 @@ const getDeliveryStatusLabel = (delivery) => {
   return "Pending";
 };
 
-const getDeliveryReason = (delivery) =>
-  delivery?.reason || delivery?.checkReason || "";
+const getDeliveryReason = (delivery) => {
+  const reason = delivery?.reason || delivery?.checkReason || "";
+  return String(reason).replace(/_/g, " ").toUpperCase();
+};
 
 const parseTimestamp = (value) => {
   if (!value) return null;
@@ -92,11 +94,14 @@ const parseTimestamp = (value) => {
   return null;
 };
 
-const getDeliveryTimestamp = (delivery, last8Entry = {}) => {
+const getDeliveryTimestamp = (delivery, last8Entry = {}, customer = {}) => {
   return (
     parseTimestamp(last8Entry.time) ||
+    parseTimestamp(last8Entry.timestamp) ||
     parseTimestamp(delivery?.time) ||
-    parseTimestamp(delivery?.timestamp)
+    parseTimestamp(delivery?.timestamp) ||
+    parseTimestamp(delivery?.id) || // delivery.id is usually the date string
+    parseTimestamp(customer.last8DaysUpdatedAt)
   );
 };
 
@@ -105,28 +110,34 @@ const buildDeliveriesFromLast8Days = (customer) => {
 
   return Object.entries(customer.last8Days)
     .map(([date, entry]) => {
-      if (!entry || typeof entry === "string") return null;
+      if (!entry) return null;
 
-      const status = String(entry.status || entry.type || "")
-        .trim()
-        .toLowerCase();
+      const isLegacy = typeof entry === "string";
+      const status = isLegacy
+        ? entry.trim().toLowerCase()
+        : String(entry.status || entry.type || "")
+            .trim()
+            .toLowerCase();
+
       const deliveryMan =
-        typeof entry.deliveryMan === "object"
+        !isLegacy && typeof entry.deliveryMan === "object"
           ? entry.deliveryMan
-          : entry.agentName
+          : !isLegacy && entry.agentName
             ? { name: entry.agentName, phone: "" }
-            : entry.deliveryMan
+            : !isLegacy && entry.deliveryMan
               ? { name: entry.deliveryMan, phone: "" }
               : null;
 
       return {
         id: date,
-        timestamp: entry.time ?? entry.timestamp ?? null,
+        timestamp: !isLegacy ? entry.time ?? entry.timestamp ?? date : date,
         type: status || "pending",
         status: status || "pending",
-        checkReason: entry.checkReason || entry.reason || "",
+        checkReason: !isLegacy ? entry.checkReason || entry.reason || "" : "",
         traysDelivered:
-          typeof entry.quantity === "number" ? entry.quantity : null,
+          !isLegacy && typeof entry.quantity === "number"
+            ? entry.quantity
+            : null,
         deliveryMan,
       };
     })
@@ -236,7 +247,7 @@ const Customer = () => {
 
     const rows = sourceDeliveries.map((delivery) => {
       const last8Entry = customer?.last8Days?.[delivery.id] || {};
-      const dateObj = getDeliveryTimestamp(delivery, last8Entry);
+      const dateObj = getDeliveryTimestamp(delivery, last8Entry, customer);
       const date = dateObj ? dateObj.toLocaleDateString() : "";
       const time = dateObj ? dateObj.toLocaleTimeString() : "";
 
@@ -504,7 +515,11 @@ const Customer = () => {
                   <ul className="divide-y divide-gray-200">
                     {deliveries.map((delivery) => {
                       const last8Entry = customer?.last8Days?.[delivery.id] || {};
-                      const deliveryDate = getDeliveryTimestamp(delivery, last8Entry);
+                      const deliveryDate = getDeliveryTimestamp(
+                        delivery,
+                        last8Entry,
+                        customer,
+                      );
                       const statusKey = getDeliveryStatusKey(delivery);
                       const canEditReason =
                         String(delivery.type || "")

@@ -139,7 +139,8 @@ export default function CustomerManagement() {
     }
 
     if (status === "Checked") {
-      return (entryObj.reason || "").toUpperCase();
+      const reason = entryObj.reason || "";
+      return String(reason).replace(/_/g, " ").toUpperCase();
     }
 
     return "";

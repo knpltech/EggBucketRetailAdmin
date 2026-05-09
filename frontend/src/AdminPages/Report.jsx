@@ -42,7 +42,8 @@ const Report = () => {
     if (row.statusKey === "delivered") {
       return "";
     }
-    return row.reason || "";
+    const reason = row.reason || "";
+    return String(reason).replace(/_/g, " ").toUpperCase();
   };
 
   const [selectedDate, setSelectedDate] = useState(today);
@@ -181,7 +182,7 @@ const Report = () => {
             statusKey,
             statusLabel: getStatusLabel(statusKey),
             reason: entryObj.reason || "",
-            createdAt: entryObj.time || null,
+            createdAt: entryObj.time || entryObj.timestamp || (selectedDate === today ? customer.last8DaysUpdatedAt : null),
             traysDelivered: entryObj.trays || entryObj.quantity || null,
           };
         })
@@ -544,8 +545,7 @@ const Report = () => {
               disabled={!startRange || !endRange || !allCustomers.length}
               onClick={downloadSummaryExcel}
               className={`w-full sm:self-end px-5 py-2.5 rounded-lg shadow text-white ${
-                // eslint-disable-next-line no-undef
-                !startRange || !endRange || !data.length
+                !startRange || !endRange || !allCustomers.length
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
