@@ -1,18 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-import { FiEdit2 } from "react-icons/fi";
+
 import { ADMIN_PATH } from "../constant";
 
-const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
+const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100];
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
+  "shop_closed",
   "stock_available",
   "other_vendor",
 ];
-const ZONES_CACHE_KEY = "report-zones-cache";
 
 const Report = () => {
   const getToday = () => {
@@ -21,16 +25,9 @@ const Report = () => {
   };
 
   const today = getToday();
-  const [data, setData] = useState([]);
-  const [zones, setZones] = useState([]);
+  const [allCustomers, setAllCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [savingReasonId, setSavingReasonId] = useState("");
-  const [savingTraysId, setSavingTraysId] = useState("");
-  const [editingReasonId, setEditingReasonId] = useState("");
-  const [editingTraysId, setEditingTraysId] = useState("");
   const [showDetails, setShowDetails] = useState(false);
-  const hasLoadedInitially = useRef(false);
-  const initialDateRef = useRef(today);
 
   const [sortBy, setSortBy] = useState("customer");
   const [selectedAgent, setSelectedAgent] = useState("all");
@@ -45,7 +42,7 @@ const Report = () => {
     if (row.statusKey === "delivered") {
       return "";
     }
-    return row.latestRemark || row.reason || row.checkReason || "";
+    return row.reason || "";
   };
 
   const [selectedDate, setSelectedDate] = useState(today);
@@ -53,25 +50,7 @@ const Report = () => {
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
 
-  const getStatusKey = (delivery) => {
-    const apiStatus = String(delivery?.status || "")
-      .trim()
-      .toLowerCase();
-
-    if (apiStatus === "delivered") return "delivered";
-    if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(apiStatus)) {
-      return "checked";
-    }
-
-    const type = String(delivery?.type || "")
-      .trim()
-      .toLowerCase();
-
-    if (type === "delivered") return "delivered";
-    if (CHECKED_TYPES.includes(type)) return "checked";
-
-    return "pending";
-  };
+  
 
   const getStatusLabel = (statusKey) => {
     if (statusKey === "delivered") return "Delivered";
@@ -79,9 +58,7 @@ const Report = () => {
     return "Pending";
   };
 
-  const getDeliveryReason = (delivery) => {
-    return delivery?.reason || delivery?.checkReason || "";
-  };
+  
 
   const isCompletedStatus = (statusKey) =>
     statusKey === "checked" || statusKey === "delivered";
@@ -133,195 +110,24 @@ const Report = () => {
     ).trim();
   };
 
-  const fetchData = useCallback(async (date, shouldShowLoader = true) => {
-    if (shouldShowLoader) {
-      setLoading(true);
-    }
 
-    try {
-      const res = await fetch(`${ADMIN_PATH}/all-deliveries?date=${date}`);
-      const json = await res.json();
-      setData(json.customers || []);
-    } catch (err) {
-      console.error("Fetch error:", err);
-    } finally {
-      if (shouldShowLoader) {
-        setLoading(false);
-      }
-    }
-  }, []);
 
-  const fetchZones = useCallback(async () => {
-    const cachedZones = sessionStorage.getItem(ZONES_CACHE_KEY);
-
-    if (cachedZones) {
-      try {
-        const parsedZones = JSON.parse(cachedZones);
-        if (Array.isArray(parsedZones) && parsedZones.length) {
-          setZones(parsedZones);
-        }
-      } catch (err) {
-        console.error("Zones cache parse error:", err);
-      }
-    }
-
-    try {
-      const res = await fetch(`${ADMIN_PATH}/zones`);
-      const json = await res.json();
-      const nextZones = Array.isArray(json) ? json : [];
-      setZones(nextZones);
-      sessionStorage.setItem(ZONES_CACHE_KEY, JSON.stringify(nextZones));
-    } catch (err) {
-      console.error("Zones fetch error:", err);
-      if (!cachedZones) {
-        setZones([]);
-      }
-    }
-  }, []);
-
-  const updateDeliveryValue = (customerId, deliveryId, patch) => {
-    setData((prev) =>
-      prev.map((customer) => {
-        if (customer.id !== customerId) {
-          return customer;
-        }
-
-        return {
-          ...customer,
-          deliveries: (customer.deliveries || []).map((delivery) =>
-            delivery.id === deliveryId ? { ...delivery, ...patch } : delivery,
-          ),
-        };
-      }),
-    );
-  };
-
-  const handleSelectCheckedReason = async (customerId, deliveryId, reason) => {
-    if (!customerId || !deliveryId || !reason) return;
-
-    const previousReason =
-      data
-        .find((customer) => customer.id === customerId)
-        ?.deliveries?.find((delivery) => delivery.id === deliveryId)
-        ?.checkReason || "";
-
-    setSavingReasonId(deliveryId);
-    updateDeliveryValue(customerId, deliveryId, { checkReason: reason });
-
-    try {
-      const res = await fetch(`${ADMIN_PATH}/customer/delivery-reason`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          customerId,
-          deliveryId,
-          reason,
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json?.message || "Failed to save checked reason.");
-      }
-
-      updateDeliveryValue(customerId, deliveryId, {
-        checkReason: json?.checkReason || reason,
-      });
-    } catch (err) {
-      updateDeliveryValue(customerId, deliveryId, {
-        checkReason: previousReason,
-      });
-      alert(err.message || "Failed to save checked reason.");
-    } finally {
-      setSavingReasonId("");
-      setEditingReasonId("");
-    }
-  };
-
-  const handleSelectDeliveredTrays = async (
-    customerId,
-    deliveryId,
-    traysValue,
-  ) => {
-    if (!customerId || !deliveryId || !traysValue) return;
-
-    const trays = Number(traysValue);
-    if (!Number.isInteger(trays) || !TRAY_OPTIONS.includes(trays)) return;
-
-    const trayActionKey = `${customerId}-${deliveryId}`;
-    const previousTrays =
-      data
-        .find((customer) => customer.id === customerId)
-        ?.deliveries?.find((delivery) => delivery.id === deliveryId)
-        ?.traysDelivered ?? null;
-
-    setSavingTraysId(trayActionKey);
-    updateDeliveryValue(customerId, deliveryId, { traysDelivered: trays });
-
-    try {
-      const res = await fetch(`${ADMIN_PATH}/customer/delivery-trays`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          customerId,
-          deliveryId,
-          traysDelivered: trays,
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json?.message || "Failed to save delivered trays.");
-      }
-
-      updateDeliveryValue(customerId, deliveryId, {
-        traysDelivered: Number(json?.traysDelivered ?? trays),
-      });
-    } catch (err) {
-      updateDeliveryValue(customerId, deliveryId, {
-        traysDelivered: previousTrays,
-      });
-      alert(err.message || "Failed to save delivered trays.");
-    } finally {
-      setSavingTraysId("");
-      setEditingTraysId("");
-    }
-  };
-
+  // ⭐ OPTIMIZED: Load all customers ONCE via /user-info
   useEffect(() => {
     let isActive = true;
 
-    const loadInitialData = async () => {
+    const loadAllCustomers = async () => {
       setLoading(true);
       try {
-        const [deliveriesRes, zonesRes] = await Promise.all([
-          fetch(`${ADMIN_PATH}/all-deliveries?date=${initialDateRef.current}`),
-          fetch(`${ADMIN_PATH}/zones`),
-        ]);
-
-        const [deliveriesJson, zonesJson] = await Promise.all([
-          deliveriesRes.json(),
-          zonesRes.json(),
-        ]);
-
-        if (!isActive) return;
-
-        setData(deliveriesJson.customers || []);
-        const nextZones = Array.isArray(zonesJson) ? zonesJson : [];
-        setZones(nextZones);
-        sessionStorage.setItem(ZONES_CACHE_KEY, JSON.stringify(nextZones));
-        hasLoadedInitially.current = true;
-      } catch (err) {
-        console.error("Initial report load error:", err);
+        const res = await fetch(`${ADMIN_PATH}/user-info`);
+        const json = await res.json();
         if (isActive) {
-          setData([]);
-          fetchZones();
+          setAllCustomers(Array.isArray(json) ? json : []);
+        }
+      } catch (err) {
+        console.error("Failed to load customers:", err);
+        if (isActive) {
+          setAllCustomers([]);
         }
       } finally {
         if (isActive) {
@@ -330,80 +136,68 @@ const Report = () => {
       }
     };
 
-    const cachedZones = sessionStorage.getItem(ZONES_CACHE_KEY);
-    if (cachedZones) {
-      try {
-        const parsedZones = JSON.parse(cachedZones);
-        if (Array.isArray(parsedZones)) {
-          setZones(parsedZones);
-        }
-      } catch (err) {
-        console.error("Zones cache parse error:", err);
-      }
-    }
-
-    loadInitialData();
+    loadAllCustomers();
 
     return () => {
       isActive = false;
     };
-  }, [fetchZones]);
+  }, []);
 
-  useEffect(() => {
-    if (!hasLoadedInitially.current) {
-      return;
-    }
-
-    fetchData(selectedDate);
-  }, [fetchData, selectedDate]);
-
-  const zoneSet = useMemo(() => new Set(zones), [zones]);
-
+  // ⭐ OPTIMIZED: Get delivery data from last8Days for selected date (frontend filtering)
   const filteredDeliveries = useMemo(
     () =>
-      data.map((customer) => {
-        const delivery = customer.deliveries?.[0];
-        const statusKey = getStatusKey(delivery);
-        const canEditReason =
-          String(delivery?.type || "")
-            .trim()
-            .toLowerCase() === "reached";
-        const resolvedZone =
-          customer.zone && zoneSet.has(customer.zone)
-            ? customer.zone
-            : "UNASSIGNED";
+      allCustomers
+        .map((customer) => {
+          const last8Days = customer.last8Days || {};
+          const deliveryEntry = last8Days[selectedDate];
 
-        return {
-          customerId: customer.id,
-          deliveryId: delivery?.id || "",
-          custid: customer.custid,
-          name: customer.name,
-          customerCreatedAt: customer.createdAt || null,
-          zone: resolvedZone,
-          deliveryMan: delivery?.deliveryMan || null,
-          statusKey,
-          statusLabel: getStatusLabel(statusKey),
-          reason: getDeliveryReason(delivery),
-          canEditReason,
-          createdAt: delivery?.timestamp || null,
-          checkReason: delivery?.checkReason || "",
-          traysDelivered:
-            typeof delivery?.traysDelivered === "number"
-              ? delivery.traysDelivered
-              : null,
-          latestRemark: customer.latestRemark || "",
-        };
-      }),
-    [data, zoneSet],
+          // Normalize entry (handle both string and object formats)
+          const entryObj =
+            typeof deliveryEntry === "string"
+              ? { status: deliveryEntry }
+              : deliveryEntry || {};
+
+          const statusKey = entryObj.status
+            ? entryObj.status === "delivered"
+              ? "delivered"
+              : "checked"
+            : "pending";
+
+          const resolvedZone = customer.zone || "UNASSIGNED";
+
+          // Get agent info from entry
+          const deliveryMan = entryObj.agentName
+            ? { name: entryObj.agentName }
+            : null;
+
+          return {
+            customerId: customer.id,
+            deliveryId: selectedDate,
+            custid: customer.custid,
+            name: customer.name,
+            customerCreatedAt: customer.createdAt || null,
+            zone: resolvedZone,
+            deliveryMan,
+            statusKey,
+            statusLabel: getStatusLabel(statusKey),
+            reason: entryObj.reason || "",
+            createdAt: entryObj.time || null,
+            traysDelivered: entryObj.trays || entryObj.quantity || null,
+          };
+        })
+        .filter((d) => d.statusKey !== "pending"), // Only show customers with activity for selected date
+    [allCustomers, selectedDate],
   );
 
   const deliveryAgentOptions = useMemo(
     () =>
-      [...new Set(
-        filteredDeliveries
-          .map((d) => getDeliveryAgentName(d.deliveryMan))
-          .filter(Boolean),
-      )].sort((a, b) => a.localeCompare(b)),
+      [
+        ...new Set(
+          filteredDeliveries
+            .map((d) => getDeliveryAgentName(d.deliveryMan))
+            .filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
     [filteredDeliveries],
   );
 
@@ -469,8 +263,10 @@ const Report = () => {
       all: filteredDeliveries.length,
       delivered: filteredDeliveries.filter((d) => d.statusKey === "delivered")
         .length,
-      checked: filteredDeliveries.filter((d) => d.statusKey === "checked").length,
-      pending: filteredDeliveries.filter((d) => d.statusKey === "pending").length,
+      checked: filteredDeliveries.filter((d) => d.statusKey === "checked")
+        .length,
+      pending: filteredDeliveries.filter((d) => d.statusKey === "pending")
+        .length,
     }),
     [filteredDeliveries],
   );
@@ -480,32 +276,33 @@ const Report = () => {
       selectedAgent === "all"
         ? null
         : filteredDeliveries.reduce(
-          (stats, delivery) => {
-            const agentName = getDeliveryAgentName(delivery.deliveryMan);
+            (stats, delivery) => {
+              const agentName = getDeliveryAgentName(delivery.deliveryMan);
 
-            if (agentName !== selectedAgent) {
+              if (agentName !== selectedAgent) {
+                return stats;
+              }
+
+              if (delivery.statusKey === "checked") {
+                stats.checked += 1;
+              }
+
+              if (delivery.statusKey === "delivered") {
+                stats.delivered += 1;
+              }
+
+              if (isCompletedStatus(delivery.statusKey)) {
+                stats.total += 1;
+              }
+
               return stats;
-            }
-
-            if (delivery.statusKey === "checked") {
-              stats.checked += 1;
-            }
-
-            if (delivery.statusKey === "delivered") {
-              stats.delivered += 1;
-            }
-
-            if (isCompletedStatus(delivery.statusKey)) {
-              stats.total += 1;
-            }
-
-            return stats;
-          },
-          { checked: 0, delivered: 0, total: 0 },
-        ),
+            },
+            { checked: 0, delivered: 0, total: 0 },
+          ),
     [filteredDeliveries, selectedAgent],
   );
-  const downloadSummaryExcel = async () => {
+  // ⭐ OPTIMIZED: Generate Excel from frontend data (no API call)
+  const downloadSummaryExcel = () => {
     if (!startRange || !endRange) {
       alert("Select Start & End Date");
       return;
@@ -516,53 +313,53 @@ const Report = () => {
       return;
     }
 
-    try {
-      const res = await fetch(
-        `${ADMIN_PATH}/all-deliveries-range?start=${startRange}&end=${endRange}`,
-      );
+    const sheetData = [
+      [
+        "Date",
+        "Customer ID",
+        "Customer Name",
+        "Zone",
+        "Delivery Agent Name",
+        "Status",
+        "Remarks",
+      ],
+    ];
 
-      const json = await res.json();
-      const customers = json.customers || [];
+    // Filter customers by date range from last8Days
+    allCustomers.forEach((customer) => {
+      const last8Days = customer.last8Days || {};
 
-      const sheetData = [
-        [
-          "Date",
-          "Customer ID",
-          "Customer Name",
-          "Creation Time",
-          "Zone",
-          "Delivery Agent Name",
-          "Status",
-          "Remarks",
-        ],
-      ];
+      Object.entries(last8Days).forEach(([date, entry]) => {
+        // Check if date is within range
+        if (date < startRange || date > endRange) return;
 
-      customers.forEach((customer) => {
-        customer.deliveries.forEach((delivery) => {
-          const resolvedZone = zones.includes(customer.zone)
-            ? customer.zone
-            : "UNASSIGNED";
-          const remarks =
-            getStatusKey(delivery) === "delivered"
-              ? typeof delivery?.traysDelivered === "number"
-                ? formatTrayLabel(delivery.traysDelivered)
-                : ""
-              : getDeliveryReason(delivery);
+        const entryObj = typeof entry === "string" ? { status: entry } : entry;
+        const status = entryObj.status || "pending";
 
-          sheetData.push([
-            delivery.id,
-            customer.custid,
-            customer.name,
-            // customer.formatTime(createdAt),
-            formatTime(delivery.timestamp),
-            resolvedZone,
-            delivery.deliveryMan?.name || "Not Assigned",
-            getStatusLabel(getStatusKey(delivery)),
-            remarks || "-",
-          ]);
-        });
+        if (status === "pending") return; // Skip pending
+
+        const resolvedZone = customer.zone || "UNASSIGNED";
+
+        const remarks =
+          status === "delivered"
+            ? entryObj.trays || entryObj.quantity
+              ? formatTrayLabel(entryObj.trays || entryObj.quantity)
+              : ""
+            : entryObj.reason || "";
+
+        sheetData.push([
+          date,
+          customer.custid,
+          customer.name,
+          resolvedZone,
+          entryObj.agentName || "Not Assigned",
+          getStatusLabel(status === "delivered" ? "delivered" : "checked"),
+          remarks || "-",
+        ]);
       });
+    });
 
+    try {
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Detailed Report");
@@ -578,7 +375,8 @@ const Report = () => {
         }),
         `delivery_report_${startRange}_to_${endRange}.xlsx`,
       );
-    } catch {
+    } catch (err) {
+      console.error("Excel generation failed:", err);
       alert("Excel generation failed");
     }
   };
@@ -742,9 +540,11 @@ const Report = () => {
             </div>
 
             <button
-              disabled={!startRange || !endRange || !data.length}
+              // eslint-disable-next-line no-undef
+              disabled={!startRange || !endRange || !allCustomers.length}
               onClick={downloadSummaryExcel}
               className={`w-full sm:self-end px-5 py-2.5 rounded-lg shadow text-white ${
+                // eslint-disable-next-line no-undef
                 !startRange || !endRange || !data.length
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700"
@@ -826,7 +626,8 @@ const Report = () => {
                           {row.zone || "UNASSIGNED"}
                         </td>
                         <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
-                          {getDeliveryAgentName(row.deliveryMan) || "Not assigned"}
+                          {getDeliveryAgentName(row.deliveryMan) ||
+                            "Not assigned"}
                         </td>
                         <td className="px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 lg:py-4">
                           <div className="flex flex-col items-start gap-1.5">
@@ -838,65 +639,12 @@ const Report = () => {
                               {row.statusLabel}
                             </span>
 
-                            {row.statusKey === "delivered" && (
-                              <div className="flex items-center gap-2">
-                                {(() => {
-                                  const trayActionKey = `${row.customerId}-${row.deliveryId}`;
-                                  const hasTraysAssigned = Number.isInteger(row.traysDelivered);
-                                  const showDropdown =
-                                    !hasTraysAssigned || editingTraysId === trayActionKey;
-
-                                  if (!showDropdown) {
-                                    return (
-                                      <>
-                                        <span className="text-[11px] text-gray-600 font-medium">
-                                          {formatTrayLabel(row.traysDelivered)}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingTraysId(trayActionKey)}
-                                          className="p-1 rounded hover:bg-gray-100"
-                                          aria-label="Edit trays delivered"
-                                        >
-                                          <FiEdit2 className="text-xs text-gray-600" />
-                                        </button>
-                                      </>
-                                    );
-                                  }
-
-                                  return (
-                                  <select
-                                    value={
-                                      Number.isInteger(row.traysDelivered)
-                                        ? String(row.traysDelivered)
-                                        : ""
-                                    }
-                                    onChange={(e) => {
-                                      handleSelectDeliveredTrays(
-                                        row.customerId,
-                                        row.deliveryId,
-                                        e.target.value,
-                                      );
-                                    }}
-                                    disabled={savingTraysId === trayActionKey}
-                                    className="text-xs border rounded-md px-2 py-1"
-                                  >
-                                    <option value="" disabled>
-                                      Select trays
-                                    </option>
-                                    {TRAY_OPTIONS.map((option) => (
-                                      <option key={option} value={option}>
-                                        {formatTrayLabel(option)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  );
-                                })()}
-                                {savingTraysId === `${row.customerId}-${row.deliveryId}` && (
-                                  <span className="text-[11px] text-gray-500">Saving...</span>
-                                )}
-                              </div>
-                            )}
+                            {row.statusKey === "delivered" &&
+                              row.traysDelivered && (
+                                <span className="text-[11px] text-gray-600 font-medium">
+                                  {formatTrayLabel(row.traysDelivered)}
+                                </span>
+                              )}
 
                             {getDeliveryRemark(row) && (
                               <span className="text-[11px] text-gray-500 font-medium">
@@ -909,7 +657,10 @@ const Report = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="6" className="py-14 text-center text-gray-500">
+                      <td
+                        colSpan="6"
+                        className="py-14 text-center text-gray-500"
+                      >
                         No deliveries found
                       </td>
                     </tr>

@@ -108,6 +108,7 @@ const AnalyticsView = () => {
     } else if (
       normalizedType === "reached" ||
       normalizedType === "price_mismatch" ||
+      normalizedType === "shop_closed" ||
       normalizedType === "stock_available" ||
       normalizedType === "other_vendor"
     ) {

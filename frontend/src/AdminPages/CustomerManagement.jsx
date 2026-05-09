@@ -96,15 +96,21 @@ export default function CustomerManagement() {
   const getLatestStatus = (customer) => {
     const last8Days = customer.last8Days || {};
     const entry = last8Days[todayDate];
-    const todayStatus = (typeof entry === "string" ? entry : entry?.status || "")
+    const todayStatus = (
+      typeof entry === "string" ? entry : entry?.status || ""
+    )
       .trim()
       .toLowerCase();
 
     if (todayStatus === "delivered") return "Delivered";
     if (
-      ["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(
-        todayStatus,
-      )
+      [
+        "checked",
+        "reached",
+        "price_mismatch",
+        "stock_available",
+        "other_vendor",
+      ].includes(todayStatus)
     ) {
       return "Checked";
     }
@@ -113,30 +119,27 @@ export default function CustomerManagement() {
   };
 
   // ⭐ NEW: Display remarks with proper formatting
-  // - If Delivered: show "X tray/trays" only if count > 0
-  // - If Checked: show reason (e.g., "PRICE MISMATCH")
+  // - If Delivered: show "X tray/trays" from last8Days entry
+  // - If Checked: show reason from last8Days entry
   // - If Pending: show nothing
   const getRemarkDisplay = (customer) => {
     const last8Days = customer.last8Days || {};
     const entry = last8Days[todayDate];
-    const todayReason = typeof entry === "object" ? entry?.reason : null;
+    const entryObj = typeof entry === "object" ? entry : {};
 
     const status = getLatestStatus(customer);
-    const remark = customer.latestRemark || "";
 
     if (status === "Delivered") {
-      const match = remark.match(/^(\d+)\s+trays?$/i);
-      if (match) {
-        const count = parseInt(match[1], 10);
-        if (count > 0) return count === 1 ? "1 tray" : `${count} trays`;
+      const trays = entryObj.trays || entryObj.quantity;
+      if (trays && Number(trays) > 0) {
+        const count = Number(trays);
+        return count === 1 ? "1 tray" : `${count} trays`;
       }
       return "";
     }
 
     if (status === "Checked") {
-      return (
-        todayReason || (remark && remark !== "-" ? remark : "")
-      ).toUpperCase();
+      return (entryObj.reason || "").toUpperCase();
     }
 
     return "";
@@ -479,7 +482,9 @@ export default function CustomerManagement() {
       // Revert optimistic update if server write failed.
       setCustomers((prev) =>
         prev.map((row) =>
-          row.id === customer.id ? { ...row, potential: previousPotential } : row,
+          row.id === customer.id
+            ? { ...row, potential: previousPotential }
+            : row,
         ),
       );
     } finally {
@@ -727,17 +732,6 @@ function normalizePriority(value) {
   return "P0";
 }
 
-function normalizeStatus(value) {
-  const key = String(value || "")
-    .trim()
-    .toLowerCase();
-
-  if (key === "delivered") return "Delivered";
-  if (key === "checked") return "Checked";
-
-  return "Pending";
-}
-
 function getPriorityColor(value) {
   const priority = normalizePriority(value);
 
@@ -776,10 +770,6 @@ function getStatusColor(value) {
   }
 }
 
-
-
-
-
 function getDateStringInTimeZone(date, timeZone) {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -804,8 +794,22 @@ function getDateStringInTimeZone(date, timeZone) {
 
 function normalizePotential(value) {
   const VALID_POTENTIALS = [
-    "T1","T2","T3","T4","T5","T6","T7","T8","T9",
-    "T10","T15","T20","T25","T30","T50","T100",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "T9",
+    "T10",
+    "T15",
+    "T20",
+    "T25",
+    "T30",
+    "T50",
+    "T100",
   ];
 
   const raw = String(value ?? "")
@@ -825,8 +829,22 @@ function normalizePotential(value) {
 
 function getNextPotential(currentPotential) {
   const POTENTIALS = [
-    "T1","T2","T3","T4","T5","T6","T7","T8",
-    "T9","T10","T15","T20","T25","T30","T50","T100",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "T9",
+    "T10",
+    "T15",
+    "T20",
+    "T25",
+    "T30",
+    "T50",
+    "T100",
   ];
 
   const normalized = normalizePotential(currentPotential);
@@ -838,7 +856,9 @@ function getNextPotential(currentPotential) {
 function resolvePeakFrequency(customer) {
   const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
-    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
+    customer?.Peak_Frequency ||
+      customer?.peakFrequency ||
+      customer?.peak_frequency,
   );
 
   if (!savedPeak) return currentPeak;
@@ -849,7 +869,10 @@ function resolvePeakFrequency(customer) {
 }
 
 function getPeakFrequencyLabel(customer) {
-  return normalizePeakFrequency(customer?.peakFrequency) || resolvePeakFrequency(customer);
+  return (
+    normalizePeakFrequency(customer?.peakFrequency) ||
+    resolvePeakFrequency(customer)
+  );
 }
 
 function getPeakFrequencyNumber(customer) {
