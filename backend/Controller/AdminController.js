@@ -110,7 +110,7 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
     if (normalizedType === "delivered") {
       status = "delivered";
     } else if (
-      ["reached", "price_mismatch", "stock_available", "other_vendor"].includes(
+      ["reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"].includes(
         normalizedType,
       )
     ) {
@@ -268,6 +268,7 @@ const getStatusAndReasonFromType = (type, checkReason) => {
   } else if (
     normalizedType === "reached" ||
     normalizedType === "price_mismatch" ||
+    normalizedType === "shop_closed" ||
     normalizedType === "stock_available" ||
     normalizedType === "other_vendor"
   ) {
@@ -280,6 +281,7 @@ const getStatusAndReasonFromType = (type, checkReason) => {
 const RETENTION_CATEGORIES = [
   "stock_available",
   "price_mismatch",
+  "shop_closed",
   "other_vendor",
 ];
 
@@ -318,8 +320,8 @@ const getRetentionCategoryFromDelivery = (delivery = {}) => {
 };
 
 const getRetentionCategoryLabel = (category) => {
+  if (category === "price_mismatch" || category === "shop_closed") return "Shop Closed";
   if (category === "stock_available") return "Stock Available";
-  if (category === "price_mismatch") return "Price Mismatch";
   if (category === "other_vendor") return "Other Vendor";
   return "-";
 };
@@ -441,7 +443,7 @@ const getRetentionCustomers = async (req, res) => {
     // ⭐ OPTIMIZATION: Query customers who have a "checked" status today
     // We do two queries to handle BOTH new object format and legacy string format in last8Days
     const customersRef = db.collection("customers");
-    const statuses = ["reached", "price_mismatch", "stock_available", "other_vendor"];
+    const statuses = ["reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"];
     
     const q1 = customersRef.where(`last8Days.${todayKey}.status`, "in", statuses).get();
     const q2 = customersRef.where(`last8Days.${todayKey}`, "in", statuses).get();
@@ -463,6 +465,7 @@ const getRetentionCustomers = async (req, res) => {
       all: 0,
       stock_available: 0,
       price_mismatch: 0,
+      shop_closed: 0,
       other_vendor: 0,
     };
 
@@ -685,7 +688,8 @@ const getRetentionCustomers = async (req, res) => {
       categories: [
         { value: "all", label: "All" },
         { value: "stock_available", label: "Stock Available" },
-        { value: "price_mismatch", label: "Price Mismatch" },
+        { value: "price_mismatch", label: "Shop Closed" },
+        { value: "shop_closed", label: "Shop Closed" },
         { value: "other_vendor", label: "Other Vendor" },
       ],
       counts,
@@ -934,25 +938,6 @@ const addZone = async (req, res) => {
   }
 };
 
-const getZones = async (req, res) => {
-  const cacheKey = "zones:list";
-
-  try {
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
-
-    const db = getFirestore();
-    const snap = await db.collection("zones").get();
-
-    const zones = snap.docs.map((d) => d.data().name);
-    cache.set(cacheKey, zones, 300);
-    res.json(zones);
-  } catch (e) {
-    res.status(500).json({ message: "Error fetching zones" });
-  }
-};
 
 const getAnalyticsLast8 = async (req, res) => {
   const cacheKey = "analytics:last8:v2";
@@ -1011,74 +996,7 @@ const getAnalyticsLast8 = async (req, res) => {
   }
 };
 // Get deliveries between date range (For Excel)
-const getAllCustomerDeliveriesRange = async (req, res) => {
-  const { start, end } = req.query;
-  if (!start || !end) {
-    return res.status(400).json({ message: "Start and End date required" });
-  }
-
-  try {
-    const db = getFirestore();
-
-    // 1. Fetch all delivery boys once
-    const deliveryManSnap = await db.collection("DeliveryMan").get();
-    const deliveryManMap = new Map();
-    deliveryManSnap.docs.forEach((doc) => {
-      const data = doc.data();
-      deliveryManMap.set(doc.id, {
-        name: data.name || "",
-        phone: data.phone || "",
-      });
-    });
-
-    const customersSnap = await db.collection("customers").get();
-
-    // ⭐ OPTIMIZATION: Use last8Days map for range queries. 
-    // This avoids fetching subcollections for every customer.
-    const customersWithDeliveries = customersSnap.docs.map((doc) => {
-      const c = doc.data() || {};
-      const last8Days = c.last8Days || {};
-
-      // Filter dates that fall within the range [start, end]
-      const deliveries = Object.entries(last8Days)
-        .filter(([dateKey]) => dateKey >= start && dateKey <= end)
-        .map(([dateKey, entry]) => {
-          const status = typeof entry === "string" ? entry : entry?.status || "";
-          
-          // Resolve Delivery Agent
-          const resolvedAgent = resolveDeliveryAgent(
-            entry,
-            c.deliveredBy || c.deliveryMan,
-            deliveryManMap,
-          );
-
-          return {
-            id: dateKey,
-            type: status,
-            status: status,
-            checkReason: (typeof entry === "object" ? entry?.reason : "") || c.checkReason || "",
-            traysDelivered:
-              (typeof entry === "object" ? entry?.traysDelivered : null) ??
-              c.traysDelivered ??
-              null,
-            deliveryMan: resolvedAgent,
-          };
-        });
-
-      return {
-        id: doc.id,
-        ...c,
-        priority: normalizeCustomerPriority(c.priority),
-        deliveries,
-      };
-    }).filter(c => c.deliveries.length > 0);
-
-    return res.status(200).json({ customers: customersWithDeliveries });
-  } catch (err) {
-    console.error("Range API error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
+// NOTE: Moved to frontend - no longer needed
 
 const getCustomersByDeliveryDays = async (req, res) => {
   try {
@@ -1261,244 +1179,7 @@ const getCustomersByDeliveryCount = async (req, res) => {
   }
 };
 
-//  for storing the Checked Reasonn and Delivery Quantity
 
-const saveDeliveredTrays = async (req, res) => {
-  try {
-    const { customerId, deliveryId, traysDelivered } = req.body;
-    const allowedTrayValues = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100];
-
-    if (!customerId || !deliveryId || traysDelivered === undefined) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    const trays = Number(traysDelivered);
-    if (!Number.isInteger(trays) || !allowedTrayValues.includes(trays)) {
-      return res
-        .status(400)
-        .json({ message: "Invalid trays value selected" });
-    }
-
-    const db = getFirestore();
-    const deliveryRef = db
-      .collection("customers")
-      .doc(customerId)
-      .collection("deliveries")
-      .doc(deliveryId);
-
-    const deliverySnap = await deliveryRef.get();
-    if (!deliverySnap.exists) {
-      return res.status(404).json({ message: "Delivery not found" });
-    }
-
-    const deliveryData = deliverySnap.data();
-    if (deliveryData.type !== "delivered") {
-      return res
-        .status(400)
-        .json({ message: "Trays can only be added for DELIVERED entries" });
-    }
-
-    await deliveryRef.update({ traysDelivered: trays });
-
-    // 🔄 Update denormalized last8Days
-    const deliveryDate = new Date(deliveryId);
-    await updateLast8Days(db, customerId, deliveryDate, "delivered", {
-      time: Date.now(),
-      traysDelivered: trays,
-    });
-
-    // ⭐ Denormalize to customer document with actual tray count & sync todayOverride
-    const todayDate = getTodayDateString();
-    const deliveryDateStr = getDateStringInTimeZone(deliveryDate, INDIA_TZ);
-
-    const trayLabel = trays === 1 ? "1 tray" : `${trays} trays`;
-    const updateData = {
-      latestRemark: trayLabel,
-    };
-
-    // ✅ If marking TODAY's delivery, also update todayOverride to OFF
-    if (deliveryDateStr === todayDate) {
-      updateData.todayOverride = {
-        date: todayDate,
-        status: "OFF",
-      };
-    }
-
-    await db.collection("customers").doc(customerId).update(updateData);
-
-    cache.del(`userDeliveries:${customerId}`);
-    cache.del("latestRemarks");
-    cache.del("userInfo"); // ⭐ Invalidate main cache
-    const allDeliveriesKeys = cache
-      .keys()
-      .filter((key) => key.startsWith("allCustomerDeliveries"));
-    if (allDeliveriesKeys.length > 0) {
-      cache.del(allDeliveriesKeys);
-    }
-
-    return res.status(200).json({
-      message: "Trays saved successfully",
-      traysDelivered: trays,
-    });
-  } catch (err) {
-    console.error("saveDeliveredTrays error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-const saveCheckedReason = async (req, res) => {
-  try {
-    const { customerId, deliveryId, reason } = req.body;
-
-    const allowedReasons = [
-      "PRICE MISMATCH",
-      "STOCK AVAILABLE",
-      "OTHER VENDOR",
-    ];
-
-    if (!customerId || !deliveryId || !reason) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    if (!allowedReasons.includes(reason)) {
-      return res.status(400).json({ message: "Invalid reason selected" });
-    }
-
-    const db = getFirestore();
-    const deliveryRef = db
-      .collection("customers")
-      .doc(customerId)
-      .collection("deliveries")
-      .doc(deliveryId);
-
-    const deliverySnap = await deliveryRef.get();
-
-    if (!deliverySnap.exists) {
-      return res.status(404).json({ message: "Delivery not found" });
-    }
-
-    const deliveryData = deliverySnap.data();
-
-    if (deliveryData.type !== "reached") {
-      return res
-        .status(400)
-        .json({ message: "Reason can only be added for CHECKED deliveries" });
-    }
-
-    const previousReason = deliveryData.checkReason || "";
-
-    // Editing should be idempotent: if same value is selected, return success.
-    if (previousReason === reason) {
-      return res.status(200).json({
-        message: "Reason already up to date",
-        checkReason: previousReason,
-      });
-    }
-
-    await deliveryRef.update({
-      checkReason: reason,
-      checkReasonAt: Date.now(),
-    });
-
-    // 🔄 Update denormalized last8Days
-    await updateLast8Days(db, customerId, deliveryId, "reached", { reason, time: Date.now() });
-
-    // ⭐ Denormalize to customer document
-    await db.collection("customers").doc(customerId).update({
-      latestRemark: reason,
-    });
-
-    // Invalidate caches that may serve stale delivery rows.
-    cache.del(`userDeliveries:${customerId}`);
-    cache.del("allCustomerDeliveries");
-    cache.del(`allCustomerDeliveries:${deliveryId}`);
-    cache.del("latestRemarks");
-    cache.del("userInfo"); // ⭐ Invalidate main cache
-
-    return res.status(200).json({
-      message: previousReason
-        ? "Reason updated successfully"
-        : "Reason saved successfully",
-      checkReason: reason,
-    });
-  } catch (err) {
-    console.error("saveCheckedReason error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-const resetAllCheckedReasons = async (req, res) => {
-  try {
-    const { customerId } = req.body;
-
-    if (!customerId) {
-      return res.status(400).json({ message: "Customer ID is required" });
-    }
-
-    const db = getFirestore();
-    const deliveriesRef = db
-      .collection("customers")
-      .doc(customerId)
-      .collection("deliveries");
-
-    const deliveriesSnap = await deliveriesRef.get();
-
-    if (deliveriesSnap.empty) {
-      return res.status(200).json({
-        message: "No deliveries found",
-        resetCount: 0,
-      });
-    }
-
-    const batch = db.batch();
-    let resetCount = 0;
-
-    deliveriesSnap.forEach((doc) => {
-      const data = doc.data();
-      const hasCheckedReason =
-        data.type === "reached" && (data.checkReason || data.checkReasonAt);
-      const hasTrays =
-        data.type === "delivered" && data.traysDelivered !== undefined;
-
-      if (!hasCheckedReason && !hasTrays) {
-        return;
-      }
-
-      const updatePayload = {};
-      if (hasCheckedReason) {
-        updatePayload.checkReason = admin.firestore.FieldValue.delete();
-        updatePayload.checkReasonAt = admin.firestore.FieldValue.delete();
-      }
-      if (hasTrays) {
-        updatePayload.traysDelivered = admin.firestore.FieldValue.delete();
-      }
-
-      batch.update(doc.ref, updatePayload);
-      resetCount += 1;
-    });
-
-    if (resetCount > 0) {
-      await batch.commit();
-    }
-
-    cache.del(`userDeliveries:${customerId}`);
-    cache.del("latestRemarks");
-    const allDeliveriesKeys = cache
-      .keys()
-      .filter((key) => key.startsWith("allCustomerDeliveries"));
-    if (allDeliveriesKeys.length > 0) {
-      cache.del(allDeliveriesKeys);
-    }
-
-    return res.status(200).json({
-      message: "Checked reasons and trays reset successfully",
-      resetCount,
-    });
-  } catch (err) {
-    console.error("resetAllCheckedReasons error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
 //  returns only the latest delivery remark per customer
 const getLatestRemarks = async (req, res) => {
   try {
@@ -1961,17 +1642,12 @@ export {
   saveSkipConfig,
   toggleTodayDelivery,
   addZone,
-  getZones,
   getAnalyticsLast8,
-  getAllCustomerDeliveriesRange,
   getCustomersByDeliveryDays,
   getCustomersByDeliveryCount,
-  saveCheckedReason,
   getRetentionCustomers,
   resetRetentionCustomer,
-  resetAllCheckedReasons,
-  saveDeliveredTrays,
   getLatestRemarks,
-   getCollectionSummary,
+  getCollectionSummary,
   recalculateCollectionData,
 };

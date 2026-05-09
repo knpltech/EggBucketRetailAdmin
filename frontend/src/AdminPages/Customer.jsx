@@ -12,11 +12,12 @@ import {
   FiEdit2,
 } from "react-icons/fi";
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
-const CHECK_REASONS = ["PRICE MISMATCH", "STOCK AVAILABLE", "OTHER VENDOR"];
+const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
+  "shop_closed",
   "stock_available",
   "other_vendor",
 ];

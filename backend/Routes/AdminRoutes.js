@@ -48,19 +48,14 @@ import {
   updateCustomerPriority,
   updateCustomerPotential,
   addZone,
-  getZones,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getRetentionCustomers,
   resetRetentionCustomer,
-  saveCheckedReason,
-  resetAllCheckedReasons,
-  saveDeliveredTrays,
-  getAllCustomerDeliveriesRange,
   getCustomersByDeliveryCount,
   getLatestRemarks,
-  toggleTodayDelivery,
   saveSkipConfig,
+  toggleTodayDelivery,
   getCollectionSummary,
   recalculateCollectionData,
 } from "../Controller/AdminController.js";
@@ -79,16 +74,11 @@ router.post("/add-customer", upload.single("image"), addCustomer);
 router.post("/customer/status", updateCustomerMeta);
 router.post("/customer/priority", updateCustomerPriority);
 router.post("/customer/potential", updateCustomerPotential);
-router.post("/customer/delivery-reason", saveCheckedReason);
-router.post("/customer/delivery-reason/reset-all", resetAllCheckedReasons);
-router.post("/customer/delivery-trays", saveDeliveredTrays);
-router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/customer/skip-config", saveSkipConfig);
+router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
-router.get("/zones", getZones);
 
 router.get("/analytics/last8", getAnalyticsLast8);
-router.get("/all-deliveries-range", getAllCustomerDeliveriesRange);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
