@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import axios from "axios";
-import { ADMIN_PATH } from "../constant";
 import {
   FiArrowLeft,
   FiDownload,
@@ -9,11 +7,8 @@ import {
   FiCalendar,
   FiTruck,
   FiPhone,
-  FiEdit2,
 } from "react-icons/fi";
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
-const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR"];
-const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
@@ -53,6 +48,101 @@ const getDeliveryStatusLabel = (delivery) => {
 const getDeliveryReason = (delivery) =>
   delivery?.reason || delivery?.checkReason || "";
 
+const parseTimestamp = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (typeof value === "number") {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string") {
+    let normalized = value.trim().replace(/\u202f/g, " ");
+    let date = new Date(normalized);
+    if (!Number.isNaN(date.getTime())) return date;
+
+    const regex = /^(.+?)\s+at\s+(.+?)\s+UTC([+-]\d{1,2}:\d{2})$/i;
+    const match = normalized.match(regex);
+    if (match) {
+      const [, datePart, timePart, offset] = match;
+      const candidate = `${datePart} ${timePart} ${offset}`;
+      date = new Date(candidate);
+      if (!Number.isNaN(date.getTime())) return date;
+
+      const candidate2 = `${datePart} ${timePart} GMT${offset}`;
+      date = new Date(candidate2);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+
+    // Fallback: remove 'at' and UTC prefix if still failing.
+    normalized = normalized.replace(/\s+at\s+/i, " ").replace(/\s+UTC/, " ");
+    date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "object") {
+    const seconds = value.seconds ?? value._seconds;
+    const nanoseconds = value.nanoseconds ?? value._nanoseconds ?? 0;
+    if (typeof seconds === "number") {
+      const ms = seconds * 1000 + Math.floor(nanoseconds / 1e6);
+      const date = new Date(ms);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+  return null;
+};
+
+const getDeliveryTimestamp = (delivery, last8Entry = {}) => {
+  return (
+    parseTimestamp(last8Entry.time) ||
+    parseTimestamp(delivery?.time) ||
+    parseTimestamp(delivery?.timestamp)
+  );
+};
+
+const buildDeliveriesFromLast8Days = (customer) => {
+  if (!customer?.last8Days) return [];
+
+  return Object.entries(customer.last8Days)
+    .map(([date, entry]) => {
+      if (!entry || typeof entry === "string") return null;
+
+      const status = String(entry.status || entry.type || "")
+        .trim()
+        .toLowerCase();
+      const deliveryMan =
+        typeof entry.deliveryMan === "object"
+          ? entry.deliveryMan
+          : entry.agentName
+            ? { name: entry.agentName, phone: "" }
+            : entry.deliveryMan
+              ? { name: entry.deliveryMan, phone: "" }
+              : null;
+
+      return {
+        id: date,
+        timestamp: entry.time ?? entry.timestamp ?? null,
+        type: status || "pending",
+        status: status || "pending",
+        checkReason: entry.checkReason || entry.reason || "",
+        traysDelivered:
+          typeof entry.quantity === "number" ? entry.quantity : null,
+        deliveryMan,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const aTime = parseTimestamp(a.timestamp)?.getTime();
+      const bTime = parseTimestamp(b.timestamp)?.getTime();
+
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+
+      return bTime - aTime;
+    });
+};
+
 // Component to display information of particular customer
 const Customer = () => {
   // Obtain customer id from parameters
@@ -69,12 +159,7 @@ const Customer = () => {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [error, setError] = useState("");
   const [showFullImage, setShowFullImage] = useState(false);
-  const [savingReasonId, setSavingReasonId] = useState("");
-  const [savingTraysId, setSavingTraysId] = useState("");
-  const [editingReasonId, setEditingReasonId] = useState("");
-  const [editingTraysId, setEditingTraysId] = useState("");
   const [reasonError, setReasonError] = useState("");
-  const [isResettingAllReasons, setIsResettingAllReasons] = useState(false);
 
   const formatTrayLabel = (value) => {
     const trays = Number(value);
@@ -93,19 +178,10 @@ const Customer = () => {
         return;
       }
 
-      try {
-        const customerRes = await axios.get(`${ADMIN_PATH}/customer-info/${id}`);
-        if (!isMounted) return;
-        setCustomer(customerRes.data);
-      } catch (err) {
-        if (!isMounted) return;
-        console.error("Error fetching customer:", err);
-        setError("Failed to load customer data.");
-      } finally {
-        if (isMounted) {
-          setLoadingCustomer(false);
-        }
-      }
+      setError(
+        "Customer data is unavailable. Please open this page from the customer list.",
+      );
+      setLoadingCustomer(false);
     };
 
     setError("");
@@ -140,17 +216,15 @@ const Customer = () => {
     setLoadingDeliveries(true);
 
     try {
-      const deliveriesRes = await axios.get(
-        `${ADMIN_PATH}/customer/deliveries/${id}`,
-      );
-      const nextDeliveries = deliveriesRes.data.deliveries || [];
+      if (!customer) {
+        setReasonError("Customer data is unavailable.");
+        return null;
+      }
+
+      const nextDeliveries = buildDeliveriesFromLast8Days(customer);
       setDeliveries(nextDeliveries);
       setHistoryLoaded(true);
       return nextDeliveries;
-    } catch (err) {
-      console.error("Error fetching deliveries:", err);
-      setReasonError("Failed to load delivery data.");
-      return null;
     } finally {
       setLoadingDeliveries(false);
     }
@@ -161,9 +235,10 @@ const Customer = () => {
     if (!sourceDeliveries.length) return;
 
     const rows = sourceDeliveries.map((delivery) => {
-      const dateObj = new Date(delivery.timestamp._seconds * 1000);
-      const date = dateObj.toLocaleDateString();
-      const time = dateObj.toLocaleTimeString();
+      const last8Entry = customer?.last8Days?.[delivery.id] || {};
+      const dateObj = getDeliveryTimestamp(delivery, last8Entry);
+      const date = dateObj ? dateObj.toLocaleDateString() : "";
+      const time = dateObj ? dateObj.toLocaleTimeString() : "";
 
       return {
         Date: date,
@@ -205,157 +280,7 @@ const Customer = () => {
     handleDownloadCSV(sourceDeliveries);
   };
 
-  const handleSelectCheckedReason = async (deliveryId, reason) => {
-    if (!reason || !customer?.id) return;
 
-    setReasonError("");
-    setSavingReasonId(deliveryId);
-
-    // Optimistic update so dropdown disappears immediately after selection.
-    setDeliveries((prev) =>
-      prev.map((delivery) =>
-        delivery.id === deliveryId
-          ? { ...delivery, checkReason: reason }
-          : delivery,
-      ),
-    );
-
-    try {
-      const res = await axios.post(`${ADMIN_PATH}/customer/delivery-reason`, {
-        customerId: customer.id,
-        deliveryId,
-        reason,
-      });
-
-      const savedReason = res.data?.checkReason || reason;
-
-      setDeliveries((prev) =>
-        prev.map((delivery) =>
-          delivery.id === deliveryId
-            ? { ...delivery, checkReason: savedReason }
-            : delivery,
-        ),
-      );
-    } catch (err) {
-      const msg =
-        err?.response?.data?.message || "Failed to save checked reason.";
-
-      // If reason already exists on server, reflect that on UI instead of blocking.
-      if (err?.response?.status === 409 && err?.response?.data?.checkReason) {
-        setDeliveries((prev) =>
-          prev.map((delivery) =>
-            delivery.id === deliveryId
-              ? {
-                  ...delivery,
-                  checkReason: err.response.data.checkReason,
-                }
-              : delivery,
-          ),
-        );
-      } else {
-        // Roll back optimistic update if save failed.
-        setDeliveries((prev) =>
-          prev.map((delivery) =>
-            delivery.id === deliveryId
-              ? { ...delivery, checkReason: "" }
-              : delivery,
-          ),
-        );
-        setReasonError(msg);
-      }
-    } finally {
-      setSavingReasonId("");
-      setEditingReasonId("");
-    }
-  };
-
-  const handleResetAllCheckedReasons = async () => {
-    if (!customer?.id) return;
-
-    setReasonError("");
-    setIsResettingAllReasons(true);
-
-    try {
-      await axios.post(`${ADMIN_PATH}/customer/delivery-reason/reset-all`, {
-        customerId: customer.id,
-      });
-
-      setDeliveries((prev) =>
-        prev.map((delivery) =>
-          delivery.type === "reached"
-            ? { ...delivery, checkReason: "" }
-            : delivery.type === "delivered"
-              ? { ...delivery, traysDelivered: null }
-              : delivery,
-        ),
-      );
-    } catch (err) {
-      const msg = err?.response?.data?.message || "Failed to reset all values.";
-      setReasonError(msg);
-    } finally {
-      setIsResettingAllReasons(false);
-    }
-  };
-
-  const handleSelectDeliveredTrays = async (deliveryId, traysValue) => {
-    if (!customer?.id || !traysValue) return;
-
-    const trays = Number(traysValue);
-    if (!Number.isInteger(trays) || trays < 1 || trays > 10) return;
-
-    const previousTrays =
-      deliveries.find((delivery) => delivery.id === deliveryId)
-        ?.traysDelivered ?? null;
-
-    setReasonError("");
-    setSavingTraysId(deliveryId);
-
-    // Optimistic update for instant UI feedback.
-    setDeliveries((prev) =>
-      prev.map((delivery) =>
-        delivery.id === deliveryId
-          ? { ...delivery, traysDelivered: trays }
-          : delivery,
-      ),
-    );
-
-    try {
-      const res = await axios.post(`${ADMIN_PATH}/customer/delivery-trays`, {
-        customerId: customer.id,
-        deliveryId,
-        traysDelivered: trays,
-      });
-
-      const savedValue = Number(res.data?.traysDelivered ?? trays);
-      setDeliveries((prev) =>
-        prev.map((delivery) =>
-          delivery.id === deliveryId
-            ? { ...delivery, traysDelivered: savedValue }
-            : delivery,
-        ),
-      );
-    } catch (err) {
-      const msg =
-        err?.response?.data?.message || "Failed to save delivered trays.";
-      setDeliveries((prev) =>
-        prev.map((delivery) =>
-          delivery.id === deliveryId
-            ? { ...delivery, traysDelivered: previousTrays }
-            : delivery,
-        ),
-      );
-      setReasonError(msg);
-    } finally {
-      setSavingTraysId("");
-      setEditingTraysId("");
-    }
-  };
-
-  const hasAnyResettableData = deliveries.some(
-    (delivery) =>
-      (delivery.type === "reached" && delivery.checkReason) ||
-      (delivery.type === "delivered" && delivery.traysDelivered !== null),
-  );
 
   // Function to parse latitude and longitude from a location string like "Lat: XX, Lng: YY"
   const parseLatLng = (locationString) => {
@@ -555,19 +480,7 @@ const Customer = () => {
                     <FiDownload className="-ml-1 mr-2" />
                     Download CSV
                   </button>
-                  {showHistory && deliveries.length > 0 && (
-                    <>
-                      {hasAnyResettableData && (
-                        <button
-                          onClick={handleResetAllCheckedReasons}
-                          disabled={isResettingAllReasons}
-                          className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md shadow-sm text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-60 transition-colors"
-                        >
-                          {isResettingAllReasons ? "Resetting..." : "Reset All"}
-                        </button>
-                      )}
-                    </>
-                  )}
+
                 </div>
               </div>
 
@@ -590,9 +503,8 @@ const Customer = () => {
                 <div className="bg-gray-50 rounded-lg overflow-hidden">
                   <ul className="divide-y divide-gray-200">
                     {deliveries.map((delivery) => {
-                      const deliveryDate = new Date(
-                        delivery.timestamp._seconds * 1000,
-                      );
+                      const last8Entry = customer?.last8Days?.[delivery.id] || {};
+                      const deliveryDate = getDeliveryTimestamp(delivery, last8Entry);
                       const statusKey = getDeliveryStatusKey(delivery);
                       const canEditReason =
                         String(delivery.type || "")
@@ -617,14 +529,16 @@ const Customer = () => {
                               <div className="ml-4">
                                 <p className="text-sm font-medium text-gray-900 flex items-center">
                                   <FiCalendar className="mr-2 text-blue-500" />
-                                  {deliveryDate.toLocaleDateString()} at{" "}
-                                  {deliveryDate.toLocaleTimeString()}
+                                  {deliveryDate ? deliveryDate.toLocaleDateString() : "-"} at{" "}
+                                  {deliveryDate ? deliveryDate.toLocaleTimeString() : "-"}
                                 </p>
                                 {delivery.deliveryMan ? (
                                   <p className="text-sm text-gray-500 flex items-center">
                                     <FiTruck className="mr-2 text-blue-500" />
-                                    Delivered by {delivery.deliveryMan.name} (
-                                    {delivery.deliveryMan.phone})
+                                    Delivered by {delivery.deliveryMan.name}
+                                    {delivery.deliveryMan.phone
+                                      ? ` (${delivery.deliveryMan.phone})`
+                                      : ""}
                                   </p>
                                 ) : (
                                   <p className="text-sm text-gray-500">
@@ -647,105 +561,26 @@ const Customer = () => {
                               </span>
                               {statusKey === "checked" && (
                                 <div className="mt-2 self-end">
-                                  {!canEditReason ? (
-                                    <p className="text-sm text-gray-700 text-right">
-                                      {getDeliveryReason(delivery) || "-"}
-                                    </p>
-                                  ) : delivery.checkReason &&
-                                    editingReasonId !== delivery.id ? (
-                                    <div className="flex items-center gap-2 justify-end">
-                                      <p className="text-sm text-gray-700 text-right">
-                                        {delivery.checkReason}
-                                      </p>
-                                      <button
-                                        type="button"
-                                        className="text-slate-500 hover:text-slate-700 transition-colors"
-                                        onClick={() =>
-                                          setEditingReasonId(delivery.id)
-                                        }
-                                        title="Edit reason"
-                                        aria-label="Edit reason"
-                                      >
-                                        <FiEdit2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <select
-                                      className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                      value={delivery.checkReason || ""}
-                                      disabled={savingReasonId === delivery.id}
-                                      onChange={(e) =>
-                                        handleSelectCheckedReason(
-                                          delivery.id,
-                                          e.target.value,
-                                        )
-                                      }
-                                    >
-                                      <option value="" disabled>
-                                        Select reason
-                                      </option>
-                                      {CHECK_REASONS.map((reason) => (
-                                        <option key={reason} value={reason}>
-                                          {reason}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
+                                  <p className="text-sm text-gray-700 text-right">
+                                    {getDeliveryReason(delivery) || "-"}
+                                  </p>
                                 </div>
                               )}
                               {delivery.type === "delivered" && (
                                 <div className="mt-2 self-end">
-                                  {delivery.traysDelivered !== null &&
-                                  editingTraysId !== delivery.id ? (
-                                    <div className="flex items-center gap-2 justify-end">
-                                      <p className="text-sm text-gray-700 text-right">
-                                        {formatTrayLabel(
-                                          delivery.traysDelivered,
-                                        )}
-                                      </p>
-                                      <button
-                                        type="button"
-                                        className="text-slate-500 hover:text-slate-700 transition-colors"
-                                        onClick={() =>
-                                          setEditingTraysId(delivery.id)
-                                        }
-                                        title="Edit trays"
-                                        aria-label="Edit trays"
-                                      >
-                                        <FiEdit2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <select
-                                      className="min-w-[170px] text-xs border border-slate-300 rounded-md px-2 py-1.5 bg-white text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                      value={
-                                        delivery.traysDelivered === null
-                                          ? ""
-                                          : delivery.traysDelivered >= 10
-                                            ? 10
-                                            : delivery.traysDelivered
-                                      }
-                                      disabled={savingTraysId === delivery.id}
-                                      onChange={(e) =>
-                                        handleSelectDeliveredTrays(
-                                          delivery.id,
-                                          e.target.value,
+                                  <p className="text-sm text-gray-700 text-right">
+                                    {Number.isInteger(delivery.traysDelivered) &&
+                                    delivery.traysDelivered > 0
+                                      ? formatTrayLabel(delivery.traysDelivered)
+                                      : Number.isInteger(
+                                          customer?.last8Days?.[delivery.id]?.quantity,
+                                        ) &&
+                                        customer.last8Days[delivery.id].quantity > 0
+                                      ? formatTrayLabel(
+                                          customer.last8Days[delivery.id].quantity,
                                         )
-                                      }
-                                    >
-                                      <option value="" disabled>
-                                        Select trays
-                                      </option>
-                                      {TRAY_OPTIONS.map((trayCount) => (
-                                        <option
-                                          key={trayCount}
-                                          value={trayCount}
-                                        >
-                                          {formatTrayLabel(trayCount)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
+                                      : "-"}
+                                  </p>
                                 </div>
                               )}
                             </div>

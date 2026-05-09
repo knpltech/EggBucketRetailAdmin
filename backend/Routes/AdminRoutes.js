@@ -48,6 +48,7 @@ import {
   updateCustomerPriority,
   updateCustomerPotential,
   addZone,
+  getZones,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getRetentionCustomers,
@@ -77,6 +78,7 @@ router.post("/customer/potential", updateCustomerPotential);
 router.post("/customer/skip-config", saveSkipConfig);
 router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
+router.get("/zones", getZones);
 
 router.get("/analytics/last8", getAnalyticsLast8);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);

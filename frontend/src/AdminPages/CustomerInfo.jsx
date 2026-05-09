@@ -146,11 +146,14 @@ const CustomerInfo = () => {
   };
 
   const fetchZones = async () => {
-    const res = await axios.get(`${ADMIN_PATH}/zones`);
-    setZones(res.data || []);
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/zones`);
+      setZones(res.data || []);
+    } catch (err) {
+      console.warn("Zones API unavailable, using empty zone list:", err);
+      setZones([]);
+    }
   };
-
-  // ZONE
 
   const addZonePrompt = async () => {
     const name = prompt("Enter new Zone name:");

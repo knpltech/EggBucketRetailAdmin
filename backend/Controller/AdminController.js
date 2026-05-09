@@ -938,6 +938,27 @@ const addZone = async (req, res) => {
   }
 };
 
+const getZones = async (req, res) => {
+  try {
+    const cacheKey = "zones:list";
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const db = getFirestore();
+    const snap = await db.collection("zones").get();
+    const zones = snap.docs.map((doc) => doc.data().name).filter(Boolean);
+
+    // Sort alphabetically
+    zones.sort((a, b) => a.localeCompare(b));
+
+    cache.set(cacheKey, zones, 3600); // Cache for 1 hour
+    res.json(zones);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 
 const getAnalyticsLast8 = async (req, res) => {
   const cacheKey = "analytics:last8:v2";
@@ -1642,6 +1663,7 @@ export {
   saveSkipConfig,
   toggleTodayDelivery,
   addZone,
+  getZones,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getCustomersByDeliveryCount,
