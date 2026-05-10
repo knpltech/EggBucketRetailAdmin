@@ -7,7 +7,7 @@ import { ADMIN_PATH } from "../constant";
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All" },
   { value: "stock_available", label: "Stock Available" },
-  { value: "price_mismatch", label: "Price Mismatch" },
+  { value: "price_mismatch", label: "Shop Closed" },
   { value: "other_vendor", label: "Other Vendor" },
 ];
 const SORT_OPTIONS = [
@@ -19,6 +19,7 @@ const SORT_OPTIONS = [
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
+  "shop_closed",
   "stock_available",
   "other_vendor",
 ];
@@ -101,11 +102,19 @@ const getStatusClasses = (statusKey) => {
 
 const getStatusRemark = (status) => {
   if (status?.key !== "checked") return "";
-  if (status.reason) return status.reason;
+  if (status.reason) return normalizeRetentionRemark(status.reason);
   if (status.categoryLabel && status.categoryLabel !== "-") {
-    return status.categoryLabel;
+    return normalizeRetentionRemark(status.categoryLabel);
   }
   return "";
+};
+
+const normalizeRetentionRemark = (value = "") => {
+  const text = String(value || "").trim();
+  const normalized = text.toLowerCase().replace(/\s+/g, "_");
+  return normalized === "price_mismatch" || normalized === "shop_closed"
+    ? "Shop Closed"
+    : text;
 };
 
 const formatDeliveryTime = (timestamp) => {
@@ -174,16 +183,22 @@ const getStatusFromDelivery = (delivery) => {
   const reason = String(delivery.checkReason || delivery.reason || "")
     .trim();
   const normalizedReason = reason.toLowerCase().replace(/\s+/g, "_");
-  const category = ["stock_available", "price_mismatch", "other_vendor"].includes(type)
+  const checkedCategories = [
+    "stock_available",
+    "price_mismatch",
+    "shop_closed",
+    "other_vendor",
+  ];
+  const category = checkedCategories.includes(type)
     ? type
-    : ["stock_available", "price_mismatch", "other_vendor"].includes(normalizedReason)
+    : checkedCategories.includes(normalizedReason)
       ? normalizedReason
       : "";
   const categoryLabel =
     category === "stock_available"
       ? "Stock Available"
-      : category === "price_mismatch"
-        ? "Price Mismatch"
+      : category === "price_mismatch" || category === "shop_closed"
+        ? "Shop Closed"
         : category === "other_vendor"
           ? "Other Vendor"
           : "-";

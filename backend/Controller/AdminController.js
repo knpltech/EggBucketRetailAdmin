@@ -1289,6 +1289,109 @@ const getLatestRemarks = async (req, res) => {
   }
 };
 
+const parseTrayCount = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+
+  if (typeof value === "string") {
+    const match = value.match(/\d+/);
+    if (match) return Math.max(0, Number(match[0]));
+  }
+
+  return 0;
+};
+
+const getDeliveryTrayCount = (data = {}) =>
+  Math.max(
+    parseTrayCount(data.traysDelivered),
+    parseTrayCount(data.trays),
+    parseTrayCount(data.quantity),
+  );
+
+const mergePeakPotential = (peakPotentials, customerId, trays) => {
+  if (!customerId || trays <= 0) return;
+
+  peakPotentials[customerId] = Math.max(
+    peakPotentials[customerId] || 0,
+    trays,
+  );
+};
+
+// Returns each customer's highest delivered tray count from delivery history.
+const getPeakPotentials = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const requestedDate = String(req.query.date || "").trim();
+    const peakPotentials = {};
+    let dayPeakPotential = 0;
+
+    const customersSnap = await db.collection("customers").get();
+    customersSnap.forEach((doc) => {
+      const customerId = doc.id;
+      const customerData = doc.data() || {};
+      const last8Days = customerData.last8Days || {};
+
+      Object.entries(last8Days).forEach(([date, entry]) => {
+        if (requestedDate && date !== requestedDate) return;
+
+        const entryData =
+          entry && typeof entry === "object" ? entry : { status: entry };
+        const status = String(entryData.status || "")
+          .trim()
+          .toLowerCase();
+
+        if (status !== "delivered") return;
+
+        const trays = getDeliveryTrayCount(entryData);
+        if (trays <= 0) return;
+
+        dayPeakPotential = Math.max(dayPeakPotential, trays);
+        mergePeakPotential(peakPotentials, customerId, trays);
+      });
+    });
+
+    const deliveriesSnap = await db.collectionGroup("deliveries").get();
+    deliveriesSnap.forEach((doc) => {
+      const customerId = doc.ref.parent.parent?.id;
+      if (!customerId) return;
+
+      if (requestedDate && doc.id !== requestedDate) {
+        return;
+      }
+
+      const data = doc.data() || {};
+      const type = String(data.type || data.status || "")
+        .trim()
+        .toLowerCase();
+
+      if (type !== "delivered") return;
+
+      const trays = getDeliveryTrayCount(data);
+
+      if (trays <= 0) return;
+
+      if (requestedDate) {
+        dayPeakPotential = Math.max(dayPeakPotential, trays);
+      }
+
+      mergePeakPotential(peakPotentials, customerId, trays);
+    });
+
+    if (requestedDate) {
+      return res.status(200).json({
+        peakPotential: dayPeakPotential,
+        peakPotentials,
+      });
+    }
+
+    return res.status(200).json(peakPotentials);
+  } catch (err) {
+    console.error("getPeakPotentials error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 const updateCustomerPriority = async (req, res) => {
   try {
     const { id, priority } = req.body;
@@ -1687,6 +1790,7 @@ export {
   getRetentionCustomers,
   resetRetentionCustomer,
   getLatestRemarks,
+  getPeakPotentials,
   getCollectionSummary,
   recalculateCollectionData,
 };
