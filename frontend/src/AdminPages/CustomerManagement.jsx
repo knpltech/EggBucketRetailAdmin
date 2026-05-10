@@ -36,7 +36,6 @@ export default function CustomerManagement() {
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
-  const [updatingPotentialId, setUpdatingPotentialId] = useState(null);
 
   const canDownloadExcel = true;
 
@@ -50,7 +49,7 @@ export default function CustomerManagement() {
       try {
         setLoading(true);
         // Load customers plus fresh, date-scoped remarks for today's status text.
-        const [customersRes, remarksRes] = await Promise.all([
+        const [customersRes, remarksRes, peakPotentialsRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/user-info`),
           axios.get(`${ADMIN_PATH}/customer/latest-remarks`, {
             params: { date: todayDate, _: Date.now() },
@@ -58,13 +57,26 @@ export default function CustomerManagement() {
             console.error("Load latest remarks error:", err);
             return { data: {} };
           }),
+          axios.get(`${ADMIN_PATH}/customer/peak-potentials`, {
+            params: { _: Date.now() },
+          }).catch((err) => {
+            console.error("Load peak potentials error:", err);
+            return { data: {} };
+          }),
         ]);
         const remarksMap = remarksRes.data || {};
+        const peakPotentialsMap = peakPotentialsRes.data || {};
         const rows = Array.isArray(customersRes.data) ? customersRes.data : [];
         setCustomers(
           rows.map((c) => ({
             ...c,
             latestRemark: remarksMap[c.id] || "-",
+            peakPotential:
+              peakPotentialsMap[c.id] ??
+              c.peakPotential ??
+              c.Peak_Potential ??
+              c.peak_potential ??
+              c.potential,
             priority: normalizePriority(c.priority),
             peakFrequency: resolvePeakFrequency(c),
           })),
@@ -264,6 +276,12 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
+    } else if (sortBy === "peakPotential") {
+      list.sort((a, b) => {
+        const diff = getPeakPotentialNumber(b) - getPeakPotentialNumber(a);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
         (c) => getRemarkDisplay(c) && getRemarkDisplay(c) !== "",
@@ -460,55 +478,6 @@ export default function CustomerManagement() {
     }
   };
 
-  const updatePotential = async (customer) => {
-    if (!customer?.id || updatingPotentialId === customer.id) return;
-
-    const currentPotential = normalizePotential(customer.potential);
-    const nextPotential = getNextPotential(currentPotential);
-
-    const previousPotential = currentPotential;
-
-    // Optimistic UI: update only this row, no full refetch.
-    setCustomers((prev) =>
-      prev.map((row) =>
-        row.id === customer.id ? { ...row, potential: nextPotential } : row,
-      ),
-    );
-
-    try {
-      setUpdatingPotentialId(customer.id);
-
-      const res = await axios.post(`${ADMIN_PATH}/customer/potential`, {
-        id: customer.id,
-        potential: nextPotential,
-      });
-
-      const savedPotential = res?.data?.potential;
-      if (savedPotential) {
-        setCustomers((prev) =>
-          prev.map((row) =>
-            row.id === customer.id
-              ? { ...row, potential: normalizePotential(savedPotential) }
-              : row,
-          ),
-        );
-      }
-    } catch (err) {
-      console.error("Potential update error:", err);
-
-      // Revert optimistic update if server write failed.
-      setCustomers((prev) =>
-        prev.map((row) =>
-          row.id === customer.id
-            ? { ...row, potential: previousPotential }
-            : row,
-        ),
-      );
-    } finally {
-      setUpdatingPotentialId(null);
-    }
-  };
-
   // ================= EXCEL =================
 
   const downloadExcel = () => {
@@ -519,6 +488,7 @@ export default function CustomerManagement() {
       Name: getName(c),
       Zone: c.zone || "",
       Priority: normalizePriority(c.priority),
+      Peak_Potential: getPeakPotentialLabel(c),
       Peak_Frequency: getPeakFrequencyLabel(c),
       Status: getLatestStatus(c),
       Remarks: getRemarkDisplay(c),
@@ -563,6 +533,7 @@ export default function CustomerManagement() {
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
             <option value="priority">Priority</option>
+            <option value="peakPotential">Peak Potential</option>
             <option value="peakFrequency">Peak Frequency</option>
             <option value="zone">Zone</option>
             <option value="delivery">Delivery Plan </option>
@@ -611,7 +582,7 @@ export default function CustomerManagement() {
               <th className="p-3">Delivery Plan</th>
               <th className="p-3">Skip</th>
               <th className="p-3">Priority</th>
-              <th className="p-3">Potential</th>
+              <th className="p-3">Peak_Potential</th>
               <th className="p-3">Peak_Frequency</th>
               <th className="p-3">Status</th>
             </tr>
@@ -694,14 +665,14 @@ export default function CustomerManagement() {
                 </td>
 
                 <td className="p-3">
-                  <button
-                    disabled={updatingPotentialId === c.id}
-                    onClick={() => updatePotential(c)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${updatingPotentialId === c.id ? "opacity-70" : ""}`}
-                    style={{ backgroundColor: getPotentialColor(c.potential) }}
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{
+                      backgroundColor: getPeakPotentialColor(c),
+                    }}
                   >
-                    {normalizePotential(c.potential)}
-                  </button>
+                    {getPeakPotentialLabel(c)}
+                  </span>
                 </td>
 
                 <td className="p-3">
@@ -820,67 +791,6 @@ function getDateStringInTimeZone(date, timeZone) {
   return new Date().toISOString().slice(0, 10);
 }
 
-function normalizePotential(value) {
-  const VALID_POTENTIALS = [
-    "T1",
-    "T2",
-    "T3",
-    "T4",
-    "T5",
-    "T6",
-    "T7",
-    "T8",
-    "T9",
-    "T10",
-    "T15",
-    "T20",
-    "T25",
-    "T30",
-    "T50",
-    "T100",
-  ];
-
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "T1";
-
-  if (VALID_POTENTIALS.includes(raw)) return raw;
-
-  // Handle legacy format with space (T 1 -> T1)
-  const withoutSpace = raw.replace(/T\s+(\d+)/, "T$1");
-  if (VALID_POTENTIALS.includes(withoutSpace)) return withoutSpace;
-
-  return "T1";
-}
-
-function getNextPotential(currentPotential) {
-  const POTENTIALS = [
-    "T1",
-    "T2",
-    "T3",
-    "T4",
-    "T5",
-    "T6",
-    "T7",
-    "T8",
-    "T9",
-    "T10",
-    "T15",
-    "T20",
-    "T25",
-    "T30",
-    "T50",
-    "T100",
-  ];
-
-  const normalized = normalizePotential(currentPotential);
-  const index = POTENTIALS.indexOf(normalized);
-  const next = (index + 1) % POTENTIALS.length;
-  return POTENTIALS[next];
-}
-
 function resolvePeakFrequency(customer) {
   const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
@@ -952,14 +862,50 @@ function getPeakFrequencyColor(customer) {
   return "#0F9D58";
 }
 
-function getPotentialColor(value) {
-  const potential = normalizePotential(value);
-  const num = parseInt(potential.slice(1), 10);
+function getPeakPotentialNumber(customer) {
+  const candidates = [
+    customer?.peakPotential,
+    customer?.Peak_Potential,
+    customer?.peak_potential,
+    customer?.potential,
+  ];
 
-  // T1-T7 = red, T8-T15 = orange, T20+ = green
-  if (num <= 7) return "#FF3B30"; // red
-  if (num <= 15) return "#FB8C00"; // orange
-  return "#0F9D58"; // green
+  for (const candidate of candidates) {
+    const value = parseTrayCount(candidate);
+    if (value > 0) return value;
+  }
+
+  return 0;
+}
+
+function getPeakPotentialLabel(customer) {
+  const trays = getPeakPotentialNumber(customer);
+  if (trays <= 0) return "-";
+  return `T${trays}`;
+}
+
+function getPeakPotentialColor(customer) {
+  const trays = getPeakPotentialNumber(customer);
+  if (trays <= 0) return "#94A3B8";
+  if (trays <= 7) return "#FF3B30";
+  if (trays <= 15) return "#FB8C00";
+  return "#0F9D58";
+}
+
+function parseTrayCount(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 0 ? Math.floor(value) : 0;
+  }
+
+  if (typeof value === "string") {
+    const match = value.match(/\d+/);
+    if (match) {
+      const count = Number(match[0]);
+      return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    }
+  }
+
+  return 0;
 }
 
 function clampDays0to6(value) {
