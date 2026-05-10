@@ -1318,11 +1318,30 @@ const mergePeakPotential = (peakPotentials, customerId, trays) => {
   );
 };
 
+const isFirestoreUnavailableError = (err) => {
+  const details = String(err?.details || err?.message || "").toLowerCase();
+  return (
+    err?.code === 14 ||
+    details.includes("name resolution failed") ||
+    details.includes("firestore.googleapis.com") ||
+    details.includes("unavailable")
+  );
+};
+
 // Returns each customer's highest delivered tray count from delivery history.
 const getPeakPotentials = async (req, res) => {
+  const requestedDate = String(req.query.date || "").trim();
+  const cacheKey = requestedDate
+    ? `customer:peakPotentials:${requestedDate}:v1`
+    : "customer:peakPotentials:all:v1";
+
   try {
     const db = getFirestore();
-    const requestedDate = String(req.query.date || "").trim();
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
     const peakPotentials = {};
     let dayPeakPotential = 0;
 
@@ -1379,14 +1398,39 @@ const getPeakPotentials = async (req, res) => {
     });
 
     if (requestedDate) {
-      return res.status(200).json({
+      const response = {
         peakPotential: dayPeakPotential,
         peakPotentials,
-      });
+      };
+      cache.set(cacheKey, response, 300);
+      return res.status(200).json(response);
     }
 
+    cache.set(cacheKey, peakPotentials, 300);
     return res.status(200).json(peakPotentials);
   } catch (err) {
+    if (isFirestoreUnavailableError(err)) {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        console.warn(
+          "getPeakPotentials: Firestore unavailable, returning cached data.",
+          err?.details || err?.message,
+        );
+        return res.status(200).json(cached);
+      }
+
+      console.warn(
+        "getPeakPotentials: Firestore unavailable, returning empty data.",
+        err?.details || err?.message,
+      );
+
+      return res.status(200).json(
+        requestedDate
+          ? { peakPotential: 0, peakPotentials: {} }
+          : {},
+      );
+    }
+
     console.error("getPeakPotentials error:", err);
     return res.status(500).json({ message: "Server error" });
   }
