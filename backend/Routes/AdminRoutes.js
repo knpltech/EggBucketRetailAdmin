@@ -55,7 +55,6 @@ import {
   resetRetentionCustomer,
   getCustomersByDeliveryCount,
   getLatestRemarks,
-  getPeakPotentials,
   saveSkipConfig,
   toggleTodayDelivery,
   getCollectionSummary,
@@ -85,7 +84,6 @@ router.get("/analytics/last8", getAnalyticsLast8);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
-router.get("/customer/peak-potentials", getPeakPotentials);
 router.get("/collection-summary", getCollectionSummary);
 router.post("/recalculate-collection-data", recalculateCollectionData);
 router.get("/customer-retention", getRetentionCustomers);

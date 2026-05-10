@@ -102,19 +102,27 @@ const getStatusClasses = (statusKey) => {
 
 const getStatusRemark = (status) => {
   if (status?.key !== "checked") return "";
-  if (status.reason) return normalizeRetentionRemark(status.reason);
-  if (status.categoryLabel && status.categoryLabel !== "-") {
-    return normalizeRetentionRemark(status.categoryLabel);
-  }
-  return "";
+  const reason = normalizeRetentionRemark(status.reason);
+  if (reason) return reason;
+  const categoryLabel = normalizeRetentionRemark(status.categoryLabel);
+  return categoryLabel || "";
 };
 
 const normalizeRetentionRemark = (value = "") => {
   const text = String(value || "").trim();
-  const normalized = text.toLowerCase().replace(/\s+/g, "_");
-  return normalized === "price_mismatch" || normalized === "shop_closed"
-    ? "Shop Closed"
-    : text;
+  if (!text || text === "-") return "";
+
+  const normalized = text
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized === "price mismatch" || normalized === "shop closed") {
+    return "Shop Closed";
+  }
+
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
 const formatDeliveryTime = (timestamp) => {
@@ -169,7 +177,7 @@ const getStatusFromDelivery = (delivery) => {
       key: "pending",
       label: "Pending",
       category: "",
-      categoryLabel: "-",
+      categoryLabel: "",
       reason: "",
     };
   }
@@ -201,14 +209,14 @@ const getStatusFromDelivery = (delivery) => {
         ? "Shop Closed"
         : category === "other_vendor"
           ? "Other Vendor"
-          : "-";
+          : "";
 
   if (apiStatus === "delivered" || type === "delivered") {
     return {
       key: "delivered",
       label: "Delivered",
       category: "",
-      categoryLabel: "-",
+      categoryLabel: "",
       reason: "",
     };
   }
@@ -227,7 +235,7 @@ const getStatusFromDelivery = (delivery) => {
     key: "pending",
     label: "Pending",
     category: "",
-    categoryLabel: "-",
+    categoryLabel: "",
     reason: "",
   };
 };

@@ -1205,7 +1205,6 @@ const getCustomersByDeliveryCount = async (req, res) => {
 const getLatestRemarks = async (req, res) => {
   try {
     const db = getFirestore();
-    const requestedDate = String(req.query.date || "").trim();
 
     // Fetch ALL deliveries across all customers
     const allDeliveriesSnap = await db.collectionGroup("deliveries").get();
@@ -1216,23 +1215,10 @@ const getLatestRemarks = async (req, res) => {
       const customerId = doc.ref.parent.parent.id;
       const data = doc.data();
       const docId = doc.id; // date string like "2026-03-10"
-
-      if (requestedDate && docId !== requestedDate) {
-        return;
-      }
-
       const { status, reason } = getStatusAndReasonFromType(
         data.type,
         data.checkReason,
       );
-      const traysDelivered =
-        typeof data.traysDelivered === "number"
-          ? data.traysDelivered
-          : typeof data.trays === "number"
-            ? data.trays
-            : typeof data.quantity === "number"
-              ? data.quantity
-              : null;
 
       // Initialize array
       if (!customerDeliveries[customerId]) {
@@ -1242,13 +1228,13 @@ const getLatestRemarks = async (req, res) => {
       // Keep only deliveries that have remark data
       if (
         (status === "Checked" && reason) ||
-        (status === "Delivered" && typeof traysDelivered === "number")
+        (status === "Delivered" && typeof data.traysDelivered === "number")
       ) {
         customerDeliveries[customerId].push({
           docId,
           status,
           reason,
-          traysDelivered,
+          traysDelivered: data.traysDelivered,
         });
       }
     });
@@ -1273,10 +1259,7 @@ const getLatestRemarks = async (req, res) => {
         latest.status === "Delivered" &&
         typeof latest.traysDelivered === "number"
       ) {
-        remarks[customerId] =
-          latest.traysDelivered === 1
-            ? "1 tray"
-            : `${latest.traysDelivered} trays`;
+        remarks[customerId] = `${latest.traysDelivered} trays`;
       } else {
         remarks[customerId] = "-";
       }
@@ -1285,153 +1268,6 @@ const getLatestRemarks = async (req, res) => {
     return res.status(200).json(remarks);
   } catch (err) {
     console.error("getLatestRemarks error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-const parseTrayCount = (value) => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.max(0, Math.floor(value));
-  }
-
-  if (typeof value === "string") {
-    const match = value.match(/\d+/);
-    if (match) return Math.max(0, Number(match[0]));
-  }
-
-  return 0;
-};
-
-const getDeliveryTrayCount = (data = {}) =>
-  Math.max(
-    parseTrayCount(data.traysDelivered),
-    parseTrayCount(data.trays),
-    parseTrayCount(data.quantity),
-  );
-
-const mergePeakPotential = (peakPotentials, customerId, trays) => {
-  if (!customerId || trays <= 0) return;
-
-  peakPotentials[customerId] = Math.max(
-    peakPotentials[customerId] || 0,
-    trays,
-  );
-};
-
-const isFirestoreUnavailableError = (err) => {
-  const details = String(err?.details || err?.message || "").toLowerCase();
-  return (
-    err?.code === 14 ||
-    details.includes("name resolution failed") ||
-    details.includes("firestore.googleapis.com") ||
-    details.includes("unavailable")
-  );
-};
-
-// Returns each customer's highest delivered tray count from delivery history.
-const getPeakPotentials = async (req, res) => {
-  const requestedDate = String(req.query.date || "").trim();
-  const cacheKey = requestedDate
-    ? `customer:peakPotentials:${requestedDate}:v1`
-    : "customer:peakPotentials:all:v1";
-
-  try {
-    const db = getFirestore();
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      return res.status(200).json(cached);
-    }
-
-    const peakPotentials = {};
-    let dayPeakPotential = 0;
-
-    const customersSnap = await db.collection("customers").get();
-    customersSnap.forEach((doc) => {
-      const customerId = doc.id;
-      const customerData = doc.data() || {};
-      const last8Days = customerData.last8Days || {};
-
-      Object.entries(last8Days).forEach(([date, entry]) => {
-        if (requestedDate && date !== requestedDate) return;
-
-        const entryData =
-          entry && typeof entry === "object" ? entry : { status: entry };
-        const status = String(entryData.status || "")
-          .trim()
-          .toLowerCase();
-
-        if (status !== "delivered") return;
-
-        const trays = getDeliveryTrayCount(entryData);
-        if (trays <= 0) return;
-
-        dayPeakPotential = Math.max(dayPeakPotential, trays);
-        mergePeakPotential(peakPotentials, customerId, trays);
-      });
-    });
-
-    const deliveriesSnap = await db.collectionGroup("deliveries").get();
-    deliveriesSnap.forEach((doc) => {
-      const customerId = doc.ref.parent.parent?.id;
-      if (!customerId) return;
-
-      if (requestedDate && doc.id !== requestedDate) {
-        return;
-      }
-
-      const data = doc.data() || {};
-      const type = String(data.type || data.status || "")
-        .trim()
-        .toLowerCase();
-
-      if (type !== "delivered") return;
-
-      const trays = getDeliveryTrayCount(data);
-
-      if (trays <= 0) return;
-
-      if (requestedDate) {
-        dayPeakPotential = Math.max(dayPeakPotential, trays);
-      }
-
-      mergePeakPotential(peakPotentials, customerId, trays);
-    });
-
-    if (requestedDate) {
-      const response = {
-        peakPotential: dayPeakPotential,
-        peakPotentials,
-      };
-      cache.set(cacheKey, response, 300);
-      return res.status(200).json(response);
-    }
-
-    cache.set(cacheKey, peakPotentials, 300);
-    return res.status(200).json(peakPotentials);
-  } catch (err) {
-    if (isFirestoreUnavailableError(err)) {
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        console.warn(
-          "getPeakPotentials: Firestore unavailable, returning cached data.",
-          err?.details || err?.message,
-        );
-        return res.status(200).json(cached);
-      }
-
-      console.warn(
-        "getPeakPotentials: Firestore unavailable, returning empty data.",
-        err?.details || err?.message,
-      );
-
-      return res.status(200).json(
-        requestedDate
-          ? { peakPotential: 0, peakPotentials: {} }
-          : {},
-      );
-    }
-
-    console.error("getPeakPotentials error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -1834,7 +1670,6 @@ export {
   getRetentionCustomers,
   resetRetentionCustomer,
   getLatestRemarks,
-  getPeakPotentials,
   getCollectionSummary,
   recalculateCollectionData,
 };
