@@ -36,7 +36,6 @@ export default function CustomerManagement() {
   const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
-  const [updatingPotentialId, setUpdatingPotentialId] = useState(null);
 
   const canDownloadExcel = true;
 
@@ -56,7 +55,8 @@ export default function CustomerManagement() {
           rows.map((c) => ({
             ...c,
             priority: normalizePriority(c.priority),
-            peakFrequency: resolvePeakFrequency(c),
+            peakFrequency: computePeakFrequency(c.last8Days),
+            potential: computePotential(c.last8Days),
           })),
         );
       } catch (err) {
@@ -69,7 +69,7 @@ export default function CustomerManagement() {
     loadOnce();
   }, []); // ⭐ Empty dependency: load ONLY once on mount
 
-  // ⭐ HELPER: Compute delivery count from last 7 days (EXCLUDING today)
+  // ⭐ HELPER: Compute delivery count from last 7 days (INCLUDING today)
   // Only counts entries where last8Days[date] === "delivered"
   // Uses Asia/Kolkata timezone to match Firestore keys exactly
   const getDeliveredCount = (customer) => {
@@ -77,7 +77,8 @@ export default function CustomerManagement() {
     let count = 0;
     const today = new Date();
 
-    for (let i = 1; i <= 7; i++) {
+    // Include today + last 6 days (total 7 days)
+    for (let i = 0; i <= 6; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -457,55 +458,6 @@ export default function CustomerManagement() {
     }
   };
 
-  const updatePotential = async (customer) => {
-    if (!customer?.id || updatingPotentialId === customer.id) return;
-
-    const currentPotential = normalizePotential(customer.potential);
-    const nextPotential = getNextPotential(currentPotential);
-
-    const previousPotential = currentPotential;
-
-    // Optimistic UI: update only this row, no full refetch.
-    setCustomers((prev) =>
-      prev.map((row) =>
-        row.id === customer.id ? { ...row, potential: nextPotential } : row,
-      ),
-    );
-
-    try {
-      setUpdatingPotentialId(customer.id);
-
-      const res = await axios.post(`${ADMIN_PATH}/customer/potential`, {
-        id: customer.id,
-        potential: nextPotential,
-      });
-
-      const savedPotential = res?.data?.potential;
-      if (savedPotential) {
-        setCustomers((prev) =>
-          prev.map((row) =>
-            row.id === customer.id
-              ? { ...row, potential: normalizePotential(savedPotential) }
-              : row,
-          ),
-        );
-      }
-    } catch (err) {
-      console.error("Potential update error:", err);
-
-      // Revert optimistic update if server write failed.
-      setCustomers((prev) =>
-        prev.map((row) =>
-          row.id === customer.id
-            ? { ...row, potential: previousPotential }
-            : row,
-        ),
-      );
-    } finally {
-      setUpdatingPotentialId(null);
-    }
-  };
-
   // ================= EXCEL =================
 
   const downloadExcel = () => {
@@ -695,14 +647,12 @@ export default function CustomerManagement() {
                 </td>
 
                 <td className="p-3">
-                  <button
-                    disabled={updatingPotentialId === c.id}
-                    onClick={() => updatePotential(c)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${updatingPotentialId === c.id ? "opacity-70" : ""}`}
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{ backgroundColor: getPotentialColor(c.potential) }}
                   >
                     {normalizePotential(c.potential)}
-                  </button>
+                  </span>
                 </td>
 
                 <td className="p-3">
@@ -816,64 +766,20 @@ function getDateStringInTimeZone(date, timeZone) {
 }
 
 function normalizePotential(value) {
-  const VALID_POTENTIALS = [
-    "T1",
-    "T2",
-    "T3",
-    "T4",
-    "T5",
-    "T6",
-    "T7",
-    "T8",
-    "T9",
-    "T10",
-    "T15",
-    "T20",
-    "T25",
-    "T30",
-    "T50",
-    "T100",
-  ];
-
   const raw = String(value ?? "")
     .trim()
     .toUpperCase();
 
   if (!raw) return "T1";
 
-  if (VALID_POTENTIALS.includes(raw)) return raw;
-
-  // Handle legacy format with space (T 1 -> T1)
-  const withoutSpace = raw.replace(/T\s+(\d+)/, "T$1");
-  if (VALID_POTENTIALS.includes(withoutSpace)) return withoutSpace;
+  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
+  const match = normalized.match(/^T(\d+)$/);
+  if (match) {
+    const num = Number(match[1]);
+    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
+  }
 
   return "T1";
-}
-
-function getNextPotential(currentPotential) {
-  const POTENTIALS = [
-    "T1",
-    "T2",
-    "T3",
-    "T4",
-    "T5",
-    "T6",
-    "T7",
-    "T8",
-    "T9",
-    "T10",
-    "T15",
-    "T20",
-    "T25",
-    "T30",
-    "T50",
-    "T100",
-  ];
-
-  const normalized = normalizePotential(currentPotential);
-  const index = POTENTIALS.indexOf(normalized);
-  const next = (index + 1) % POTENTIALS.length;
-  return POTENTIALS[next];
 }
 
 function resolvePeakFrequency(customer) {
@@ -924,7 +830,8 @@ function getDeliveredCountForCustomer(customer) {
   let count = 0;
   const today = new Date();
 
-  for (let i = 1; i <= 7; i++) {
+  // Include today + last 6 days (total 7 days)
+  for (let i = 0; i <= 6; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -955,6 +862,77 @@ function getPotentialColor(value) {
   if (num <= 7) return "#FF3B30"; // red
   if (num <= 15) return "#FB8C00"; // orange
   return "#0F9D58"; // green
+}
+
+function computePeakFrequency(last8Days) {
+  if (!last8Days || typeof last8Days !== "object") return "D0";
+
+  const weeklyDeliveries = {};
+
+  Object.keys(last8Days).forEach((dateStr) => {
+    const entry = last8Days[dateStr];
+    if (!entry) return;
+
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (status !== "delivered") return;
+
+    try {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      // Create date in local timezone (don't use new Date which might convert)
+      const date = new Date(year, month - 1, day);
+      const dayOfWeek = date.getDay();
+      
+      // Calculate Monday (week start) in local timezone
+      // Monday=1, ..., Saturday=6, Sunday=0. Distance from Monday:
+      const diff = (dayOfWeek + 6) % 7; 
+      const weekStartDate = new Date(year, month - 1, day - diff);
+      const weekKey = `${weekStartDate.getFullYear()}-${String(
+        weekStartDate.getMonth() + 1,
+      ).padStart(2, "0")}-${String(weekStartDate.getDate()).padStart(2, "0")}`;
+
+      weeklyDeliveries[weekKey] = (weeklyDeliveries[weekKey] || 0) + 1;
+    } catch {
+      // skip invalid date
+    }
+  });
+
+  const maxDeliveries = Math.max(0, ...Object.values(weeklyDeliveries));
+  return `D${Math.min(maxDeliveries, 7)}`;
+}
+
+function computePotential(last8Days) {
+  if (!last8Days || typeof last8Days !== "object") return "T1";
+
+  let maxTrays = 0;
+
+  Object.values(last8Days).forEach((entry) => {
+    if (!entry) return;
+
+    const status = String(
+      typeof entry === "string"
+        ? entry
+        : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (status !== "delivered") return;
+
+    const trays =
+      entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
+    const numTrays = Number(trays);
+
+    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
+      maxTrays = numTrays;
+    }
+  });
+
+  return maxTrays > 0 ? `T${maxTrays}` : "T1";
 }
 
 function clampDays0to6(value) {
