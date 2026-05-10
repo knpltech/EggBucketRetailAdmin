@@ -7,7 +7,7 @@ import { ADMIN_PATH } from "../constant";
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All" },
   { value: "stock_available", label: "Stock Available" },
-  { value: "price_mismatch", label: "Shop Closed" },
+  { value: "shop_closed", label: "Shop Closed" },
   { value: "other_vendor", label: "Other Vendor" },
 ];
 const SORT_OPTIONS = [
@@ -193,19 +193,20 @@ const getStatusFromDelivery = (delivery) => {
   const normalizedReason = reason.toLowerCase().replace(/\s+/g, "_");
   const checkedCategories = [
     "stock_available",
-    "price_mismatch",
     "shop_closed",
     "other_vendor",
   ];
-  const category = checkedCategories.includes(type)
-    ? type
-    : checkedCategories.includes(normalizedReason)
-      ? normalizedReason
+  const normalizedType = type === "price_mismatch" ? "shop_closed" : type;
+  const normalizedReasonLabel = normalizedReason === "price_mismatch" ? "shop_closed" : normalizedReason;
+  const category = checkedCategories.includes(normalizedType)
+    ? normalizedType
+    : checkedCategories.includes(normalizedReasonLabel)
+      ? normalizedReasonLabel
       : "";
   const categoryLabel =
     category === "stock_available"
       ? "Stock Available"
-      : category === "price_mismatch" || category === "shop_closed"
+      : category === "shop_closed"
         ? "Shop Closed"
         : category === "other_vendor"
           ? "Other Vendor"
@@ -296,7 +297,7 @@ const CustomerRetention = () => {
   const [counts, setCounts] = useState({
     all: 0,
     stock_available: 0,
-    price_mismatch: 0,
+    shop_closed: 0,
     other_vendor: 0,
   });
   const [loading, setLoading] = useState(true);
@@ -319,7 +320,7 @@ const CustomerRetention = () => {
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
         setCustomers(cached.customers || []);
-        setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 });
+        setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0 });
         setDeliveryAgentOptions(cached.deliveryAgentOptions || []);
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
@@ -357,7 +358,15 @@ const CustomerRetention = () => {
           })
           : [];
 
-        const newCounts = payload.counts || { all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 };
+        const newCounts = {
+          all: 0,
+          stock_available: 0,
+          shop_closed: 0,
+          other_vendor: 0,
+          ...(payload.counts || {}),
+        };
+        newCounts.shop_closed =
+          payload.counts?.shop_closed ?? payload.counts?.price_mismatch ?? newCounts.shop_closed;
         const newDeliveryAgentOptions = Array.isArray(payload.deliveryAgentOptions)
           ? payload.deliveryAgentOptions
           : [];
@@ -384,7 +393,7 @@ const CustomerRetention = () => {
       } catch (err) {
         setError(err?.response?.data?.message || `Unable to load customer retention data for ${date}`);
         setCustomers([]);
-        setCounts({ all: 0, stock_available: 0, price_mismatch: 0, other_vendor: 0 });
+        setCounts({ all: 0, stock_available: 0, shop_closed: 0, other_vendor: 0 });
         setDeliveryAgentOptions([]);
         setTotalPages(1);
         setTotalCustomers(0);
