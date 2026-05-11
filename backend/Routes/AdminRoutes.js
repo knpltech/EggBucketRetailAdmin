@@ -45,7 +45,6 @@ import {
 import {
   getCustomerMapStatus,
   updateCustomerMeta,
-  updateCustomerPriority,
   updateCustomerPotential,
   addZone,
   getZones,
@@ -73,7 +72,6 @@ router.get("/customer/deliveries/:id", getUserDeliveries);
 router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single("image"), addCustomer);
 router.post("/customer/status", updateCustomerMeta);
-router.post("/customer/priority", updateCustomerPriority);
 router.post("/customer/potential", updateCustomerPotential);
 router.post("/customer/skip-config", saveSkipConfig);
 router.post("/customer/toggle-delivery", toggleTodayDelivery);

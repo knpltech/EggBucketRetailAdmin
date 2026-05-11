@@ -44,20 +44,6 @@ const SupAnalytics = () => {
     if (option === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
     if (option === "createdAt")
       sorted.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
-    if (option === "priority") {
-      const rank = (p) => {
-        const v = normalizePriority(p);
-        const n = getPriorityNumber(v);
-        // Higher P number = higher priority (sort first)
-        return 7 - n;
-      };
-
-      sorted.sort((a, b) => {
-        const diff = rank(a.priority) - rank(b.priority);
-        if (diff !== 0) return diff;
-        return String(a.name || "").localeCompare(String(b.name || ""));
-      });
-    }
     setCustomers(sorted);
   };
 
@@ -135,47 +121,6 @@ const SupAnalytics = () => {
     );
   };
 
-  const getPriorityPill = (priority) => {
-    const value = normalizePriority(priority);
-
-    const n = getPriorityNumber(value);
-    let bg = "#EF4444";
-    if (n >= 3 && n <= 4) bg = "#F59E0B";
-    if (n >= 5) bg = "#16A34A";
-
-    return (
-      <div
-        className="mx-auto my-0.5 rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2"
-        style={{
-          backgroundColor: bg,
-          color: "white",
-          width: "64px",
-          minHeight: "24px",
-        }}
-      >
-        {value}
-      </div>
-    );
-  };
-
-  
-  const normalizePriority = (priority) => {
-    const p = String(priority ?? "")
-      .trim()
-      .toUpperCase();
-
-    if (!p) return "P0";
-    if (/^P[0-7]$/.test(p)) return p;
-    if (/^[0-7]$/.test(p)) return `P${p}`;
-    return "P0";
-  };
-
-  const getPriorityNumber = (value) => {
-    const normalized = normalizePriority(value);
-    const n = Number(String(normalized).slice(1));
-    return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-  };
-
   // Small helpers for the UI
   const skeletonRows = Array.from({ length: 8 });
   const last7DaysHeader = Array.from({ length: 8 }).map((_, idx) => {
@@ -213,7 +158,6 @@ const SupAnalytics = () => {
           >
             <option value="name">Customer Name</option>
             <option value="createdAt">Created Date</option>
-            <option value="priority">Priority</option>
           </select>
         </div>
       </div>
@@ -287,10 +231,6 @@ const SupAnalytics = () => {
               <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
                 Zone
               </th>
-              <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
-                Priority
-              </th>
-
               {last7DaysHeader.map((d, i) => (
                 <th
                   key={i}
@@ -321,11 +261,6 @@ const SupAnalytics = () => {
                     <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
-                    {/* Priority */}
-                    <td className="px-1.5 py-2">
-                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
-                    </td>
-
                     {[...Array(8)].map((_, i) => (
                       <td key={i} className="px-1 py-2 text-center">
                         <div className="w-14 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
@@ -355,10 +290,6 @@ const SupAnalytics = () => {
                     <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                       {c.zone || "UNASSIGNED"}
                     </td>
-                    <td className="px-1.5 py-2 text-center align-middle">
-                      {getPriorityPill(c.priority)}
-                    </td>
-
                     {c.last7.map((d, index) => (
                       <td key={index} className="px-1 py-2 text-center">
                         {getStatusPill(d.type)}

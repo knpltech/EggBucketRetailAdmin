@@ -19,13 +19,6 @@ const TABS = [
   "D7",
 ];
 
-const CHECKED_TYPES = [
-  "reached",
-  "price_mismatch",
-  "stock_available",
-  "other_vendor",
-];
-
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +26,6 @@ export default function CustomerManagement() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
 
-  const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
@@ -54,7 +46,6 @@ export default function CustomerManagement() {
         setCustomers(
           rows.map((c) => ({
             ...c,
-            priority: normalizePriority(c.priority),
             peakFrequency: computePeakFrequency(c.last8Days),
             potential: computePotential(c.last8Days),
           })),
@@ -167,7 +158,7 @@ export default function CustomerManagement() {
       return "OFF";
     }
 
-    // ✅ PRIORITY 2: Manual override (if no delivery status today)
+    // Manual override applies when there is no delivery status today.
     if (override) {
       const overrideDate = override?.date
         ? String(override.date).slice(0, 10)
@@ -182,7 +173,7 @@ export default function CustomerManagement() {
       }
     }
 
-    // ✅ PRIORITY 3: Default - no delivery status, no override = ON
+    // Default: no delivery status and no override means ON.
     return "ON";
   };
 
@@ -248,21 +239,15 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
-    } else if (sortBy === "priority") {
-      const rank = (p) => {
-        const v = normalizePriority(p);
-        const n = getPriorityNumber(v);
-        return 7 - n;
-      };
-
-      list.sort((a, b) => {
-        const diff = rank(a.priority) - rank(b.priority);
-        if (diff !== 0) return diff;
-        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
-      });
     } else if (sortBy === "peakFrequency") {
       list.sort((a, b) => {
         const diff = getPeakFrequencyNumber(b) - getPeakFrequencyNumber(a);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
+    } else if (sortBy === "peakPotential") {
+      list.sort((a, b) => {
+        const diff = getPotentialNumber(b.potential) - getPotentialNumber(a.potential);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
@@ -294,53 +279,6 @@ export default function CustomerManagement() {
   }, [customers, activeTab, sortBy, todayDate, getDeliveredCount]);
 
   // ================= ACTIONS =================
-  const updatePriority = async (c) => {
-    if (!c?.id || updatingPriorityId === c.id) return;
-
-    const currentPriority = normalizePriority(c.priority);
-    const nextPriority = getNextPriority(currentPriority);
-
-    const previousPriority = currentPriority;
-
-    // Optimistic UI: update only this row, no full refetch.
-    setCustomers((prev) =>
-      prev.map((row) =>
-        row.id === c.id ? { ...row, priority: nextPriority } : row,
-      ),
-    );
-
-    try {
-      setUpdatingPriorityId(c.id);
-
-      const res = await axios.post(`${ADMIN_PATH}/customer/priority`, {
-        id: c.id,
-        priority: nextPriority,
-      });
-
-      const savedPriority = res?.data?.priority;
-      if (savedPriority) {
-        setCustomers((prev) =>
-          prev.map((row) =>
-            row.id === c.id
-              ? { ...row, priority: normalizePriority(savedPriority) }
-              : row,
-          ),
-        );
-      }
-    } catch (err) {
-      console.error("Priority update error:", err);
-
-      // Revert optimistic update if server write failed.
-      setCustomers((prev) =>
-        prev.map((row) =>
-          row.id === c.id ? { ...row, priority: previousPriority } : row,
-        ),
-      );
-    } finally {
-      setUpdatingPriorityId(null);
-    }
-  };
-
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
 
@@ -467,7 +405,7 @@ export default function CustomerManagement() {
       "Customer ID": c.custid || c.id,
       Name: getName(c),
       Zone: c.zone || "",
-      Priority: normalizePriority(c.priority),
+      Peak_Potential: normalizePotential(c.potential),
       Peak_Frequency: getPeakFrequencyLabel(c),
       Status: getLatestStatus(c),
       Remarks: getRemarkDisplay(c),
@@ -511,7 +449,7 @@ export default function CustomerManagement() {
             >
               <option value="name">Customer Name</option>
               <option value="date">Created Date</option>
-              <option value="priority">Priority</option>
+              <option value="peakPotential">Peak_Potential</option>
               <option value="peakFrequency">Peak Frequency</option>
               <option value="zone">Zone</option>
               <option value="delivery">Delivery Plan </option>
@@ -563,8 +501,7 @@ export default function CustomerManagement() {
               <th className="p-3">Zone</th>
               <th className="p-3">Delivery Plan</th>
               <th className="p-3">Skip</th>
-              <th className="p-3">Priority</th>
-              <th className="p-3">Potential</th>
+              <th className="p-3">Peak_Potential</th>
               <th className="p-3">Peak_Frequency</th>
               <th className="p-3">Status</th>
             </tr>
@@ -636,17 +573,6 @@ export default function CustomerManagement() {
                 </td>
 
                 <td className="p-3">
-                  <button
-                    disabled={updatingPriorityId === c.id}
-                    onClick={() => updatePriority(c)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${updatingPriorityId === c.id ? "opacity-70" : ""}`}
-                    style={{ backgroundColor: getPriorityColor(c.priority) }}
-                  >
-                    {normalizePriority(c.priority)}
-                  </button>
-                </td>
-
-                <td className="p-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{ backgroundColor: getPotentialColor(c.potential) }}
@@ -687,45 +613,6 @@ export default function CustomerManagement() {
 
 function getName(c) {
   return c.name || c.customerName || "Unknown";
-}
-
-function normalizePriority(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "P0";
-
-  // New format
-  if (/^P[0-7]$/.test(raw)) return raw;
-
-  // Allow sending numbers 0-7
-  if (/^[0-7]$/.test(raw)) return `P${raw}`;
-
-  return "P0";
-}
-
-function getPriorityColor(value) {
-  const priority = normalizePriority(value);
-
-  const n = getPriorityNumber(priority);
-
-  // P0/P1/P2 = red, P3/P4 = orange, P5/P6/P7 = green
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-}
-
-function getPriorityNumber(value) {
-  const normalized = normalizePriority(value);
-  const n = Number(String(normalized).slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-}
-
-function getNextPriority(currentPriority) {
-  const n = getPriorityNumber(currentPriority);
-  const next = (n + 1) % 8;
-  return `P${next}`;
 }
 
 function getStatusColor(value) {
@@ -862,6 +749,12 @@ function getPotentialColor(value) {
   if (num <= 7) return "#FF3B30"; // red
   if (num <= 15) return "#FB8C00"; // orange
   return "#0F9D58"; // green
+}
+
+function getPotentialNumber(value) {
+  const potential = normalizePotential(value);
+  const n = Number(potential.slice(1));
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 function computePeakFrequency(last8Days) {

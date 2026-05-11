@@ -55,9 +55,36 @@ const getPeakFrequencyColor = (value) => {
   const peak = normalizePeakFrequency(value);
   const n = Number(peak.slice(1));
 
-  if (n <= 2) return "bg-red-500";
-  if (n <= 4) return "bg-orange-500";
-  return "bg-green-600";
+  if (n <= 2) return "#FF3B30"; // red
+  if (n <= 4) return "#FB8C00"; // orange
+  return "#0F9D58"; // green
+};
+
+const normalizePotential = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T1";
+
+  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
+  const match = normalized.match(/^T(\d+)$/);
+  if (match) {
+    const num = Number(match[1]);
+    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
+  }
+
+  return "T1";
+};
+
+const getPotentialColor = (value) => {
+  const potential = normalizePotential(value);
+  const num = parseInt(potential.slice(1), 10);
+
+  // T1-T7 = red, T8-T15 = orange, T20+ = green
+  if (num <= 7) return "#FF3B30"; // red
+  if (num <= 15) return "#FB8C00"; // orange
+  return "#0F9D58"; // green
 };
 
 const AISuggestionRow = ({ customer, suggestionData }) => {
@@ -76,6 +103,7 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
   const peakFrequency = normalizePeakFrequency(
     customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
   );
+  const peakPotential = normalizePotential(customer?.potential);
   const { colorClass, dotClass, text, subText } = getSuggestionConfig(
     suggestionData.suggestion,
     suggestionData.reason,
@@ -86,15 +114,22 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
     <tr className="border-t hover:bg-gray-50 bg-white">
       <td className="p-4 py-5 text-gray-700">{customer.custid}</td>
       <td className="p-4 py-5 text-gray-900 font-bold">{customer.name}</td>
+
       <td className="p-4 py-5 text-gray-700 font-medium">
-        <span className={`px-2 py-1 rounded text-xs ${customer.priority === "P1" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"}`}>
-          {customer.priority || "P0"}
+        <span
+          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
+        >
+          {peakFrequency}
         </span>
       </td>
 
       <td className="p-4 py-5 text-gray-700 font-medium">
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${getPeakFrequencyColor(peakFrequency)}`}>
-          {peakFrequency}
+        <span
+          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          style={{ backgroundColor: getPotentialColor(peakPotential) }}
+        >
+          {peakPotential}
         </span>
       </td>
       

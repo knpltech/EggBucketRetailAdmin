@@ -6,7 +6,6 @@ export const generateAISuggestion = (customer) => {
   const last8Days = customer?.last8Days || {};
   const latestRemark = (customer?.latestRemark || "").toLowerCase();
   const skipConfig = customer?.skipConfig || {};
-  const priority = customer?.priority || "P0";
 
   // RULE 5: Skip config active
   if (skipConfig?.days > 0) {
@@ -76,12 +75,7 @@ export const generateAISuggestion = (customer) => {
     if (score < 40) reason = "No recent activity, likely does not need delivery.";
   }
 
-  // RULE 6: Priority P1
-  if (priority === "P1") {
-    score += 10;
-  }
-
-  // RULE 7: Delivered count >= 5
+  // RULE 6: Delivered count >= 5
   if (deliveredCount >= 5) {
     score += 20;
     if (score >= 70) reason = "Frequent deliveries, high chance of order.";

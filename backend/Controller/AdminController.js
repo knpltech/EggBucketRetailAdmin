@@ -184,17 +184,6 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
   }
 };
 
-const normalizeCustomerPriority = (priority) => {
-  const p = String(priority ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!p) return "P0";
-  if (/^P[0-7]$/.test(p)) return p;
-  if (/^[0-7]$/.test(p)) return `P${p}`;
-  return "P0";
-};
-
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
     "T1","T2","T3","T4","T5","T6","T7","T8","T9",
@@ -1001,7 +990,6 @@ const getAnalyticsLast8 = async (req, res) => {
         imageUrl: c.imageUrl || "",
         createdAt: c.createdAt,
         zone: c.zone || "UNASSIGNED",
-        priority: normalizeCustomerPriority(c.priority),
         todayOverride: c.todayOverride || null,
         deliveries,
       };
@@ -1089,7 +1077,6 @@ const getCustomersByDeliveryDays = async (req, res) => {
       result.push({
         id: customerId,
         ...data,
-        priority: normalizeCustomerPriority(data?.priority),
         deliveryCount,
       });
     });
@@ -1184,7 +1171,6 @@ const getCustomersByDeliveryCount = async (req, res) => {
         result.push({
           id: customerId,
           ...data,
-          priority: normalizeCustomerPriority(data?.priority),
           deliveryCount,
         });
       }
@@ -1268,59 +1254,6 @@ const getLatestRemarks = async (req, res) => {
     return res.status(200).json(remarks);
   } catch (err) {
     console.error("getLatestRemarks error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-const updateCustomerPriority = async (req, res) => {
-  try {
-    const { id, priority } = req.body;
-
-    if (!id) {
-      return res.status(400).json({ message: "Customer ID is required" });
-    }
-
-    if (priority === undefined || priority === null) {
-      return res.status(400).json({ message: "Priority is required" });
-    }
-
-    const raw = String(priority ?? "")
-      .trim()
-      .toUpperCase();
-
-    // Only accept new priority system.
-    const normalizedPriority = /^P[0-7]$/.test(raw)
-      ? raw
-      : /^[0-7]$/.test(raw)
-        ? `P${raw}`
-        : null;
-
-    if (!normalizedPriority) {
-      return res.status(400).json({ message: "Invalid priority value" });
-    }
-
-    const db = getFirestore();
-    const customerRef = db.collection("customers").doc(id);
-    const customerSnap = await customerRef.get();
-
-    if (!customerSnap.exists) {
-      return res.status(404).json({ message: "Customer not found" });
-    }
-
-    await customerRef.update({ priority: normalizedPriority });
-
-    try {
-      cache.del("analytics:last8:v1");
-    } catch (cacheErr) {
-      console.warn("Failed to clear analytics cache:", cacheErr);
-    }
-
-    return res.status(200).json({
-      message: "Priority updated successfully",
-      priority: normalizedPriority,
-    });
-  } catch (err) {
-    console.error("updateCustomerPriority error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -1658,7 +1591,6 @@ const recalculateCollectionData = async (req, res) => {
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
-  updateCustomerPriority,
   updateCustomerPotential,
   saveSkipConfig,
   toggleTodayDelivery,
