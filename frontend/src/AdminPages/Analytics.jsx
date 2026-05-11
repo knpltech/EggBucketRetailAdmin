@@ -17,7 +17,6 @@ const Analytics = () => {
   const [expandedCustomerId, setExpandedCustomerId] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
 
-  const [updatingPriorityId, setUpdatingPriorityId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
 
   // Use Asia/Kolkata date so it matches backend todayOverride.date.
@@ -26,35 +25,6 @@ const Analytics = () => {
   // Date range state for export
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-
-  const normalizePriority = useCallback((priority) => {
-    const p = String(priority ?? "")
-      .trim()
-      .toUpperCase();
-
-    if (!p) return "P0";
-    if (/^P[0-7]$/.test(p)) return p;
-    if (/^[0-7]$/.test(p)) return `P${p}`;
-    return "P0";
-  }, []);
-
-  const getPriorityNumber = useCallback(
-    (value) => {
-      const normalized = normalizePriority(value);
-      const n = Number(String(normalized).slice(1));
-      return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-    },
-    [normalizePriority],
-  );
-
-  const getNextPriority = useCallback(
-    (currentPriority) => {
-      const n = getPriorityNumber(currentPriority);
-      const next = (n + 1) % 8;
-      return `P${next}`;
-    },
-    [getPriorityNumber],
-  );
 
   // Helper: Format date to YYYY-MM-DD in LOCAL timezone (not UTC)
   const formatDateLocal = useCallback((d) => {
@@ -155,20 +125,6 @@ const Analytics = () => {
         sorted.sort((a, b) => a.name.localeCompare(b.name));
       if (option === "createdAt")
         sorted.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
-      if (option === "priority") {
-        const rank = (p) => {
-          const v = normalizePriority(p);
-          const n = getPriorityNumber(v);
-          // Higher P number = higher priority (sort first)
-          return 7 - n;
-        };
-
-        sorted.sort((a, b) => {
-          const diff = rank(a.priority) - rank(b.priority);
-          if (diff !== 0) return diff;
-          return String(a.name || "").localeCompare(String(b.name || ""));
-        });
-      }
       if (option === "zone")
         sorted.sort((a, b) => (a.zone || "").localeCompare(b.zone || ""));
       if (option === "status") {
@@ -184,7 +140,7 @@ const Analytics = () => {
       setCurrentPage(1);
       setExpandedCustomerId(null);
     },
-    [allCustomers, normalizePriority, getPriorityNumber, getTodayEffectiveStatus],
+    [allCustomers, getTodayEffectiveStatus],
   );
 
   useEffect(() => {
@@ -228,64 +184,6 @@ const Analytics = () => {
       >
         {text}
       </div>
-    );
-  };
-
-  const updatePriority = async (customer) => {
-    if (!customer?.id || updatingPriorityId === customer.id) return;
-
-    const currentPriority = normalizePriority(customer.priority);
-    const nextPriority = getNextPriority(currentPriority);
-
-    try {
-      setUpdatingPriorityId(customer.id);
-
-      await axios.post(`${ADMIN_PATH}/customer/priority`, {
-        id: customer.id,
-        priority: nextPriority,
-      });
-
-      setAllCustomers((prev) =>
-        prev.map((c) =>
-          c.id === customer.id ? { ...c, priority: nextPriority } : c,
-        ),
-      );
-    } catch (err) {
-      console.error("Priority update error:", err);
-      alert("Failed to update priority");
-    } finally {
-      setUpdatingPriorityId(null);
-    }
-  };
-
-  const getPriorityButton = (customer) => {
-    const value = normalizePriority(customer?.priority);
-
-    const n = getPriorityNumber(value);
-    let bg = "#EF4444";
-    if (n >= 3 && n <= 4) bg = "#F59E0B";
-    if (n >= 5) bg = "#16A34A";
-
-    const disabled = updatingPriorityId === customer?.id;
-
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => updatePriority(customer)}
-        className={`mx-auto my-0.5 rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2 ${
-          disabled ? "opacity-70 cursor-not-allowed" : "hover:opacity-90"
-        }`}
-        style={{
-          backgroundColor: bg,
-          color: "white",
-          width: "64px",
-          minHeight: "24px",
-        }}
-        title="Click to change priority"
-      >
-        {value}
-      </button>
     );
   };
 
@@ -403,7 +301,6 @@ const Analytics = () => {
       "Customer ID",
       "Name",
       "Zone",
-      "Priority",
       ...dateList.map(
         (d) =>
           `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}`,
@@ -418,7 +315,6 @@ const Analytics = () => {
         c.custid || "",
         c.name || "",
         c.zone || "UNASSIGNED",
-        normalizePriority(c.priority),
       ];
 
       dateList.forEach((day) => {
@@ -444,7 +340,6 @@ const Analytics = () => {
       { wch: 14 }, // Customer ID
       { wch: 36 }, // Name - made wider for long names
       { wch: 18 }, // zone
-      { wch: 14 }, // priority
       ...dateList.map(() => ({ wch: 12 })),
     ];
     ws["!cols"] = cols;
@@ -486,7 +381,7 @@ const Analytics = () => {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
-  const detailColumnSpan = 5 + last7DaysHeader.length;
+  const detailColumnSpan = 4 + last7DaysHeader.length;
 
   const getPageButtons = () => {
     if (totalPages <= 7) {
@@ -532,7 +427,6 @@ const Analytics = () => {
           >
             <option value="name">Customer Name</option>
             <option value="createdAt">Created Date</option>
-            <option value="priority">Priority</option>
             <option value="zone">Zone </option>
             <option value="status">Delivery-Plan(ON first)</option>
           </select>
@@ -641,9 +535,6 @@ const Analytics = () => {
               <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
                 Zone
               </th>
-                <th className="px-1.5 py-2 text-center font-semibold w-[84px]">
-                Priority
-              </th>
               <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
                 Delivery Plan
               </th>
@@ -675,10 +566,6 @@ const Analytics = () => {
                     <td className="px-1.5 py-2">
                       <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                     </td>
-                     {/* Priority */}
-                    <td className="px-1.5 py-2">
-                      <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
-                  </td>
                     {/* Delivery Plan */}
                     <td className="px-1.5 py-2">
                       <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
@@ -707,9 +594,6 @@ const Analytics = () => {
                           {c.zone || "UNASSIGNED"}
                         </td>
 
-                        <td className="px-1.5 py-2 text-center align-middle">
-                          {getPriorityButton(c)}
-                        </td>
                         <td className="px-1.5 py-2 text-center align-middle">
                           {(() => {
                             const isOn = effectiveStatus === "ON";
@@ -785,14 +669,6 @@ const Analytics = () => {
                                   </p>
                                   <p className="mt-1 text-sm font-semibold text-gray-900">
                                     {c.zone || "UNASSIGNED"}
-                                  </p>
-                                </div>
-                                <div className="rounded-lg bg-white p-3 shadow-sm">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                    Priority
-                                  </p>
-                                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                                    {normalizePriority(c.priority)}
                                   </p>
                                 </div>
                                 <div className="rounded-lg bg-white p-3 shadow-sm">

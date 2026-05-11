@@ -50,15 +50,12 @@ const AISuggestions = () => {
         };
       });
 
-      // 3. Sort by: 1. Highest AI confidence, 2. Priority customers first
+      // 3. Sort by highest AI confidence.
       processedData.sort((a, b) => {
         if (b.suggestion.confidence !== a.suggestion.confidence) {
           return b.suggestion.confidence - a.suggestion.confidence;
         }
-        const priorityA = a.customer.priority || "P0";
-        const priorityB = b.customer.priority || "P0";
-        // P1 should come before P0, so string descending works if formats are P0, P1...
-        return priorityB.localeCompare(priorityA);
+        return (a.customer.name || "").localeCompare(b.customer.name || "");
       });
 
       setCustomers(processedData);

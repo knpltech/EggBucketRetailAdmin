@@ -105,19 +105,6 @@ export default function CustomerManagementV() {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
-    } else if (sortBy === "priority") {
-      const rank = (p) => {
-        const v = normalizePriority(p);
-        const n = getPriorityNumber(v);
-        // Higher P number = higher priority (sort first)
-        return 7 - n;
-      };
-
-      list.sort((a, b) => {
-        const diff = rank(a.priority) - rank(b.priority);
-        if (diff !== 0) return diff;
-        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
-      });
     } else if (sortBy === "remarks") {
       const withRemarks = list.filter(
         (c) => c.latestRemark && c.latestRemark !== "-",
@@ -169,7 +156,6 @@ export default function CustomerManagementV() {
           >
             <option value="name">Customer Name</option>
             <option value="date">Created Date</option>
-            <option value="priority">Priority</option>
             {!isAll && <option value="remarks">Remarks A-Z</option>}
           </select>
         </div>
@@ -199,7 +185,6 @@ export default function CustomerManagementV() {
               <th className="p-3">Customer ID</th>
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
-              <th className="p-3">Priority</th>
               {!isAll && <th className="p-3">Remarks</th>}
             </tr>
           </thead>
@@ -220,15 +205,6 @@ export default function CustomerManagementV() {
                   {c.zone || "UNASSIGNED"}
                 </td>
 
-                <td className="p-3">
-                  <span
-                    className="px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getPriorityColor(c.priority) }}
-                  >
-                    {normalizePriority(c.priority)}
-                  </span>
-                </td>
-
                 {!isAll && (
                   <td className="p-3 text-left">{c.latestRemark || "-"}</td>
                 )}
@@ -243,35 +219,6 @@ export default function CustomerManagementV() {
 
 function getName(c) {
   return c.name || c.customerName || "Unknown";
-}
-
-function normalizePriority(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "P0";
-
-  if (/^P[0-7]$/.test(raw)) return raw;
-  if (/^[0-7]$/.test(raw)) return `P${raw}`;
-
-  return "P0";
-}
-
-function getPriorityColor(value) {
-  const priority = normalizePriority(value);
-
-  const n = getPriorityNumber(priority);
-
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-}
-
-function getPriorityNumber(value) {
-  const normalized = normalizePriority(value);
-  const n = Number(String(normalized).slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
 }
 
 function getImage(c) {

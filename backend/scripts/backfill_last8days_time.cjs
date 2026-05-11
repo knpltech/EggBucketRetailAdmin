@@ -47,7 +47,7 @@ async function backfillLast8DaysTime() {
             if (!entry.time) {
               needsUpdate = true;
               
-              // Fallback priority:
+              // Fallback order:
               // 1. last8DaysUpdatedAt (best approximation of when the status was changed)
               // 2. Date.now() (fallback if no updated timestamp exists)
               entry.time = data.last8DaysUpdatedAt || Date.now();

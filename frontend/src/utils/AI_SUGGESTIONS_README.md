@@ -4,7 +4,7 @@ This document explains the architecture and business logic behind the AI Suggest
 
 ## Overview
 
-The AI Engine is a **Rule-Based Prediction Engine** located in `frontend/src/utils/aiSuggestionEngine.js`. It does NOT use Machine Learning (like TensorFlow). Instead, it evaluates the customer's `last8Days` activity, remarks, and priority configurations to make intelligent, determinable suggestions.
+The AI Engine is a **Rule-Based Prediction Engine** located in `frontend/src/utils/aiSuggestionEngine.js`. It does NOT use Machine Learning (like TensorFlow). Instead, it evaluates the customer's `last8Days` activity, remarks, and delivery configuration to make intelligent, determinable suggestions.
 
 ### The Objective
 To tell the Delivery or Admin team whether a customer will likely need an egg delivery **tomorrow**.
@@ -22,7 +22,6 @@ The suggestion engine takes a standard `customer` object as its input, which con
 - `last8Days`: An object/map tracking the last 8 days of delivery statuses.
 - `latestRemark`: Any recent text notes added by a delivery agent.
 - `skipConfig`: Configurations for pausing deliveries.
-- `priority`: P0, P1, etc.
 - `todayOverride`: The current toggle state for today.
 
 ---
@@ -53,9 +52,9 @@ The engine starts with a base score of **50**. We apply several rules to adjust 
    - **Condition:** If `skipConfig.days > 0`.
    - **Reasoning:** If the customer explicitly requested a pause, the engine immediately halts scoring and returns `KEEP_OFF_TOMORROW` with 100% confidence.
 
-6. **Rule 6: High Priority (+10 points)**
-   - **Condition:** If `priority === "P1"`.
-   - **Reasoning:** We bias slightly toward keeping deliveries ON for high-priority accounts to ensure they are never missed.
+6. **Rule 6: Frequent Deliveries (+20 points)**
+   - **Condition:** If delivered count is 5 or more.
+   - **Reasoning:** Frequent deliveries indicate a higher chance of ordering again.
 
 7. **Rule 7: Frequent Deliveries (+20 points)**
    - **Condition:** If there were 5 or more successful deliveries (`status === "delivered"`) in the `last8Days`.
@@ -87,4 +86,4 @@ Example: A score of 90 results in 80% confidence. A score of 10 results in 80% c
 - **Page:** `frontend/src/AdminPages/AISuggestions.jsx`
 - **Table Components:** `AISuggestionTable.jsx` and `AISuggestionRow.jsx`
 
-The page natively fetches all customers, filters out those without a `todayOverride`, feeds them into the `generateAISuggestion` function, and then sorts the resulting table primarily by **Confidence** (highest first), followed by **Priority**.
+The page natively fetches all customers, filters out those without a `todayOverride`, feeds them into the `generateAISuggestion` function, and then sorts the resulting table by **Confidence** (highest first).

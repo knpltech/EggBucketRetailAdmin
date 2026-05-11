@@ -29,19 +29,6 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
   return new Date().toISOString().slice(0, 10);
 };
 
-const normalizeCustomerPriority = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "P0";
-
-  if (/^P[0-7]$/.test(raw)) return raw;
-  if (/^[0-7]$/.test(raw)) return `P${raw}`;
-
-  return "P0";
-};
-
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
     "T1","T2","T3","T4","T5","T6","T7",
@@ -130,7 +117,6 @@ const buildCustomerInfoPayload = (doc, peakUpdates = []) => {
     id: doc.id,
     ...customerData,
     Peak_Frequency: peakFrequency,
-    priority: normalizeCustomerPriority(customerData?.priority),
   };
 };
 
@@ -449,7 +435,7 @@ const userInfo = async (req, res) => {
           },
         };
 
-        await cache.setAsync(cacheKey, payload, 60);
+        await cache.setAsync(cacheKey, payload, 300);
         return res.status(200).json(payload);
       }
 
@@ -510,7 +496,7 @@ const userInfo = async (req, res) => {
         },
       };
 
-      await cache.setAsync(cacheKey, payload, 60);
+      await cache.setAsync(cacheKey, payload, 300);
       return res.status(200).json(payload);
     }
 
@@ -529,7 +515,7 @@ const userInfo = async (req, res) => {
 
     const sortedCustomers = sortCustomers(customers, sortBy);
 
-    await cache.setAsync(cacheKey, sortedCustomers, 60);
+    await cache.setAsync(cacheKey, sortedCustomers, 300);
     return res.status(200).json(sortedCustomers);
   } catch (error) {
     console.error("Error fetching customers:", error);
@@ -559,7 +545,6 @@ const specificUser = async (req, res) => {
     const payload = {
       id: userDoc.id,
       ...data,
-      priority: normalizeCustomerPriority(data?.priority),
     };
 
     await cache.setAsync(cacheKey, payload, 120);
@@ -913,7 +898,6 @@ const addCustomer = async (req, res) => {
       custid,
       location,
       zone: "UNASSIGNED",
-      priority: "P0",
       potential: "T1",
       remarks: "",
     });
