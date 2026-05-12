@@ -42,7 +42,9 @@ const CollectionSummary = () => {
     new Date().toISOString().split("T")[0],
   );
   const [selectedAgent, setSelectedAgent] = useState("all");
-  const [sortBy, setSortBy] = useState("delivery-time");
+  const [sortBy] = useState("delivery-time");
+  const [todaysPrice, setTodaysPrice] = useState("");
+  const [minusAmounts, setMinusAmounts] = useState({});
 
   // Get date string in Kolkata timezone
 
@@ -388,6 +390,28 @@ const CollectionSummary = () => {
     window.URL.revokeObjectURL(url);
   }, [filtered]);
 
+  // Handle Calculate button click
+  const handleCalculate = () => {
+    if (!todaysPrice || parseFloat(todaysPrice) <= 0) {
+      alert("Please enter a valid Today's Price");
+      return;
+    }
+
+    const price = parseFloat(todaysPrice);
+    const newMinusAmounts = {};
+
+    filtered.forEach((item) => {
+      const quantity = typeof item.quantity === "number" ? item.quantity : 0;
+      const amount = typeof item.amount === "number" ? item.amount : 0;
+
+      // Minus Amount = Amount - (Today's Price × Quantity)
+      const minusAmount = amount - price * quantity;
+      newMinusAmounts[item.customerId] = minusAmount;
+    });
+
+    setMinusAmounts(newMinusAmounts);
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -543,6 +567,30 @@ const CollectionSummary = () => {
           <Zap size={18} className={recalculating ? "animate-spin" : ""} />
           <span>Recalculate</span>
         </button>
+
+        {/* Calculator Controls */}
+        <div className="flex items-center gap-2 ml-2">
+          <input
+            type="number"
+            value={todaysPrice}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              setTodaysPrice(newValue);
+              // Clear minusAmounts when input is cleared
+              if (newValue === "") {
+                setMinusAmounts({});
+              }
+            }}
+            placeholder="Today's Price"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleCalculate}
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition whitespace-nowrap"
+          >
+            Calculate
+          </button>
+        </div>
       </div>
 
       {/* Summary Stats Cards */}
@@ -608,6 +656,9 @@ const CollectionSummary = () => {
               <th className="p-3 text-right font-semibold text-gray-900">
                 Amount
               </th>
+              <th className="p-3 text-right font-semibold text-gray-900">
+                Minus Amount
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -657,6 +708,21 @@ const CollectionSummary = () => {
                     ? `₹${item.amount.toLocaleString("en-IN")}`
                     : item.amount}
                 </td>
+                <td className="p-3 text-right font-semibold">
+                  {minusAmounts[item.customerId] !== undefined ? (
+                    <span
+                      className={
+                        minusAmounts[item.customerId] < 0
+                          ? "text-red-600"
+                          : "text-gray-900"
+                      }
+                    >
+                      ₹{minusAmounts[item.customerId].toLocaleString("en-IN")}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
               </tr>
             ))}
 
@@ -678,6 +744,13 @@ const CollectionSummary = () => {
               </td>
               <td className="p-3 text-right text-gray-900">
                 ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
+              </td>
+              <td className="p-3 text-right text-gray-900">
+                {Object.keys(minusAmounts).length > 0
+                  ? `₹${Object.values(minusAmounts)
+                      .reduce((sum, val) => sum + val, 0)
+                      .toLocaleString("en-IN")}`
+                  : "-"}
               </td>
             </tr>
           </tbody>
