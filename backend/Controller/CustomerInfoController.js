@@ -8,6 +8,11 @@ const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
 const INDIA_TZ = "Asia/Kolkata";
 
+// ── In-memory daily active-count cache ──────────────────────────────────────
+// Stores { date: "YYYY-MM-DD", count: N } so we serve activeCount from memory
+// after the first computation of each day. Zero Firestore reads after warm-up.
+const _activeCountCache = { date: null, count: 0 };
+
 const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -31,9 +36,9 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
-    "T1","T2","T3","T4","T5","T6","T7",
-    "T8","T9","T10","T15","T20","T25","T30",
-    "T50","T100",
+    "T1", "T2", "T3", "T4", "T5", "T6", "T7",
+    "T8", "T9", "T10", "T15", "T20", "T25", "T30",
+    "T50", "T100",
   ];
 
   const raw = String(value ?? "")
@@ -91,8 +96,8 @@ const resolvePeakFrequency = (customerData = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(customerData.last8Days || {});
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
-      customerData.peakFrequency ||
-      customerData.peak_frequency,
+    customerData.peakFrequency ||
+    customerData.peak_frequency,
   );
 
   return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
@@ -105,8 +110,8 @@ const buildCustomerInfoPayload = (doc, peakUpdates = []) => {
   const peakFrequency = resolvePeakFrequency(customerData);
   const savedPeak = normalizePeakFrequency(
     customerData?.Peak_Frequency ||
-      customerData?.peakFrequency ||
-      customerData?.peak_frequency,
+    customerData?.peakFrequency ||
+    customerData?.peak_frequency,
   );
 
   if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)) {
@@ -185,9 +190,9 @@ const resolveDeliveryAgent = (entry, fallbackAgent, deliveryManMap) => {
     const nestedName =
       String(
         nestedAgent.name ||
-          nestedAgent.display_name ||
-          nestedAgent.agentName ||
-          "",
+        nestedAgent.display_name ||
+        nestedAgent.agentName ||
+        "",
       ).trim();
     if (nestedName) {
       return { ...nestedAgent, name: nestedName };
@@ -632,184 +637,184 @@ const getUserDeliveries = async (req, res) => {
 const getAllCustomerDeliveries = async (req, res) => {
   const date = req.query.date;
 
-    // ✅ OPTIMIZATION: Separate cache keys and increased TTL (5 mins)
-    const cacheKey = date
-      ? `allCustomerDeliveries:${date}:v6`
-      : "allCustomerDeliveries:v6";
+  // ✅ OPTIMIZATION: Separate cache keys and increased TTL (5 mins)
+  const cacheKey = date
+    ? `allCustomerDeliveries:${date}:v6`
+    : "allCustomerDeliveries:v6";
 
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      return res.status(200).json({ customers: cached });
-    }
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.status(200).json({ customers: cached });
+  }
 
-    try {
-      const db = getFirestore();
+  try {
+    const db = getFirestore();
 
-      // 1. Fetch all customers
-      const customersSnap = await db.collection("customers").get();
-      
-      // 2. Fetch Delivery Partners (pre-cache for lookup)
-      const deliveryManSnap = await db.collection("DeliveryMan").get();
-      const deliveryManMap = new Map();
-      deliveryManSnap.docs.forEach(doc => {
-        const d = doc.data();
-        deliveryManMap.set(doc.id, { name: d.name || d.display_name || "", phone: d.phone || "" });
-      });
+    // 1. Fetch all customers
+    const customersSnap = await db.collection("customers").get();
 
-      const customersWithDeliveries = [];
-      const autoFlipQueries = [];
-      
-      // Date Calculations for Hybrid Approach
-      const today = new Date();
-      const todayStr = today.toISOString().split("T")[0];
-      
-      // We use Promise.all to handle potential subcollection fetches in parallel
-      await Promise.all(customersSnap.docs.map(async (doc) => {
-        const customerData = doc.data() || {};
-        const last8Days = customerData.last8Days || {};
-        let deliveries = [];
-        const shouldHydrateFromSubcollection = (entry) => {
-          if (!entry || typeof entry !== "object") return true;
+    // 2. Fetch Delivery Partners (pre-cache for lookup)
+    const deliveryManSnap = await db.collection("DeliveryMan").get();
+    const deliveryManMap = new Map();
+    deliveryManSnap.docs.forEach(doc => {
+      const d = doc.data();
+      deliveryManMap.set(doc.id, { name: d.name || d.display_name || "", phone: d.phone || "" });
+    });
 
-          const hasStatus = Boolean(String(entry.status || "").trim());
-          const hasTimestamp = Boolean(entry.timestamp);
-          const hasAgent = Boolean(
-            entry.agentName ||
-              entry.agentId ||
-              entry.deliveredBy ||
-              entry.deliveryMan,
-          );
-          const hasReason = entry.reason !== undefined;
-          const hasTrays = entry.traysDelivered !== undefined;
+    const customersWithDeliveries = [];
+    const autoFlipQueries = [];
 
-          return !(hasStatus && hasTimestamp && hasAgent && hasReason && hasTrays);
-        };
+    // Date Calculations for Hybrid Approach
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
 
-        if (date) {
-          // First preference: use denormalized last8Days entry (cheaper).
-          const entry = last8Days[date];
-          if (entry) {
-            const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
-            const entryReason = typeof entry === "object" ? entry?.reason : "";
-            let subData = null;
+    // We use Promise.all to handle potential subcollection fetches in parallel
+    await Promise.all(customersSnap.docs.map(async (doc) => {
+      const customerData = doc.data() || {};
+      const last8Days = customerData.last8Days || {};
+      let deliveries = [];
+      const shouldHydrateFromSubcollection = (entry) => {
+        if (!entry || typeof entry !== "object") return true;
 
-            if (shouldHydrateFromSubcollection(entry)) {
-              const deliveryDoc = await doc.ref.collection("deliveries").doc(date).get();
-              if (deliveryDoc.exists) {
-                subData = deliveryDoc.data() || {};
-              }
-            }
+        const hasStatus = Boolean(String(entry.status || "").trim());
+        const hasTimestamp = Boolean(entry.timestamp);
+        const hasAgent = Boolean(
+          entry.agentName ||
+          entry.agentId ||
+          entry.deliveredBy ||
+          entry.deliveryMan,
+        );
+        const hasReason = entry.reason !== undefined;
+        const hasTrays = entry.traysDelivered !== undefined;
 
-            const resolvedAgent =
-              resolveDeliveryAgent(
-                entry,
-                customerData.deliveredBy || customerData.deliveryMan,
-                deliveryManMap,
-              ) ||
-              resolveDeliveryAgent(
-                subData,
-                customerData.deliveredBy || customerData.deliveryMan,
-                deliveryManMap,
-              );
+        return !(hasStatus && hasTimestamp && hasAgent && hasReason && hasTrays);
+      };
 
-            const mergedStatus =
-              entryStatus ||
-              String(subData?.status || subData?.type || "")
-                .trim()
-                .toLowerCase();
-            const subReason = subData?.checkReason || subData?.reason || "";
+      if (date) {
+        // First preference: use denormalized last8Days entry (cheaper).
+        const entry = last8Days[date];
+        if (entry) {
+          const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
+          const entryReason = typeof entry === "object" ? entry?.reason : "";
+          let subData = null;
 
-            deliveries = [{
-              id: date,
-              timestamp:
-                (typeof entry === "object" ? entry?.timestamp || null : null) ||
-                subData?.timestamp ||
-                null,
-              type: mergedStatus,
-              status: mergedStatus,
-              checkReason: entryReason || subReason || customerData.checkReason || "",
-              traysDelivered:
-                (typeof entry === "object" ? entry?.traysDelivered : null) ??
-                subData?.traysDelivered ??
-                customerData.traysDelivered ??
-                null,
-              deliveryMan: resolvedAgent,
-            }];
-          } else {
-            // Fallback: if date entry is not in last8Days, read historical subcollection doc.
+          if (shouldHydrateFromSubcollection(entry)) {
             const deliveryDoc = await doc.ref.collection("deliveries").doc(date).get();
             if (deliveryDoc.exists) {
-              const d = deliveryDoc.data();
-              const { status, reason } = getStatusAndReasonFromType(d.type, d.checkReason);
-              
-              const resolvedAgent = resolveDeliveryAgent(
-                d,
-                customerData.deliveredBy || customerData.deliveryMan,
-                deliveryManMap,
-              );
-
-              deliveries = [{
-                id: deliveryDoc.id,
-                timestamp: d.timestamp || null,
-                type: d.type || "",
-                status: status,
-                checkReason: d.checkReason || reason || "",
-                traysDelivered: d.traysDelivered ?? null,
-                deliveryMan: resolvedAgent,
-              }];
+              subData = deliveryDoc.data() || {};
             }
           }
+
+          const resolvedAgent =
+            resolveDeliveryAgent(
+              entry,
+              customerData.deliveredBy || customerData.deliveryMan,
+              deliveryManMap,
+            ) ||
+            resolveDeliveryAgent(
+              subData,
+              customerData.deliveredBy || customerData.deliveryMan,
+              deliveryManMap,
+            );
+
+          const mergedStatus =
+            entryStatus ||
+            String(subData?.status || subData?.type || "")
+              .trim()
+              .toLowerCase();
+          const subReason = subData?.checkReason || subData?.reason || "";
+
+          deliveries = [{
+            id: date,
+            timestamp:
+              (typeof entry === "object" ? entry?.timestamp || null : null) ||
+              subData?.timestamp ||
+              null,
+            type: mergedStatus,
+            status: mergedStatus,
+            checkReason: entryReason || subReason || customerData.checkReason || "",
+            traysDelivered:
+              (typeof entry === "object" ? entry?.traysDelivered : null) ??
+              subData?.traysDelivered ??
+              customerData.traysDelivered ??
+              null,
+            deliveryMan: resolvedAgent,
+          }];
         } else {
-          // No specific date -> Return all recent activity from Map
-          deliveries = await Promise.all(Object.entries(last8Days).map(async ([d, entry]) => {
-            const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
-            const entryReason = typeof entry === "object" ? entry?.reason : "";
-            let subData = null;
+          // Fallback: if date entry is not in last8Days, read historical subcollection doc.
+          const deliveryDoc = await doc.ref.collection("deliveries").doc(date).get();
+          if (deliveryDoc.exists) {
+            const d = deliveryDoc.data();
+            const { status, reason } = getStatusAndReasonFromType(d.type, d.checkReason);
 
-            if (shouldHydrateFromSubcollection(entry)) {
-              const deliveryDoc = await doc.ref.collection("deliveries").doc(d).get();
-              if (deliveryDoc.exists) {
-                subData = deliveryDoc.data() || {};
-              }
-            }
+            const resolvedAgent = resolveDeliveryAgent(
+              d,
+              customerData.deliveredBy || customerData.deliveryMan,
+              deliveryManMap,
+            );
 
-            const resolvedAgent =
-              resolveDeliveryAgent(
-                entry,
-                customerData.deliveredBy || customerData.deliveryMan,
-                deliveryManMap,
-              ) ||
-              resolveDeliveryAgent(
-                subData,
-                customerData.deliveredBy || customerData.deliveryMan,
-                deliveryManMap,
-              );
-
-            const mergedStatus =
-              entryStatus ||
-              String(subData?.status || subData?.type || "")
-                .trim()
-                .toLowerCase();
-            const subReason = subData?.checkReason || subData?.reason || "";
-
-            return {
-              id: d,
-              timestamp:
-                (typeof entry === "object" ? entry?.timestamp || null : null) ||
-                subData?.timestamp ||
-                null,
-              type: mergedStatus,
-              status: mergedStatus,
-              checkReason: entryReason || subReason || customerData.checkReason || "",
-              traysDelivered:
-                (typeof entry === "object" ? entry?.traysDelivered : null) ??
-                subData?.traysDelivered ??
-                customerData.traysDelivered ??
-                null,
+            deliveries = [{
+              id: deliveryDoc.id,
+              timestamp: d.timestamp || null,
+              type: d.type || "",
+              status: status,
+              checkReason: d.checkReason || reason || "",
+              traysDelivered: d.traysDelivered ?? null,
               deliveryMan: resolvedAgent,
-            };
-          }));
+            }];
+          }
         }
+      } else {
+        // No specific date -> Return all recent activity from Map
+        deliveries = await Promise.all(Object.entries(last8Days).map(async ([d, entry]) => {
+          const entryStatus = typeof entry === "string" ? entry : entry?.status || "";
+          const entryReason = typeof entry === "object" ? entry?.reason : "";
+          let subData = null;
+
+          if (shouldHydrateFromSubcollection(entry)) {
+            const deliveryDoc = await doc.ref.collection("deliveries").doc(d).get();
+            if (deliveryDoc.exists) {
+              subData = deliveryDoc.data() || {};
+            }
+          }
+
+          const resolvedAgent =
+            resolveDeliveryAgent(
+              entry,
+              customerData.deliveredBy || customerData.deliveryMan,
+              deliveryManMap,
+            ) ||
+            resolveDeliveryAgent(
+              subData,
+              customerData.deliveredBy || customerData.deliveryMan,
+              deliveryManMap,
+            );
+
+          const mergedStatus =
+            entryStatus ||
+            String(subData?.status || subData?.type || "")
+              .trim()
+              .toLowerCase();
+          const subReason = subData?.checkReason || subData?.reason || "";
+
+          return {
+            id: d,
+            timestamp:
+              (typeof entry === "object" ? entry?.timestamp || null : null) ||
+              subData?.timestamp ||
+              null,
+            type: mergedStatus,
+            status: mergedStatus,
+            checkReason: entryReason || subReason || customerData.checkReason || "",
+            traysDelivered:
+              (typeof entry === "object" ? entry?.traysDelivered : null) ??
+              subData?.traysDelivered ??
+              customerData.traysDelivered ??
+              null,
+            deliveryMan: resolvedAgent,
+          };
+        }));
+      }
 
       if (deliveries.length > 0) {
         const customerPayload = {
@@ -826,7 +831,7 @@ const getAllCustomerDeliveries = async (req, res) => {
         // ✅ AUTO-FLIP LOGIC: (Only if current date matches today)
         const todayEntry = last8Days[todayStr];
         const isDeliveredToday = (typeof todayEntry === "string" ? todayEntry : todayEntry?.status) === "delivered";
-        
+
         if (isDeliveredToday && customerData.todayOverride?.status === "ON") {
           autoFlipQueries.push(
             doc.ref.update({
@@ -911,10 +916,113 @@ const addCustomer = async (req, res) => {
   }
 };
 
+// ── Computes activeCount for today by scanning all customers (runs ONCE/day) ─
+const _computeAndCacheActiveCount = async (db, todayStr) => {
+  const DAILY_STATS_REF = db.collection("globalcounter").doc("dailyStats");
+
+  // 1. Try stored value first (1 read)
+  try {
+    const statsDoc = await DAILY_STATS_REF.get();
+    if (statsDoc.exists) {
+      const data = statsDoc.data() || {};
+      if (data.date === todayStr && typeof data.activeCount === "number") {
+        _activeCountCache.date = todayStr;
+        _activeCountCache.count = data.activeCount;
+        return data.activeCount;
+      }
+    }
+  } catch {
+    // fall through to full scan
+  }
+
+  // 2. Full scan – only happens once per server instance per day
+  let activeCount = 0;
+  try {
+    const snap = await db.collection("customers").get();
+    snap.docs.forEach((doc) => {
+      const d = doc.data() || {};
+      const last8Days = d.last8Days || {};
+      const entry = last8Days[todayStr];
+      const status = typeof entry === "string" ? entry : entry?.status;
+
+      // Delivered today → OFF regardless of override
+      if (String(status || "").toLowerCase() === "delivered") return;
+
+      // Check manual override
+      const override = d.todayOverride;
+      if (override) {
+        const overrideDate = override.date ? String(override.date).slice(0, 10) : null;
+        if (overrideDate === todayStr && String(override.status || "").toUpperCase() === "OFF") {
+          return; // explicitly OFF
+        }
+      }
+
+      activeCount += 1;
+    });
+
+    // Persist for future server restarts (1 write)
+    await DAILY_STATS_REF.set({ date: todayStr, activeCount }, { merge: true });
+  } catch (err) {
+    console.warn("_computeAndCacheActiveCount scan failed:", err);
+  }
+
+  _activeCountCache.date = todayStr;
+  _activeCountCache.count = activeCount;
+  return activeCount;
+};
+
+// ── Public helper: called by toggleTodayDelivery to adjust the in-memory count
+// delta = +1 (became active) or -1 (became inactive)
+const adjustActiveCount = (todayStr, delta) => {
+  if (_activeCountCache.date === todayStr) {
+    _activeCountCache.count = Math.max(0, _activeCountCache.count + delta);
+  }
+
+  // Also persist asynchronously so restarts stay accurate
+  try {
+    const db = getFirestore();
+    db.collection("globalcounter").doc("dailyStats").set(
+      { date: todayStr, activeCount: _activeCountCache.count },
+      { merge: true },
+    ).catch(() => {});
+  } catch {
+    // ignore – best-effort
+  }
+};
+
+// ── GET /user-info/stats ─────────────────────────────────────────────────────
+// Returns { totalCustomers, totalActive } with minimal reads:
+//   • totalCustomers : count() aggregation → 1 Firestore read
+//   • totalActive    : in-memory cache (warm) OR 1 doc read + 1 full scan (cold, once/day)
+const getUserInfoStats = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
+
+    // 1. Total customers via aggregation (1 read)
+    const totalCustomers = await getTotalCustomersCount(db);
+
+    // 2. Active count – serve from memory if already computed today
+    let totalActive;
+    if (_activeCountCache.date === todayStr) {
+      totalActive = _activeCountCache.count;
+    } else {
+      totalActive = await _computeAndCacheActiveCount(db, todayStr);
+    }
+
+    return res.status(200).json({ totalCustomers, totalActive });
+  } catch (error) {
+    console.error("getUserInfoStats error:", error);
+    return res.status(500).json({ error: "Failed to fetch stats" });
+  }
+};
+
 export {
   userInfo,
   specificUser,
   getUserDeliveries,
   getAllCustomerDeliveries,
   addCustomer,
+  getUserInfoStats,
+  adjustActiveCount,
 };

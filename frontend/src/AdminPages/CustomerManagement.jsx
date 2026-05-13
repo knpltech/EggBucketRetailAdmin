@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { FiUsers } from "react-icons/fi";
 import * as XLSX from "xlsx";
@@ -6,121 +6,139 @@ import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
 
 // TABS
-const TABS = [
-  "ALL",
-  "ONBOARDING",
-  "D0",
-  "D1",
-  "D2",
-  "D3",
-  "D4",
-  "D5",
-  "D6",
-  "D7",
-];
+const TABS = ["ALL", "ONBOARDING", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+
+  // ⭐ Stats (total counts) – fetched once, independent of pagination
+  const [totalCustomers, setTotalCustomers] = useState(null);
+  const [totalActive, setTotalActive] = useState(null);
 
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
-
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
+  const isFetchingRef = useRef(false);
+  const sentinelRef = useRef(null);
   const canDownloadExcel = true;
-
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
-  // ================= LOAD =================
-  // ⭐ OPTIMIZED: Single API call only, no auto-refresh, no D0-D7 backend calls
+  // ─── Helper: normalise a page response into rows ──────────────────────────
+  const normaliseRows = (rows) =>
+    rows.map((c) => ({
+      ...c,
+      peakFrequency: computePeakFrequency(c.last8Days),
+      potential: computePotential(c.last8Days),
+    }));
 
+  // ─── Initial load: stats + first page in parallel ─────────────────────────
   useEffect(() => {
-    const loadOnce = async () => {
+    const init = async () => {
+      setLoading(true);
       try {
-        setLoading(true);
-        // ⭐ Single API call - reads from /user-info with backend cache
-        const res = await axios.get(`${ADMIN_PATH}/user-info`);
-        const rows = Array.isArray(res.data) ? res.data : [];
-        setCustomers(
-          rows.map((c) => ({
-            ...c,
-            peakFrequency: computePeakFrequency(c.last8Days),
-            potential: computePotential(c.last8Days),
-          })),
-        );
+        const [statsRes, pageRes] = await Promise.all([
+          axios.get(`${ADMIN_PATH}/user-info/stats`),
+          axios.get(`${ADMIN_PATH}/user-info?limit=25`),
+        ]);
+
+        // Stats (fixed for the session)
+        setTotalCustomers(statsRes.data?.totalCustomers ?? null);
+        setTotalActive(statsRes.data?.totalActive ?? null);
+
+        // First page
+        const paginationData = pageRes.data;
+        const rows = Array.isArray(paginationData.customers)
+          ? paginationData.customers
+          : Array.isArray(paginationData)
+            ? paginationData   // backward-compat if backend returns plain array
+            : [];
+
+        setCustomers(normaliseRows(rows));
+        setNextCursor(paginationData.pagination?.nextCursor ?? null);
+        setHasNextPage(paginationData.pagination?.hasNextPage ?? false);
       } catch (err) {
-        console.error("Load customers error:", err);
+        console.error("CustomerManagement init error:", err);
       } finally {
         setLoading(false);
       }
     };
+    init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    loadOnce();
-  }, []); // ⭐ Empty dependency: load ONLY once on mount
+  // ─── Fetch next page (cursor-based) ───────────────────────────────────────
+  const fetchMore = useCallback(async () => {
+    if (!hasNextPage || !nextCursor || isFetchingRef.current || loadingMore) return;
+    isFetchingRef.current = true;
+    setLoadingMore(true);
+    try {
+      const res = await axios.get(
+        `${ADMIN_PATH}/user-info?limit=25&cursor=${nextCursor}`
+      );
+      const paginationData = res.data;
+      const rows = Array.isArray(paginationData.customers)
+        ? paginationData.customers
+        : [];
+      setCustomers((prev) => [...prev, ...normaliseRows(rows)]);
+      setNextCursor(paginationData.pagination?.nextCursor ?? null);
+      setHasNextPage(paginationData.pagination?.hasNextPage ?? false);
+    } catch (err) {
+      console.error("fetchMore error:", err);
+    } finally {
+      setLoadingMore(false);
+      isFetchingRef.current = false;
+    }
+  }, [hasNextPage, nextCursor, loadingMore]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ⭐ HELPER: Compute delivery count from last 7 days (INCLUDING today)
-  // Only counts entries where last8Days[date] === "delivered"
-  // Uses Asia/Kolkata timezone to match Firestore keys exactly
+  // ─── IntersectionObserver: trigger fetchMore when sentinel enters view ─────
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) fetchMore(); },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchMore]);
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
   const getDeliveredCount = (customer) => {
     const last8Days = customer.last8Days || {};
     let count = 0;
     const today = new Date();
-
-    // Include today + last 6 days (total 7 days)
     for (let i = 0; i <= 6; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
-
       const entry = last8Days[dateStr];
       const status = typeof entry === "string" ? entry : entry?.status;
-      if (status === "delivered") {
-        count++;
-      }
+      if (status === "delivered") count++;
     }
     return count;
   };
 
-  // ⭐ HELPER: Get today's status from last8Days, or derive from latestRemark
-  // If no today entry, use latestRemark to determine status
   const getLatestStatus = (customer) => {
     const last8Days = customer.last8Days || {};
     const entry = last8Days[todayDate];
-    const todayStatus = (
-      typeof entry === "string" ? entry : entry?.status || ""
-    )
-      .trim()
-      .toLowerCase();
-
+    const todayStatus = (typeof entry === "string" ? entry : entry?.status || "")
+      .trim().toLowerCase();
     if (todayStatus === "delivered") return "Delivered";
-    if (
-      [
-        "checked",
-        "reached",
-        "price_mismatch",
-        "stock_available",
-        "other_vendor",
-      ].includes(todayStatus)
-    ) {
+    if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(todayStatus))
       return "Checked";
-    }
-
     return "Pending";
   };
 
-  // ⭐ NEW: Display remarks with proper formatting
-  // - If Delivered: show "X tray/trays" from last8Days entry
-  // - If Checked: show reason from last8Days entry
-  // - If Pending: show nothing
   const getRemarkDisplay = (customer) => {
     const last8Days = customer.last8Days || {};
     const entry = last8Days[todayDate];
     const entryObj = typeof entry === "object" ? entry : {};
-
     const status = getLatestStatus(customer);
-
     if (status === "Delivered") {
       const trays = entryObj.trays || entryObj.quantity;
       if (trays && Number(trays) > 0) {
@@ -129,111 +147,58 @@ export default function CustomerManagement() {
       }
       return "";
     }
-
-    if (status === "Checked") {
-      return formatReasonLabel(entryObj.reason || "");
-    }
-
+    if (status === "Checked") return formatReasonLabel(entryObj.reason || "");
     return "";
   };
 
   const formatReasonLabel = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return "";
-
-    return raw
-      .replace(/_/g, " ")
-      .toLowerCase()
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+    return raw.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   const getTodayEffectiveStatus = (customer) => {
     const last8Days = customer?.last8Days || {};
     const override = customer?.todayOverride;
-
     const entry = last8Days[todayDate];
     const status = typeof entry === "string" ? entry : entry?.status;
-
-    if (status === "delivered") {
-      return "OFF";
-    }
-
-    // Manual override applies when there is no delivery status today.
+    if (status === "delivered") return "OFF";
     if (override) {
-      const overrideDate = override?.date
-        ? String(override.date).slice(0, 10)
-        : null;
-
-      // Only use override if it's for TODAY
+      const overrideDate = override?.date ? String(override.date).slice(0, 10) : null;
       if (overrideDate === todayDate) {
-        const status = String(override.status || "")
-          .trim()
-          .toUpperCase();
-        return status === "OFF" ? "OFF" : "ON";
+        return String(override.status || "").trim().toUpperCase() === "OFF" ? "OFF" : "ON";
       }
     }
-
-    // Default: no delivery status and no override means ON.
     return "ON";
   };
 
-  // ================= FILTER =================
-  // ⭐ OPTIMIZED: All filtering & sorting happens on frontend, no API calls
-
-  const totalActive = useMemo(() => {
-    return customers.filter((customer) => getTodayEffectiveStatus(customer) === "ON").length;
-  }, [customers, todayDate]);
-
+  // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-
-    // Filter by tab
-    if (activeTab === "ALL") {
-      // ALL = Business Customers
-      // eslint-disable-next-line no-self-assign
-      list = list;
-    } else if (activeTab === "ONBOARDING") {
-      // ONBOARDING = Zone Unassigned
-      list = list.filter(
-        (c) =>
-          !c.zone ||
-          c.zone === "" ||
-          c.zone === null ||
-          c.zone === "UNASSIGNED",
-      );
+    if (activeTab === "ONBOARDING") {
+      list = list.filter((c) => !c.zone || c.zone === "" || c.zone === null || c.zone === "UNASSIGNED");
     } else if (/^D[0-7]$/.test(activeTab)) {
-      // ⭐ D0-D7 computed on frontend from last8Days
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
-
     if (sortBy === "name") {
-      list.sort((a, b) =>
-        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
-      );
+      list.sort((a, b) => getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()));
     } else if (sortBy === "zone") {
-      list.sort((a, b) =>
-        String(a.zone || "")
-          .toLowerCase()
-          .localeCompare(String(b.zone || "").toLowerCase()),
-      );
+      list.sort((a, b) => String(a.zone || "").toLowerCase().localeCompare(String(b.zone || "").toLowerCase()));
     } else if (sortBy === "delivery") {
-      const onFirst = (customer) =>
-        getTodayEffectiveStatus(customer) === "ON" ? 0 : 1;
-
+      const onFirst = (c) => (getTodayEffectiveStatus(c) === "ON" ? 0 : 1);
       list.sort((a, b) => {
         const diff = onFirst(a) - onFirst(b);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
     } else if (sortBy === "status") {
-      const statusRank = (customer) => {
-        const status = getLatestStatus(customer).toLowerCase();
-        if (status === "delivered") return 0;
-        if (status === "checked") return 1;
+      const statusRank = (c) => {
+        const s = getLatestStatus(c).toLowerCase();
+        if (s === "delivered") return 0;
+        if (s === "checked") return 1;
         return 2;
       };
-
       list.sort((a, b) => {
         const diff = statusRank(a) - statusRank(b);
         if (diff !== 0) return diff;
@@ -252,81 +217,59 @@ export default function CustomerManagement() {
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
     } else if (sortBy === "remarks") {
-      const withRemarks = list.filter(
-        (c) => getRemarkDisplay(c) && getRemarkDisplay(c) !== "",
-      );
-
-      const withoutRemarks = list.filter(
-        (c) => !getRemarkDisplay(c) || getRemarkDisplay(c) === "-",
-      );
-
-      withRemarks.sort((a, b) =>
-        getRemarkDisplay(a)
-          .toLowerCase()
-          .localeCompare(getRemarkDisplay(b).toLowerCase()),
-      );
-
-      withoutRemarks.sort((a, b) =>
-        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
-      );
-
-      return [...withRemarks, ...withoutRemarks];
+      const withR = list.filter((c) => getRemarkDisplay(c) !== "");
+      const noR = list.filter((c) => getRemarkDisplay(c) === "");
+      withR.sort((a, b) => getRemarkDisplay(a).toLowerCase().localeCompare(getRemarkDisplay(b).toLowerCase()));
+      noR.sort((a, b) => getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()));
+      return [...withR, ...noR];
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
-
     return list;
-  }, [customers, activeTab, sortBy, todayDate, getDeliveredCount]);
+  }, [customers, activeTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ================= ACTIONS =================
+  // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
 
     const current = getTodayEffectiveStatus(customer);
     const nextStatus = current === "ON" ? "OFF" : "ON";
-
     const previousOverride = customer.todayOverride;
-    const optimisticOverride = {
-      date: todayDate,
-      status: nextStatus,
-    };
+    const optimisticOverride = { date: todayDate, status: nextStatus };
 
-    // Optimistic UI: update only this customer's button immediately.
+    // Optimistic UI: row update
     setCustomers((prev) =>
-      prev.map((row) =>
-        row.id === customer.id
-          ? { ...row, todayOverride: optimisticOverride }
-          : row,
-      ),
+      prev.map((row) => row.id === customer.id ? { ...row, todayOverride: optimisticOverride } : row)
     );
+    // ⭐ Optimistic totalActive adjustment (no backend read)
+    setTotalActive((prev) => {
+      if (prev === null) return prev;
+      return nextStatus === "OFF" ? Math.max(0, prev - 1) : prev + 1;
+    });
 
     try {
       setUpdatingTodayId(customer.id);
-
       const res = await axios.post(`${ADMIN_PATH}/customer/toggle-delivery`, {
         id: customer.id,
         status: nextStatus,
       });
-
       const saved = res?.data?.todayOverride;
       if (saved?.date && saved?.status) {
         setCustomers((prev) =>
-          prev.map((row) =>
-            row.id === customer.id ? { ...row, todayOverride: saved } : row,
-          ),
+          prev.map((row) => row.id === customer.id ? { ...row, todayOverride: saved } : row)
         );
       }
     } catch (err) {
       console.error("Today delivery toggle error:", err);
-
-      // Revert if server write failed.
+      // Revert row
       setCustomers((prev) =>
-        prev.map((row) =>
-          row.id === customer.id
-            ? { ...row, todayOverride: previousOverride }
-            : row,
-        ),
+        prev.map((row) => row.id === customer.id ? { ...row, todayOverride: previousOverride } : row)
       );
+      // Revert totalActive
+      setTotalActive((prev) => {
+        if (prev === null) return prev;
+        return nextStatus === "OFF" ? prev + 1 : Math.max(0, prev - 1);
+      });
     } finally {
       setUpdatingTodayId(null);
     }
@@ -334,73 +277,46 @@ export default function CustomerManagement() {
 
   const getSkipSelectValue = (customer) => {
     const cfg = customer?.skipConfig;
-
-    if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") {
-      return "MANUAL";
-    }
-
-    const days = clampDays0to6(cfg.days);
-    return `AUTO:${days}`;
+    if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
+    return `AUTO:${clampDays0to6(cfg.days)}`;
   };
 
   const updateSkipConfig = async (customer, selectedValue) => {
     if (!customer?.id || updatingSkipId === customer.id) return;
-
     const previousConfig = customer.skipConfig;
     const today = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-
     let nextConfig = { type: "MANUAL", days: 0, startDate: null };
-
     if (String(selectedValue || "").toUpperCase() !== "MANUAL") {
       const parts = String(selectedValue).split(":");
-      const days = clampDays0to6(parts[1]);
-      nextConfig = { type: "AUTO", days, startDate: today };
+      nextConfig = { type: "AUTO", days: clampDays0to6(parts[1]), startDate: today };
     }
-
-    // Optimistic UI
     setCustomers((prev) =>
-      prev.map((row) =>
-        row.id === customer.id ? { ...row, skipConfig: nextConfig } : row,
-      ),
+      prev.map((row) => row.id === customer.id ? { ...row, skipConfig: nextConfig } : row)
     );
-
     try {
       setUpdatingSkipId(customer.id);
-
       const res = await axios.post(`${ADMIN_PATH}/customer/skip-config`, {
-        id: customer.id,
-        type: nextConfig.type,
-        days: nextConfig.days,
-        startDate: nextConfig.startDate,
+        id: customer.id, type: nextConfig.type, days: nextConfig.days, startDate: nextConfig.startDate,
       });
-
       const saved = res?.data?.skipConfig;
       if (saved && typeof saved === "object") {
         setCustomers((prev) =>
-          prev.map((row) =>
-            row.id === customer.id ? { ...row, skipConfig: saved } : row,
-          ),
+          prev.map((row) => row.id === customer.id ? { ...row, skipConfig: saved } : row)
         );
       }
     } catch (err) {
       console.error("Skip config update error:", err);
-
-      // Revert if server write failed.
       setCustomers((prev) =>
-        prev.map((row) =>
-          row.id === customer.id ? { ...row, skipConfig: previousConfig } : row,
-        ),
+        prev.map((row) => row.id === customer.id ? { ...row, skipConfig: previousConfig } : row)
       );
     } finally {
       setUpdatingSkipId(null);
     }
   };
 
-  // ================= EXCEL =================
-
+  // ─── Excel ────────────────────────────────────────────────────────────────
   const downloadExcel = () => {
     if (!canDownloadExcel) return;
-
     const data = filtered.map((c) => ({
       "Customer ID": c.custid || c.id,
       Name: getName(c),
@@ -410,22 +326,14 @@ export default function CustomerManagement() {
       Status: getLatestStatus(c),
       Remarks: getRemarkDisplay(c),
     }));
-
     const ws = XLSX.utils.json_to_sheet(data);
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, activeTab);
-
-    const buf = XLSX.write(wb, {
-      bookType: "xlsx",
-      type: "array",
-    });
-
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     saveAs(new Blob([buf]), `${activeTab}.xlsx`);
   };
 
-  // ================= UI =================
-
+  // ─── UI ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
       <div className="flex justify-between items-center mb-6">
@@ -434,11 +342,10 @@ export default function CustomerManagement() {
         <div className="flex items-center gap-4">
           <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
             <FiUsers className="text-3xl text-blue-500" />
-
             <div>
               <p className="text-sm text-gray-600">Total Customers</p>
               <p className="text-2xl font-bold">
-                {loading ? "…" : filtered.length}
+                {loading ? "…" : totalCustomers ?? filtered.length}
               </p>
             </div>
 
@@ -467,10 +374,11 @@ export default function CustomerManagement() {
             )}
           </div>
 
+          {/* ⭐ Total Active: fixed from stats, never changes on scroll */}
           <div className="bg-white p-4 rounded-xl shadow border-l-4 border-green-500">
             <p className="text-sm text-gray-600">Total Active</p>
             <p className="text-2xl font-bold text-green-600">
-              {loading ? "…" : totalActive}
+              {loading ? "…" : totalActive ?? "—"}
             </p>
           </div>
         </div>
@@ -482,9 +390,7 @@ export default function CustomerManagement() {
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`px-4 py-2 rounded-xl border ${
-              activeTab === t ? "bg-black text-white" : "bg-white"
-            }`}
+            className={`px-4 py-2 rounded-xl border ${activeTab === t ? "bg-black text-white" : "bg-white"}`}
           >
             {t}
           </button>
@@ -512,32 +418,18 @@ export default function CustomerManagement() {
               <tr key={c.id} className="border-t">
                 <td className="p-3 font-medium">{c.custid || c.id}</td>
                 <td className="p-3 font-medium">{getName(c)}</td>
-                <td className="p-3 font-medium text-gray-700">
-                  {c.zone || "UNASSIGNED"}
-                </td>
+                <td className="p-3 font-medium text-gray-700">{c.zone || "UNASSIGNED"}</td>
 
                 <td className="p-3">
                   {(() => {
                     const effective = getTodayEffectiveStatus(c);
                     const isOn = effective === "ON";
                     const isUpdating = updatingTodayId === c.id;
-
                     return (
-                      <label
-                        className={`relative inline-flex items-center ${
-                          isUpdating
-                            ? "opacity-70 cursor-not-allowed"
-                            : "cursor-pointer"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={isOn}
-                          disabled={isUpdating}
-                          onChange={() => toggleTodayDelivery(c)}
-                          aria-label={isOn ? "Today: ON" : "Today: OFF"}
-                        />
+                      <label className={`relative inline-flex items-center ${isUpdating ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}>
+                        <input type="checkbox" className="sr-only peer" checked={isOn}
+                          disabled={isUpdating} onChange={() => toggleTodayDelivery(c)}
+                          aria-label={isOn ? "Today: ON" : "Today: OFF"} />
                         <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
                         <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
                       </label>
@@ -550,14 +442,9 @@ export default function CustomerManagement() {
                     const isUpdating = updatingSkipId === c.id;
                     return (
                       <div className="flex items-center justify-center">
-                        <select
-                          value={getSkipSelectValue(c)}
-                          disabled={isUpdating}
+                        <select value={getSkipSelectValue(c)} disabled={isUpdating}
                           onChange={(e) => updateSkipConfig(c, e.target.value)}
-                          className={`border rounded-lg px-3 py-2 ${
-                            isUpdating ? "opacity-70 cursor-not-allowed" : ""
-                          }`}
-                        >
+                          className={`border rounded-lg px-3 py-2 ${isUpdating ? "opacity-70 cursor-not-allowed" : ""}`}>
                           <option value="MANUAL">Manual Override</option>
                           <option value="AUTO:0">0 Days</option>
                           <option value="AUTO:1">1 Days</option>
@@ -573,39 +460,39 @@ export default function CustomerManagement() {
                 </td>
 
                 <td className="p-3">
-                  <span
-                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getPotentialColor(c.potential) }}
-                  >
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getPotentialColor(c.potential) }}>
                     {normalizePotential(c.potential)}
                   </span>
                 </td>
 
                 <td className="p-3">
-                  <span
-                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getPeakFrequencyColor(c) }}
-                  >
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getPeakFrequencyColor(c) }}>
                     {getPeakFrequencyLabel(c)}
                   </span>
                 </td>
 
                 <td className="p-3">
                   <div className="flex flex-col items-center gap-1">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
-                    >
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}>
                       {getLatestStatus(c)}
                     </span>
-                    <span className="text-[10px] text-gray-500 font-medium">
-                      {getRemarkDisplay(c)}
-                    </span>
+                    <span className="text-[10px] text-gray-500 font-medium">{getRemarkDisplay(c)}</span>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {/* ⭐ Infinite scroll sentinel */}
+        <div ref={sentinelRef} className="py-4 text-center text-sm text-gray-400">
+          {loadingMore && "Loading more customers…"}
+          {!hasNextPage && !loading && customers.length > 0 && (
+            <span className="text-gray-300">— All {customers.length} loaded —</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -644,7 +531,6 @@ function getDateStringInTimeZone(date, timeZone) {
     const day = parts.find((p) => p.type === "day")?.value;
 
     if (year && month && day) return `${year}-${month}-${day}`;
-    // eslint-disable-next-line no-unused-vars
   } catch (error) {
     // fall through
   }
@@ -673,8 +559,8 @@ function resolvePeakFrequency(customer) {
   const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
     customer?.Peak_Frequency ||
-      customer?.peakFrequency ||
-      customer?.peak_frequency,
+    customer?.peakFrequency ||
+    customer?.peak_frequency,
   );
 
   if (!savedPeak) return currentPeak;
@@ -770,19 +656,18 @@ function computePeakFrequency(last8Days) {
       typeof entry === "string" ? entry : entry?.status || entry?.type || "",
     )
       .trim()
-      .toLowerCase();
+    .toLowerCase();
 
     if (status !== "delivered") return;
 
     try {
       const [year, month, day] = dateStr.split("-").map(Number);
-      // Create date in local timezone (don't use new Date which might convert)
+      // Create date in local timezone
       const date = new Date(year, month - 1, day);
       const dayOfWeek = date.getDay();
-      
+
       // Calculate Monday (week start) in local timezone
-      // Monday=1, ..., Saturday=6, Sunday=0. Distance from Monday:
-      const diff = (dayOfWeek + 6) % 7; 
+      const diff = (dayOfWeek + 6) % 7;
       const weekStartDate = new Date(year, month - 1, day - diff);
       const weekKey = `${weekStartDate.getFullYear()}-${String(
         weekStartDate.getMonth() + 1,

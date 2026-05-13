@@ -15,6 +15,7 @@ import {
   getUserDeliveries,
   getAllCustomerDeliveries,
   addCustomer,
+  getUserInfoStats,
 } from "../Controller/CustomerInfoController.js";
 
 // import customer functions from CustomerController
@@ -64,6 +65,7 @@ import {
 router.route("/login").post(login);
 router.use(authenticateToken);
 
+router.get("/user-info/stats", getUserInfoStats);
 router.route("/user-info").get(userInfo);
 router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);

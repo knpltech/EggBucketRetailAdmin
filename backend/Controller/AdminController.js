@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
+import { adjustActiveCount } from "./CustomerInfoController.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -1395,6 +1396,15 @@ const toggleTodayDelivery = async (req, res) => {
     };
 
     await customerRef.update({ todayOverride });
+
+    // Keep the in-memory active-count accurate (no extra Firestore reads).
+    // ON → customer became active (+1), OFF → became inactive (-1).
+    try {
+      const delta = normalizedStatus === "ON" ? 1 : -1;
+      adjustActiveCount(todayOverride.date, delta);
+    } catch (adjustErr) {
+      console.warn("adjustActiveCount failed:", adjustErr);
+    }
 
     // Analytics endpoint is cached; clear it so UI reflects persisted state.
     try {
