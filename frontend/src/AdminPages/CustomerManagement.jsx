@@ -35,6 +35,7 @@ export default function CustomerManagement() {
       ...c,
       peakFrequency: computePeakFrequency(c.last8Days),
       potential: computePotential(c.last8Days),
+      deliveryGap: computeDeliveryGap(c.last8Days, todayDate),
     }));
 
   // ─── Initial load: stats + first page in parallel ─────────────────────────
@@ -216,6 +217,12 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
+    } else if (sortBy === "deliveryGap") {
+      list.sort((a, b) => {
+        const diff = getDeliveryGapNumber(b.deliveryGap) - getDeliveryGapNumber(a.deliveryGap);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "remarks") {
       const withR = list.filter((c) => getRemarkDisplay(c) !== "");
       const noR = list.filter((c) => getRemarkDisplay(c) === "");
@@ -323,6 +330,7 @@ export default function CustomerManagement() {
       Zone: c.zone || "",
       Peak_Potential: normalizePotential(c.potential),
       Peak_Frequency: getPeakFrequencyLabel(c),
+      Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       Status: getLatestStatus(c),
       Remarks: getRemarkDisplay(c),
     }));
@@ -358,6 +366,7 @@ export default function CustomerManagement() {
               <option value="date">Created Date</option>
               <option value="peakPotential">Peak_Potential</option>
               <option value="peakFrequency">Peak Frequency</option>
+              <option value="deliveryGap">Delivery_Gap</option>
               <option value="zone">Zone</option>
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
@@ -409,6 +418,7 @@ export default function CustomerManagement() {
               <th className="p-3">Skip</th>
               <th className="p-3">Peak_Potential</th>
               <th className="p-3">Peak_Frequency</th>
+              <th className="p-3">Delivery_Gap</th>
               <th className="p-3">Status</th>
             </tr>
           </thead>
@@ -470,6 +480,13 @@ export default function CustomerManagement() {
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{ backgroundColor: getPeakFrequencyColor(c) }}>
                     {getPeakFrequencyLabel(c)}
+                  </span>
+                </td>
+
+                <td className="p-3">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getDeliveryGapColor(c.deliveryGap) }}>
+                    {normalizeDeliveryGap(c.deliveryGap)}
                   </span>
                 </td>
 
@@ -641,6 +658,78 @@ function getPotentialNumber(value) {
   const potential = normalizePotential(value);
   const n = Number(potential.slice(1));
   return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function normalizeDeliveryGap(value) {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  const match = raw.match(/^G?(\d+)$/);
+  if (!match) return "G10";
+
+  const n = Number(match[1]);
+  if (!Number.isFinite(n) || n < 0) return "G10";
+
+  return `G${Math.min(Math.floor(n), 10)}`;
+}
+
+function getDeliveryGapNumber(value) {
+  const gap = normalizeDeliveryGap(value);
+  const n = Number(gap.slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 10 ? n : 10;
+}
+
+function getDeliveryGapColor(value) {
+  const n = getDeliveryGapNumber(value);
+
+  if (n === 0) return "#0F9D58";
+  if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
+}
+
+function computeDeliveryGap(last8Days, todayDate) {
+  if (!last8Days || typeof last8Days !== "object") return "G10";
+
+  const todayDayNumber = getDateDayNumber(todayDate);
+  if (todayDayNumber === null) return "G10";
+
+  let latestDeliveredDayNumber = null;
+
+  Object.entries(last8Days).forEach(([dateStr, entry]) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (status !== "delivered") return;
+
+    const dayNumber = getDateDayNumber(dateStr);
+    if (dayNumber === null || dayNumber > todayDayNumber) return;
+
+    if (latestDeliveredDayNumber === null || dayNumber > latestDeliveredDayNumber) {
+      latestDeliveredDayNumber = dayNumber;
+    }
+  });
+
+  if (latestDeliveredDayNumber === null) return "G10";
+
+  return `G${Math.min(todayDayNumber - latestDeliveredDayNumber, 10)}`;
+}
+
+function getDateDayNumber(dateStr) {
+  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const time = Date.UTC(year, month - 1, day);
+
+  if (!Number.isFinite(time)) return null;
+
+  return Math.floor(time / 86400000);
 }
 
 function computePeakFrequency(last8Days) {
