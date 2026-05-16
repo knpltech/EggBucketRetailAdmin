@@ -365,7 +365,7 @@ export default function CustomerManagement() {
               <option value="name">Customer Name</option>
               <option value="date">Created Date</option>
               <option value="peakPotential">Peak_Potential</option>
-              <option value="peakFrequency">Peak Frequency</option>
+              <option value="peakFrequency">Peak_Frequency</option>
               <option value="deliveryGap">Delivery_Gap</option>
               <option value="zone">Zone</option>
               <option value="delivery">Delivery Plan </option>
