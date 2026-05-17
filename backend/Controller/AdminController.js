@@ -1393,6 +1393,7 @@ const toggleTodayDelivery = async (req, res) => {
     const todayOverride = {
       date: getTodayDateString(),
       status: normalizedStatus,
+      type: "MANUAL",
     };
 
     await customerRef.update({ todayOverride });

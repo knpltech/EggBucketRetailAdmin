@@ -836,7 +836,8 @@ const getAllCustomerDeliveries = async (req, res) => {
           autoFlipQueries.push(
             doc.ref.update({
               "todayOverride.status": "OFF",
-              "todayOverride.date": todayStr
+              "todayOverride.date": todayStr,
+              "todayOverride.type": "DELIVERED"
             })
           );
         }

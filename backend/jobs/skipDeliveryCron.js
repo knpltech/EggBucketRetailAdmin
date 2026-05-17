@@ -176,25 +176,41 @@ export const runSkipDeliveryJobOnce = async () => {
     const existingOverrideDate = existingOverride?.date
       ? String(existingOverride.date).slice(0, 10)
       : null;
+    const existingOverrideType = existingOverride?.type
+      ? String(existingOverride.type).trim().toUpperCase()
+      : null;
 
-    // ✅ MANUAL or NO CONFIG: Reset to ON at start of new day
+    // ✅ MANUAL or NO CONFIG: Reset to ON at start of new day (unless MANUAL type)
     if (!skipConfig || skipType !== "AUTO") {
-      // ✅ Same-day protection ONLY for MANUAL mode
-      // If already updated today, preserve manual/delivery changes
+      // ✅ MANUAL type: Preserve manual changes indefinitely
+      if (existingOverrideType === "MANUAL") {
+        if (debugThisDoc) {
+          console.log("[skipDeliveryCron][debug] MANUAL type: preserving manual state", {
+            today,
+            existingStatus: existingOverride?.status,
+          });
+        }
+        continue;  // ← Preserve manual state forever
+      }
+
+      // ✅ Same-day protection ONLY for non-AUTO mode
+      // If already updated today (and not MANUAL), preserve DELIVERED/SYSTEM state for today
       if (existingOverrideDate === today) {
         if (debugThisDoc) {
           console.log("[skipDeliveryCron][debug] MANUAL mode: already updated today, skipping", {
             today,
             existingOverrideDate,
+            existingType: existingOverrideType,
           });
         }
-        continue;  // ← Preserve manual changes for MANUAL customers today
+        continue;  // ← Preserve state for rest of today
       }
 
       if (debugThisDoc) {
         console.log("[skipDeliveryCron][debug] MANUAL mode: resetting to ON for new day", {
           today,
           skipType: skipType || "NO_CONFIG",
+          previousType: existingOverrideType,
         });
       }
 
@@ -202,6 +218,7 @@ export const runSkipDeliveryJobOnce = async () => {
         todayOverride: {
           date: today,
           status: "ON",
+          type: "SYSTEM",
         },
       });
 
@@ -272,6 +289,7 @@ export const runSkipDeliveryJobOnce = async () => {
         todayOverride: {
           date: today,
           status: "ON",
+          type: "SYSTEM",
         },
       });
 
@@ -315,6 +333,7 @@ export const runSkipDeliveryJobOnce = async () => {
       todayOverride: {
         date: today,
         status,
+        type: "SYSTEM",
       },
     });
 
