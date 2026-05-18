@@ -87,6 +87,75 @@ const getPotentialColor = (value) => {
   return "#0F9D58"; // green
 };
 
+function getDateStringInTimeZone(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch (error) {}
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getDateDayNumber(dateStr) {
+  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const time = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(time)) return null;
+  return Math.floor(time / 86400000);
+}
+
+function computeDeliveryGap(last8Days, todayDate) {
+  if (!last8Days || typeof last8Days !== "object") return "G10";
+  const todayDayNumber = getDateDayNumber(todayDate);
+  if (todayDayNumber === null) return "G10";
+  let latestDeliveredDayNumber = null;
+  Object.entries(last8Days).forEach(([dateStr, entry]) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    ).trim().toLowerCase();
+    if (status !== "delivered") return;
+    const dayNumber = getDateDayNumber(dateStr);
+    if (dayNumber === null || dayNumber > todayDayNumber) return;
+    if (latestDeliveredDayNumber === null || dayNumber > latestDeliveredDayNumber) {
+      latestDeliveredDayNumber = dayNumber;
+    }
+  });
+  if (latestDeliveredDayNumber === null) return "G10";
+  return `G${Math.min(todayDayNumber - latestDeliveredDayNumber, 10)}`;
+}
+
+function normalizeDeliveryGap(value) {
+  const raw = String(value ?? "").trim().toUpperCase();
+  const match = raw.match(/^G?(\d+)$/);
+  if (!match) return "G10";
+  const n = Number(match[1]);
+  if (!Number.isFinite(n) || n < 0) return "G10";
+  return `G${Math.min(Math.floor(n), 10)}`;
+}
+
+function getDeliveryGapNumber(value) {
+  const gap = normalizeDeliveryGap(value);
+  const n = Number(gap.slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 10 ? n : 10;
+}
+
+function getDeliveryGapColor(value) {
+  const n = getDeliveryGapNumber(value);
+  if (n === 0) return "#0F9D58";
+  if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
+}
+
 const AISuggestionRow = ({ customer, suggestionData }) => {
   const [applied, setApplied] = useState(false);
 
@@ -104,6 +173,9 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
     customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
   );
   const peakPotential = normalizePotential(customer?.potential);
+  const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+  const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+  const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
   const { colorClass, dotClass, text, subText } = getSuggestionConfig(
     suggestionData.suggestion,
     suggestionData.reason,
@@ -130,6 +202,15 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
           style={{ backgroundColor: getPotentialColor(peakPotential) }}
         >
           {peakPotential}
+        </span>
+      </td>
+
+      <td className="p-4 py-5 text-gray-700 font-medium">
+        <span
+          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          style={{ backgroundColor: getDeliveryGapColor(deliveryGap) }}
+        >
+          {deliveryGap}
         </span>
       </td>
       

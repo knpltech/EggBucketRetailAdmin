@@ -92,12 +92,12 @@ const formatDayHeader = (dateString) => {
 
 const getStatusClasses = (statusKey) => {
   if (statusKey === "delivered") {
-    return "bg-emerald-600 text-white";
+    return "bg-[#0F9D58] text-white";
   }
   if (statusKey === "checked") {
-    return "bg-orange-500 text-white";
+    return "bg-[#FB8C00] text-white";
   }
-  return "bg-red-600 text-white";
+  return "bg-[#FF3B30] text-white";
 };
 
 const getStatusRemark = (status) => {
@@ -182,6 +182,11 @@ const getStatusFromDelivery = (delivery) => {
     };
   }
 
+  // If the backend already processed this into a status object, use it directly
+  if (delivery.key) {
+    return delivery;
+  }
+
   const apiStatus = String(delivery.status || "")
     .trim()
     .toLowerCase();
@@ -252,33 +257,37 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
 
       {dates.map((date) => {
         const status = customer.days?.[date] || { key: "pending", label: "PENDING" };
-        const shortLabel = status.label.length > 8 ? status.label.substring(0, 6) + '.' : status.label;
         const remark = getStatusRemark(status);
         return (
-          <td key={date} className="px-1 py-2 text-center">
-            <span
-              className={`inline-flex min-w-[70px] items-center justify-center rounded-full px-2 py-1 text-xs font-bold tracking-tight ${getStatusClasses(status.key)}`}
-              title={status.label}
-            >
-              {shortLabel}
-            </span>
-            <div className="min-h-[14px] text-[10px] font-medium text-slate-700 leading-tight" title={remark}>
-              {remark}
+          <td key={date} className="px-1 py-2 text-center align-middle">
+            <div className="flex flex-col items-center justify-start h-[40px]">
+              <button
+                type="button"
+                className={`mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 ${getStatusClasses(status.key)}`}
+                title={status.label}
+              >
+                {status.label.toUpperCase()}
+              </button>
+              <div className="h-[14px] mt-0.5 text-[10px] font-medium text-slate-700 leading-tight text-center" title={remark}>
+                {remark || ""}
+              </div>
             </div>
           </td>
         );
       })}
 
-      <td className="px-2 py-2 text-center">
-        <button
-          type="button"
-          onClick={() => onReset(customer)}
-          disabled={resettingId === customer.id}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-600 text-[8px] font-bold uppercase text-white shadow hover:bg-red-700 disabled:opacity-50"
-          title="Reset to pending"
-        >
-          {resettingId === customer.id ? ".." : "R"}
-        </button>
+      <td className="px-2 py-2 text-center align-middle">
+        <div className="flex flex-col items-center justify-center h-[40px]">
+          <button
+            type="button"
+            onClick={() => onReset(customer)}
+            disabled={resettingId === customer.id}
+            className="mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 bg-[#FF3B30] text-white shadow hover:opacity-90 disabled:opacity-50"
+            title="Reset to pending"
+          >
+            {resettingId === customer.id ? ".." : "R"}
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -624,8 +633,8 @@ const CustomerRetention = () => {
               type="button"
               onClick={() => handleCategoryChange(category.value)}
               className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${isActive
-                  ? "border-blue-600 bg-blue-600 text-white"
-                  : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                ? "border-blue-600 bg-blue-600 text-white"
+                : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
                 }`}
             >
               {category.label} ({counts[category.value] || 0})
@@ -714,11 +723,10 @@ const CustomerRetention = () => {
             type="button"
             disabled={!startRange || !endRange || downloadingExcel}
             onClick={downloadRetentionExcel}
-            className={`h-12 min-w-0 w-full whitespace-nowrap rounded-lg px-3 text-sm font-medium text-white shadow transition ${
-              !startRange || !endRange || downloadingExcel
-                ? "cursor-not-allowed bg-slate-400"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
+            className={`h-12 min-w-0 w-full whitespace-nowrap rounded-lg px-3 text-sm font-medium text-white shadow transition ${!startRange || !endRange || downloadingExcel
+              ? "cursor-not-allowed bg-slate-400"
+              : "bg-blue-600 hover:bg-blue-700"
+              }`}
           >
             {downloadingExcel ? "Downloading..." : "Download Excel"}
           </button>
