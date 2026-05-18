@@ -101,6 +101,10 @@ const getStatusClasses = (statusKey) => {
 };
 
 const getStatusRemark = (status) => {
+  if (status?.key === "delivered") {
+    const trays = Number(status.trays ?? 0);
+    return trays === 1 ? "1 Tray" : `${trays} Trays`;
+  }
   if (status?.key !== "checked") return "";
   const reason = normalizeRetentionRemark(status.reason);
   if (reason) return reason;
@@ -224,6 +228,7 @@ const getStatusFromDelivery = (delivery) => {
       category: "",
       categoryLabel: "",
       reason: "",
+      trays: delivery.quantity || 0,
     };
   }
 

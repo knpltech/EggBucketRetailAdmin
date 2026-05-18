@@ -51,7 +51,7 @@ const Report = () => {
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
 
-  
+
 
   const getStatusLabel = (statusKey) => {
     if (statusKey === "delivered") return "Delivered";
@@ -59,7 +59,7 @@ const Report = () => {
     return "Pending";
   };
 
-  
+
 
   const isCompletedStatus = (statusKey) =>
     statusKey === "checked" || statusKey === "delivered";
@@ -105,9 +105,9 @@ const Report = () => {
 
     return String(
       deliveryMan.name ||
-        deliveryMan.display_name ||
-        deliveryMan.agentName ||
-        "",
+      deliveryMan.display_name ||
+      deliveryMan.agentName ||
+      "",
     ).trim();
   };
 
@@ -274,32 +274,31 @@ const Report = () => {
 
   const selectedAgentStats = useMemo(
     () =>
-      selectedAgent === "all"
-        ? null
-        : filteredDeliveries.reduce(
-            (stats, delivery) => {
-              const agentName = getDeliveryAgentName(delivery.deliveryMan);
-
-              if (agentName !== selectedAgent) {
-                return stats;
-              }
-
-              if (delivery.statusKey === "checked") {
-                stats.checked += 1;
-              }
-
-              if (delivery.statusKey === "delivered") {
-                stats.delivered += 1;
-              }
-
-              if (isCompletedStatus(delivery.statusKey)) {
-                stats.total += 1;
-              }
-
+      filteredDeliveries.reduce(
+        (stats, delivery) => {
+          if (selectedAgent !== "all") {
+            const agentName = getDeliveryAgentName(delivery.deliveryMan);
+            if (agentName !== selectedAgent) {
               return stats;
-            },
-            { checked: 0, delivered: 0, total: 0 },
-          ),
+            }
+          }
+
+          if (delivery.statusKey === "checked") {
+            stats.checked += 1;
+          }
+
+          if (delivery.statusKey === "delivered") {
+            stats.delivered += 1;
+          }
+
+          if (isCompletedStatus(delivery.statusKey)) {
+            stats.total += 1;
+          }
+
+          return stats;
+        },
+        { checked: 0, delivered: 0, total: 0 },
+      ),
     [filteredDeliveries, selectedAgent],
   );
   // ⭐ OPTIMIZED: Generate Excel from frontend data (no API call)
@@ -452,11 +451,10 @@ const Report = () => {
             <button
               key={s.value}
               onClick={() => setStatusFilter(s.value)}
-              className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-medium border ${
-                statusFilter === s.value
-                  ? `${s.color} ring-2 ring-blue-400 shadow-sm`
-                  : `${s.color}`
-              }`}
+              className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-medium border ${statusFilter === s.value
+                ? `${s.color} ring-2 ring-blue-400 shadow-sm`
+                : `${s.color}`
+                }`}
             >
               {s.label} ({statusCounts[s.value]})
             </button>
@@ -503,12 +501,43 @@ const Report = () => {
                 onChange={(e) => setSelectedAgent(e.target.value)}
                 className="w-full border px-4 py-2.5 rounded-lg shadow-sm"
               >
-                <option value="all">All Delivery Agents</option>
-                {deliveryAgentOptions.map((agent) => (
-                  <option key={agent} value={agent}>
-                    {agent}
-                  </option>
-                ))}
+                <option value="all">
+                  {`All Delivery Agents | Checked: ${statusCounts.checked} | Delivered: ${statusCounts.delivered} | Total: ${statusCounts.checked + statusCounts.delivered}`}
+                </option>
+                {deliveryAgentOptions.map((agent) => {
+                  const stats = filteredDeliveries.reduce(
+                    (acc, delivery) => {
+                      const agentName = getDeliveryAgentName(delivery.deliveryMan);
+
+                      if (agentName === agent) {
+                        if (delivery.statusKey === "checked") {
+                          acc.checked += 1;
+                        }
+
+                        if (delivery.statusKey === "delivered") {
+                          acc.delivered += 1;
+                        }
+
+                        if (
+                          delivery.statusKey === "checked" ||
+                          delivery.statusKey === "delivered"
+                        ) {
+                          acc.total += 1;
+                        }
+                      }
+
+                      return acc;
+                    },
+                    { checked: 0, delivered: 0, total: 0 }
+                  );
+
+                  return (
+                    <option key={agent} value={agent}>
+                      {`${agent} | Checked: ${stats.checked} | Delivered: ${stats.delivered} | Total: ${stats.total}`}
+                    </option>
+                  );
+
+                })}
               </select>
             </div>
           </div>
@@ -544,11 +573,10 @@ const Report = () => {
               // eslint-disable-next-line no-undef
               disabled={!startRange || !endRange || !allCustomers.length}
               onClick={downloadSummaryExcel}
-              className={`w-full sm:self-end px-5 py-2.5 rounded-lg shadow text-white ${
-                !startRange || !endRange || !allCustomers.length
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
+              className={`w-full sm:self-end px-5 py-2.5 rounded-lg shadow text-white ${!startRange || !endRange || !allCustomers.length
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+                }`}
             >
               Download Excel
             </button>
@@ -558,7 +586,7 @@ const Report = () => {
         {selectedAgentStats && (
           <div className="px-4 py-3 sm:px-6 lg:px-8 border-b bg-blue-50 flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-gray-700">
-              {selectedAgent}
+              {selectedAgent === "all" ? "All Delivery Agents" : selectedAgent}
             </span>
             <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800 border border-yellow-300">
               Checked: {selectedAgentStats.checked}
