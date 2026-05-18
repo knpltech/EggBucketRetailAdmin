@@ -11,9 +11,8 @@ const TABS = ["ALL", "ONBOARDING", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState(null);
-  const [hasNextPage, setHasNextPage] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   // ⭐ Stats (total counts) – fetched once, independent of pagination
   const [totalCustomers, setTotalCustomers] = useState(null);
@@ -24,8 +23,6 @@ export default function CustomerManagement() {
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
-  const isFetchingRef = useRef(false);
-  const sentinelRef = useRef(null);
   const canDownloadExcel = true;
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
@@ -38,31 +35,29 @@ export default function CustomerManagement() {
       deliveryGap: computeDeliveryGap(c.last8Days, todayDate),
     }));
 
-  // ─── Initial load: stats + first page in parallel ─────────────────────────
+  // ─── Initial load: stats + all customers in parallel ──────────────────────
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       try {
         const [statsRes, pageRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/user-info/stats`),
-          axios.get(`${ADMIN_PATH}/user-info?limit=25`),
+          axios.get(`${ADMIN_PATH}/user-info`),
         ]);
 
         // Stats (fixed for the session)
         setTotalCustomers(statsRes.data?.totalCustomers ?? null);
         setTotalActive(statsRes.data?.totalActive ?? null);
 
-        // First page
+        // Fetch all customers
         const paginationData = pageRes.data;
         const rows = Array.isArray(paginationData.customers)
           ? paginationData.customers
           : Array.isArray(paginationData)
-            ? paginationData   // backward-compat if backend returns plain array
+            ? paginationData
             : [];
 
         setCustomers(normaliseRows(rows));
-        setNextCursor(paginationData.pagination?.nextCursor ?? null);
-        setHasNextPage(paginationData.pagination?.hasNextPage ?? false);
       } catch (err) {
         console.error("CustomerManagement init error:", err);
       } finally {
@@ -72,41 +67,9 @@ export default function CustomerManagement() {
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Fetch next page (cursor-based) ───────────────────────────────────────
-  const fetchMore = useCallback(async () => {
-    if (!hasNextPage || !nextCursor || isFetchingRef.current || loadingMore) return;
-    isFetchingRef.current = true;
-    setLoadingMore(true);
-    try {
-      const res = await axios.get(
-        `${ADMIN_PATH}/user-info?limit=25&cursor=${nextCursor}`
-      );
-      const paginationData = res.data;
-      const rows = Array.isArray(paginationData.customers)
-        ? paginationData.customers
-        : [];
-      setCustomers((prev) => [...prev, ...normaliseRows(rows)]);
-      setNextCursor(paginationData.pagination?.nextCursor ?? null);
-      setHasNextPage(paginationData.pagination?.hasNextPage ?? false);
-    } catch (err) {
-      console.error("fetchMore error:", err);
-    } finally {
-      setLoadingMore(false);
-      isFetchingRef.current = false;
-    }
-  }, [hasNextPage, nextCursor, loadingMore]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── IntersectionObserver: trigger fetchMore when sentinel enters view ─────
   useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) fetchMore(); },
-      { threshold: 0.1 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [fetchMore]);
+    setCurrentPage(1);
+  }, [activeTab, sortBy]);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
   const getDeliveredCount = (customer) => {
@@ -341,6 +304,12 @@ export default function CustomerManagement() {
     saveAs(new Blob([buf]), `${activeTab}.xlsx`);
   };
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginatedCustomers = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
   // ─── UI ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
@@ -424,7 +393,7 @@ export default function CustomerManagement() {
           </thead>
 
           <tbody>
-            {filtered.map((c) => (
+            {paginatedCustomers.map((c) => (
               <tr key={c.id} className="border-t">
                 <td className="p-3 font-medium">{c.custid || c.id}</td>
                 <td className="p-3 font-medium">{getName(c)}</td>
@@ -503,13 +472,28 @@ export default function CustomerManagement() {
           </tbody>
         </table>
 
-        {/* ⭐ Infinite scroll sentinel */}
-        <div ref={sentinelRef} className="py-4 text-center text-sm text-gray-400">
-          {loadingMore && "Loading more customers…"}
-          {!hasNextPage && !loading && customers.length > 0 && (
-            <span className="text-gray-300">— All {customers.length} loaded —</span>
-          )}
-        </div>
+        {/* Pagination UI */}
+        {!loading && (
+          <div className="p-4 flex items-center justify-between border-t border-gray-200 bg-gray-50">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-700">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
