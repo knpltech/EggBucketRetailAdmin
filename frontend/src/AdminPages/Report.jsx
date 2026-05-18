@@ -302,6 +302,44 @@ const Report = () => {
           ),
     [filteredDeliveries, selectedAgent],
   );
+
+  const allAgentStats = useMemo(() => {
+    const statsByAgent = filteredDeliveries.reduce((stats, delivery) => {
+      const agentName = getDeliveryAgentName(delivery.deliveryMan);
+
+      if (!agentName) {
+        return stats;
+      }
+
+      if (!stats[agentName]) {
+        stats[agentName] = {
+          name: agentName,
+          checked: 0,
+          delivered: 0,
+          total: 0,
+        };
+      }
+
+      if (delivery.statusKey === "checked") {
+        stats[agentName].checked += 1;
+      }
+
+      if (delivery.statusKey === "delivered") {
+        stats[agentName].delivered += 1;
+      }
+
+      if (isCompletedStatus(delivery.statusKey)) {
+        stats[agentName].total += 1;
+      }
+
+      return stats;
+    }, {});
+
+    return Object.values(statsByAgent).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [filteredDeliveries]);
+
   // ⭐ OPTIMIZED: Generate Excel from frontend data (no API call)
   const downloadSummaryExcel = () => {
     if (!startRange || !endRange) {
@@ -569,6 +607,34 @@ const Report = () => {
             <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-800 border border-slate-300">
               Total: {selectedAgentStats.total}
             </span>
+          </div>
+        )}
+
+        {selectedAgent === "all" && allAgentStats.length > 0 && (
+          <div className="px-3 py-3 sm:px-6 lg:px-8 border-b bg-slate-50">
+            <div className="space-y-2">
+              {allAgentStats.map((agent) => (
+                <div
+                  key={agent.name}
+                  className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-blue-50/70 px-3 py-2 shadow-sm sm:grid-cols-[minmax(140px,1fr)_auto] sm:items-center sm:gap-4"
+                >
+                  <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    {agent.name}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800 border border-yellow-300 shadow-sm">
+                      Checked: {agent.checked}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800 border border-green-300 shadow-sm">
+                      Delivered: {agent.delivered}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-800 border border-slate-300 shadow-sm">
+                      Total: {agent.total}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

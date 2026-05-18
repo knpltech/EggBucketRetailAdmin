@@ -331,6 +331,12 @@ const getRetentionStatus = (delivery = null) => {
     .trim()
     .toLowerCase();
   const category = getRetentionCategoryFromDelivery(delivery);
+  const traysDelivered =
+    delivery.traysDelivered ??
+    delivery.trays ??
+    delivery.quantity ??
+    delivery.trayCount ??
+    null;
 
   if (type === "delivered") {
     return {
@@ -339,6 +345,7 @@ const getRetentionStatus = (delivery = null) => {
       category: "",
       categoryLabel: "-",
       reason: "",
+      traysDelivered,
     };
   }
 
@@ -411,7 +418,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
     
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v14:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v15:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(`[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`);
@@ -607,7 +614,10 @@ const getRetentionCustomers = async (req, res) => {
             previousDeliveryData = {
               type: entryObj.status,
               checkReason: entryObj.reason || "",
-              status: entryObj.status
+              status: entryObj.status,
+              traysDelivered: entryObj.traysDelivered,
+              trays: entryObj.trays,
+              quantity: entryObj.quantity,
             };
           }
           
@@ -766,6 +776,7 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customerRetention:v12") ||
           key.startsWith("customerRetention:v13") ||
           key.startsWith("customerRetention:v14") ||
+          key.startsWith("customerRetention:v15") ||
           key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );
