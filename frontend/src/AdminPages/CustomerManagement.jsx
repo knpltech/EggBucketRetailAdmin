@@ -128,9 +128,30 @@ export default function CustomerManagement() {
     const status = typeof entry === "string" ? entry : entry?.status;
     if (status === "delivered") return "OFF";
     if (override) {
-      const overrideDate = override?.date ? String(override.date).slice(0, 10) : null;
+      const overrideType = String(override.type || "")
+        .trim()
+        .toUpperCase();
+
+      // MANUAL override persists forever
+      if (overrideType === "MANUAL") {
+        return String(override.status || "")
+          .trim()
+          .toUpperCase() === "OFF"
+          ? "OFF"
+          : "ON";
+      }
+
+      // SYSTEM override works only for same day
+      const overrideDate = override?.date
+        ? String(override.date).slice(0, 10)
+        : null;
+
       if (overrideDate === todayDate) {
-        return String(override.status || "").trim().toUpperCase() === "OFF" ? "OFF" : "ON";
+        return String(override.status || "")
+          .trim()
+          .toUpperCase() === "OFF"
+          ? "OFF"
+          : "ON";
       }
     }
     return "ON";
