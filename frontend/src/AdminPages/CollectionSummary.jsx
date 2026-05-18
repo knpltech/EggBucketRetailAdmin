@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
-import { Download, RefreshCw, Calendar, Zap } from "lucide-react";
+import {
+  Download,
+  RefreshCw,
+  Calendar,
+  Zap,
+  Pencil,
+  Check,
+  X,
+} from "lucide-react";
 import { FiTrendingUp } from "react-icons/fi";
 import * as XLSX from "xlsx";
 
@@ -45,6 +53,10 @@ const CollectionSummary = () => {
   const [sortBy] = useState("delivery-time");
   const [todaysPrice, setTodaysPrice] = useState("");
   const [minusAmounts, setMinusAmounts] = useState({});
+  const [editingCell, setEditingCell] = useState(null); // { rowId: docId, field: 'quantity' | 'cash' | 'upi' }
+  const [editValue, setEditValue] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
 
   // Get date string in Kolkata timezone
 
@@ -52,6 +64,140 @@ const CollectionSummary = () => {
   useEffect(() => {
     fetchCollectionSummary();
   }, []);
+
+  // Handle edit cell click
+  const handleEditCell = (item, field) => {
+    let currentValue = 0;
+    if (field === "quantity") {
+      currentValue = typeof item.quantity === "number" ? item.quantity : 0;
+    } else if (field === "cash") {
+      currentValue = typeof item.cash === "number" ? item.cash : 0;
+    } else if (field === "upi") {
+      currentValue = typeof item.upi === "number" ? item.upi : 0;
+    }
+    setEditingCell({ rowId: item.docId, field });
+    setEditValue(currentValue.toString());
+    setEditError("");
+  };
+
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setEditingCell(null);
+    setEditValue("");
+    setEditError("");
+  };
+
+  // Handle save individual cell
+  const handleSaveCell = async (item) => {
+    if (!editingCell) return;
+
+    setSavingEdit(true);
+    setEditError("");
+
+    try {
+      if (!item.docId) {
+        throw new Error("Customer ID not found");
+      }
+
+      const numValue = parseFloat(editValue) || 0;
+      const updatePayload = {
+        docId: item.docId,
+        date: selectedDate,
+      };
+
+      // Get current values for recalculating total amount
+      const currentEntry = data.customers.find(
+        (c) => (c.id || c._id) === item.docId,
+      )?.last8Days?.[selectedDate];
+      const entryObj =
+        typeof currentEntry === "string"
+          ? { status: currentEntry }
+          : currentEntry || {};
+      let currentCash =
+        typeof entryObj.cashAmount === "number" ? entryObj.cashAmount : 0;
+      let currentUpi =
+        typeof entryObj.upiAmount === "number" ? entryObj.upiAmount : 0;
+
+      // Add only the edited field to the payload and recalculate total
+      if (editingCell.field === "quantity") {
+        updatePayload.quantity = parseInt(editValue) || 0;
+      } else if (editingCell.field === "cash") {
+        updatePayload.cashAmount = numValue;
+        currentCash = numValue; // Update for calculation
+        updatePayload.totalAmount = currentCash + currentUpi;
+      } else if (editingCell.field === "upi") {
+        updatePayload.upiAmount = numValue;
+        currentUpi = numValue; // Update for calculation
+        updatePayload.totalAmount = currentCash + currentUpi;
+      }
+
+      const response = await axios.post(
+        `${ADMIN_PATH}/update-customer-payment`,
+        updatePayload,
+      );
+
+      if (response.data.success) {
+        // Update local data state
+        setData((prevData) => ({
+          ...prevData,
+          customers: prevData.customers.map((customer) => {
+            if ((customer.id || customer._id) === item.docId) {
+              const last8Days = { ...customer.last8Days };
+              if (!last8Days[selectedDate]) {
+                last8Days[selectedDate] = {};
+              }
+
+              // Update only the specific field and recalculate total
+              if (editingCell.field === "quantity") {
+                last8Days[selectedDate] = {
+                  ...last8Days[selectedDate],
+                  quantity: parseInt(editValue) || 0,
+                };
+              } else if (editingCell.field === "cash") {
+                const updatedCash = numValue;
+                const updatedUpi =
+                  typeof last8Days[selectedDate].upiAmount === "number"
+                    ? last8Days[selectedDate].upiAmount
+                    : 0;
+                last8Days[selectedDate] = {
+                  ...last8Days[selectedDate],
+                  cashAmount: updatedCash,
+                  totalAmount: updatedCash + updatedUpi,
+                };
+              } else if (editingCell.field === "upi") {
+                const updatedUpi = numValue;
+                const updatedCash =
+                  typeof last8Days[selectedDate].cashAmount === "number"
+                    ? last8Days[selectedDate].cashAmount
+                    : 0;
+                last8Days[selectedDate] = {
+                  ...last8Days[selectedDate],
+                  upiAmount: updatedUpi,
+                  totalAmount: updatedCash + updatedUpi,
+                };
+              }
+
+              return { ...customer, last8Days };
+            }
+            return customer;
+          }),
+        }));
+
+        // Clear edit state
+        setEditingCell(null);
+        setEditValue("");
+      } else {
+        setEditError(response.data.message || "Failed to update");
+      }
+    } catch (err) {
+      console.error("Save cell error:", err);
+      setEditError(
+        err.response?.data?.message || err.message || "Error saving",
+      );
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -77,20 +223,30 @@ const CollectionSummary = () => {
         // Quantities
         const quantity = entryObj.quantity ?? entryObj.trays ?? 0;
 
-        // Amounts
-        const totalAmount = entryObj.totalAmount ?? entryObj.amount ?? 0;
+        // Amounts - Calculate in order to ensure consistency
+        // First, get the base totalAmount for legacy support
+        const baseAmount = entryObj.totalAmount ?? entryObj.amount ?? 0;
+
+        // Calculate cashAmount from explicit value or payment method
         const cashAmount =
           typeof entryObj.cashAmount === "number"
             ? entryObj.cashAmount
             : entryObj.paymentMethod === "CASH"
-              ? totalAmount
+              ? baseAmount
               : 0;
+
+        // Calculate upiAmount from explicit value or payment method
         const upiAmount =
           typeof entryObj.upiAmount === "number"
             ? entryObj.upiAmount
             : entryObj.paymentMethod === "UPI"
-              ? totalAmount
+              ? baseAmount
               : 0;
+
+        // Dynamically calculate totalAmount from cash + upi to keep UI in sync
+        const totalAmount =
+          (typeof cashAmount === "number" ? cashAmount : 0) +
+          (typeof upiAmount === "number" ? upiAmount : 0);
 
         // Payment Method label
         let paymentMethod = entryObj.paymentMethod || "UNKNOWN";
@@ -138,6 +294,7 @@ const CollectionSummary = () => {
           deliveryAgent,
           deliveryTime,
           rawDeliveryTime: timeVal,
+          docId: customer.id || customer._id,
         };
       })
       .filter(Boolean);
@@ -662,6 +819,21 @@ const CollectionSummary = () => {
             </tr>
           </thead>
           <tbody>
+            {editError && (
+              <tr>
+                <td colSpan="10" className="p-3 bg-red-50 border-t">
+                  <div className="text-red-700 text-sm">
+                    Error: {editError}
+                    <button
+                      onClick={() => setEditError("")}
+                      className="ml-3 text-red-600 hover:text-red-800 underline"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
             {filtered.map((item) => (
               <tr
                 key={item.customerId}
@@ -679,9 +851,51 @@ const CollectionSummary = () => {
                 <td className="p-3 font-medium text-gray-700">
                   {item.deliveryTime}
                 </td>
+
+                {/* Quantity Column */}
                 <td className="p-3 text-center text-gray-700 font-medium">
-                  {item.quantity}
+                  {editingCell?.rowId === item.docId &&
+                  editingCell?.field === "quantity" ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <input
+                        type="number"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        className="w-14 px-1.5 py-0.5 border border-gray-300 rounded text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={savingEdit}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSaveCell(item)}
+                        disabled={savingEdit}
+                        className="text-green-600 hover:text-green-700 disabled:text-green-400"
+                        title="Save"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        disabled={savingEdit}
+                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+                        title="Cancel"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2 group">
+                      <span>{item.quantity}</span>
+                      <button
+                        onClick={() => handleEditCell(item, "quantity")}
+                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity"
+                        title="Edit quantity"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                  )}
                 </td>
+
                 <td className="p-3 text-center">
                   <span
                     className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
@@ -693,21 +907,109 @@ const CollectionSummary = () => {
                     {item.paymentMethod}
                   </span>
                 </td>
+
+                {/* Cash Column */}
                 <td className="p-3 text-right text-gray-700 font-medium">
-                  {typeof item.cash === "number"
-                    ? `₹${item.cash.toLocaleString("en-IN")}`
-                    : item.cash}
+                  {editingCell?.rowId === item.docId &&
+                  editingCell?.field === "cash" ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <input
+                        type="number"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={savingEdit}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSaveCell(item)}
+                        disabled={savingEdit}
+                        className="text-green-600 hover:text-green-700 disabled:text-green-400"
+                        title="Save"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        disabled={savingEdit}
+                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+                        title="Cancel"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end gap-2 group">
+                      <span>
+                        {typeof item.cash === "number"
+                          ? `₹${item.cash.toLocaleString("en-IN")}`
+                          : item.cash}
+                      </span>
+                      <button
+                        onClick={() => handleEditCell(item, "cash")}
+                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity"
+                        title="Edit cash amount"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                  )}
                 </td>
+
+                {/* UPI Column */}
                 <td className="p-3 text-right text-gray-700 font-medium">
-                  {typeof item.upi === "number"
-                    ? `₹${item.upi.toLocaleString("en-IN")}`
-                    : item.upi}
+                  {editingCell?.rowId === item.docId &&
+                  editingCell?.field === "upi" ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <input
+                        type="number"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={savingEdit}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSaveCell(item)}
+                        disabled={savingEdit}
+                        className="text-green-600 hover:text-green-700 disabled:text-green-400"
+                        title="Save"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        disabled={savingEdit}
+                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+                        title="Cancel"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end gap-2 group">
+                      <span>
+                        {typeof item.upi === "number"
+                          ? `₹${item.upi.toLocaleString("en-IN")}`
+                          : item.upi}
+                      </span>
+                      <button
+                        onClick={() => handleEditCell(item, "upi")}
+                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity"
+                        title="Edit UPI amount"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                  )}
                 </td>
+
                 <td className="p-3 text-right text-gray-900 font-semibold">
                   {typeof item.amount === "number"
                     ? `₹${item.amount.toLocaleString("en-IN")}`
                     : item.amount}
                 </td>
+
                 <td className="p-3 text-right font-semibold">
                   {minusAmounts[item.customerId] !== undefined ? (
                     <span
@@ -728,12 +1030,9 @@ const CollectionSummary = () => {
 
             {/* Totals Row */}
             <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
-              <td colSpan="4" className="p-3 text-gray-900">
+              <td colSpan="5" className="p-3 text-gray-900">
                 TOTAL ({filtered.length}{" "}
                 {filtered.length === 1 ? "order" : "orders"})
-              </td>
-              <td className="p-3 text-center text-gray-900">
-                {filteredTotals.totalTrays}
               </td>
               <td className="p-3"></td>
               <td className="p-3 text-right text-gray-900">

@@ -1612,6 +1612,69 @@ const recalculateCollectionData = async (req, res) => {
     });
   }
 };
+
+// Update customer payment information for a specific date
+
+const updateCustomerPayment = async (req, res) => {
+  try {
+    const { docId, date, quantity, cashAmount, upiAmount, totalAmount } = req.body;
+    if (!docId || !date) {
+      return res.status(400).json({
+        success: false,
+        message: "docId and date are required",
+      });
+    }
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(docId);
+
+    // Prepare update object with dynamic field paths
+    const updateData = {
+      updatedAt: new Date(),
+    };
+
+    // updateing the fields here
+    if (quantity !== undefined && quantity !== null) {
+      updateData[`last8Days.${date}.quantity`] = Number(quantity);
+    }
+    if (cashAmount !== undefined && cashAmount !== null) {
+      updateData[`last8Days.${date}.cashAmount`] = Number(cashAmount);
+    }
+    if (upiAmount !== undefined && upiAmount !== null) {
+      updateData[`last8Days.${date}.upiAmount`] = Number(upiAmount);
+    }
+    if (totalAmount !== undefined && totalAmount !== null) {
+      updateData[`last8Days.${date}.totalAmount`] = Number(totalAmount);
+    }
+
+    // update happen
+    await customerRef.update(updateData);
+
+    // Clear relevant caches
+    cache.del("collectionSummary:today");
+    const cacheKeys = await cache.keysAsync("customerInfo:userInfo*");
+    if (cacheKeys.length > 0) {
+      await cache.delAsync(cacheKeys);
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Customer payment updated successfully",
+      updatedFields: {
+        date,
+        quantity: quantity !== undefined ? Number(quantity) : undefined,
+        cashAmount: cashAmount !== undefined ? Number(cashAmount) : undefined,
+        upiAmount: upiAmount !== undefined ? Number(upiAmount) : undefined,
+        totalAmount: totalAmount !== undefined ? Number(totalAmount) : undefined,
+      },
+    });
+  } catch (err) {
+    console.error("updateCustomerPayment error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error updating customer payment",
+      error: err.message,
+    });
+  }
+};
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -1628,4 +1691,5 @@ export {
   getLatestRemarks,
   getCollectionSummary,
   recalculateCollectionData,
+  updateCustomerPayment,
 };

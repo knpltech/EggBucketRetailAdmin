@@ -59,6 +59,7 @@ import {
   toggleTodayDelivery,
   getCollectionSummary,
   recalculateCollectionData,
+  updateCustomerPayment,
 } from "../Controller/AdminController.js";
 
 // Customer routes 
@@ -86,6 +87,7 @@ router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
 router.get("/collection-summary", getCollectionSummary);
 router.post("/recalculate-collection-data", recalculateCollectionData);
+router.post("/update-customer-payment", updateCustomerPayment);
 router.get("/customer-retention", getRetentionCustomers);
 router.post("/customer-retention/reset", resetRetentionCustomer);
 router.get("/customer/retention", getRetentionCustomers);
