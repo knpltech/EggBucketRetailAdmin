@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
-import { adjustActiveCount } from "./CustomerInfoController.js";
+import { adjustActiveCount, invalidateActiveCountCache } from "./CustomerInfoController.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -776,6 +776,7 @@ const resetRetentionCustomer = async (req, res) => {
       cache.del(`userDeliveries:${customerId}`);
       cache.del("customerMapStatus:today");
       cache.del("latestRemarks");
+      await invalidateActiveCountCache();
     } catch (cacheErr) {
       console.warn("retention reset cache invalidation error:", cacheErr);
     }
@@ -1351,6 +1352,7 @@ const saveSkipConfig = async (req, res) => {
       if (allDeliveriesKeys.length > 0) {
         cache.del(allDeliveriesKeys);
       }
+      await invalidateActiveCountCache();
     } catch (cacheErr) {
       console.warn("skip-config cache invalidation error:", cacheErr);
     }
