@@ -60,6 +60,46 @@ const getPeakFrequencyColor = (value) => {
   return "#0F9D58"; // green
 };
 
+const getPeakFrequencyNumber = (value) => {
+  const peak = normalizePeakFrequency(value);
+  const n = Number(peak.slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
+};
+
+const computePeakFrequency = (last8Days) => {
+  if (!last8Days || typeof last8Days !== "object") return "D0";
+
+  let count = 0;
+  const today = new Date();
+
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+    const entry = last8Days[dateStr];
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (status === "delivered") count++;
+  }
+
+  return `D${Math.min(count, 7)}`;
+};
+
+const resolvePeakFrequency = (customer) => {
+  const savedPeak = normalizePeakFrequency(
+    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
+  );
+  const currentPeak = computePeakFrequency(customer?.last8Days);
+
+  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
+    ? savedPeak
+    : currentPeak;
+};
+
 const normalizePotential = (value) => {
   const raw = String(value ?? "")
     .trim()
@@ -169,9 +209,7 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
   };
 
   const isTodayOn = customer?.todayOverride?.status === "ON";
-  const peakFrequency = normalizePeakFrequency(
-    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
-  );
+  const peakFrequency = resolvePeakFrequency(customer);
   const peakPotential = normalizePotential(customer?.potential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
