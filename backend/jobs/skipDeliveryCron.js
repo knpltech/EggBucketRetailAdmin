@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { getFirestore } from "firebase-admin/firestore";
 import cache from "../Controller/cache.js";
+import { invalidateActiveCountCache } from "../Controller/CustomerInfoController.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -90,6 +91,7 @@ const invalidateSkipRelatedCaches = () => {
 
     if (allDeliveriesKeys.length) cache.del(allDeliveriesKeys);
     if (userDeliveriesKeys.length) cache.del(userDeliveriesKeys);
+    invalidateActiveCountCache().catch(() => {});
   } catch (err) {
     console.warn("Cron cache invalidation error:", err);
   }

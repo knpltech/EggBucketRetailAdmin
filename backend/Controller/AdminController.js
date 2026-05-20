@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
-import { adjustActiveCount } from "./CustomerInfoController.js";
+import { adjustActiveCount, invalidateActiveCountCache } from "./CustomerInfoController.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -55,7 +55,7 @@ const getCurrentDeliveryFrequency = (last8Days = {}) => {
   let count = 0;
   const today = new Date();
 
-  for (let i = 1; i <= 7; i += 1) {
+  for (let i = 0; i <= 6; i += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);
     const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
@@ -331,6 +331,12 @@ const getRetentionStatus = (delivery = null) => {
     .trim()
     .toLowerCase();
   const category = getRetentionCategoryFromDelivery(delivery);
+  const traysDelivered =
+    delivery.traysDelivered ??
+    delivery.trays ??
+    delivery.quantity ??
+    delivery.trayCount ??
+    null;
 
   if (type === "delivered") {
     return {
@@ -339,11 +345,7 @@ const getRetentionStatus = (delivery = null) => {
       category: "",
       categoryLabel: "-",
       reason: "",
-      trays:
-        delivery.traysDelivered ??
-        delivery.quantity ??
-        delivery.trays ??
-        0,
+      traysDelivered,
     };
   }
 
@@ -416,7 +418,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v14:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v15:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(`[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`);
@@ -618,11 +620,9 @@ const getRetentionCustomers = async (req, res) => {
               type: entryObj.status,
               checkReason: entryObj.reason || "",
               status: entryObj.status,
-              traysDelivered:
-                entryObj.quantity ??
-                entryObj.trays ??
-                entryObj.traysDelivered ??
-                0,
+              traysDelivered: entryObj.traysDelivered,
+              trays: entryObj.trays,
+              quantity: entryObj.quantity,
             };
           }
 
@@ -781,6 +781,7 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customerRetention:v12") ||
           key.startsWith("customerRetention:v13") ||
           key.startsWith("customerRetention:v14") ||
+          key.startsWith("customerRetention:v15") ||
           key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );
@@ -791,6 +792,7 @@ const resetRetentionCustomer = async (req, res) => {
       cache.del(`userDeliveries:${customerId}`);
       cache.del("customerMapStatus:today");
       cache.del("latestRemarks");
+      await invalidateActiveCountCache();
     } catch (cacheErr) {
       console.warn("retention reset cache invalidation error:", cacheErr);
     }
@@ -1366,6 +1368,7 @@ const saveSkipConfig = async (req, res) => {
       if (allDeliveriesKeys.length > 0) {
         cache.del(allDeliveriesKeys);
       }
+      await invalidateActiveCountCache();
     } catch (cacheErr) {
       console.warn("skip-config cache invalidation error:", cacheErr);
     }
@@ -1614,6 +1617,69 @@ const recalculateCollectionData = async (req, res) => {
     });
   }
 };
+
+// Update customer payment information for a specific date
+
+const updateCustomerPayment = async (req, res) => {
+  try {
+    const { docId, date, quantity, cashAmount, upiAmount, totalAmount } = req.body;
+    if (!docId || !date) {
+      return res.status(400).json({
+        success: false,
+        message: "docId and date are required",
+      });
+    }
+    const db = getFirestore();
+    const customerRef = db.collection("customers").doc(docId);
+
+    // Prepare update object with dynamic field paths
+    const updateData = {
+      updatedAt: new Date(),
+    };
+
+    // updateing the fields here
+    if (quantity !== undefined && quantity !== null) {
+      updateData[`last8Days.${date}.quantity`] = Number(quantity);
+    }
+    if (cashAmount !== undefined && cashAmount !== null) {
+      updateData[`last8Days.${date}.cashAmount`] = Number(cashAmount);
+    }
+    if (upiAmount !== undefined && upiAmount !== null) {
+      updateData[`last8Days.${date}.upiAmount`] = Number(upiAmount);
+    }
+    if (totalAmount !== undefined && totalAmount !== null) {
+      updateData[`last8Days.${date}.totalAmount`] = Number(totalAmount);
+    }
+
+    // update happen
+    await customerRef.update(updateData);
+
+    // Clear relevant caches
+    cache.del("collectionSummary:today");
+    const cacheKeys = await cache.keysAsync("customerInfo:userInfo*");
+    if (cacheKeys.length > 0) {
+      await cache.delAsync(cacheKeys);
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Customer payment updated successfully",
+      updatedFields: {
+        date,
+        quantity: quantity !== undefined ? Number(quantity) : undefined,
+        cashAmount: cashAmount !== undefined ? Number(cashAmount) : undefined,
+        upiAmount: upiAmount !== undefined ? Number(upiAmount) : undefined,
+        totalAmount: totalAmount !== undefined ? Number(totalAmount) : undefined,
+      },
+    });
+  } catch (err) {
+    console.error("updateCustomerPayment error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error updating customer payment",
+      error: err.message,
+    });
+  }
+};
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -1630,4 +1696,5 @@ export {
   getLatestRemarks,
   getCollectionSummary,
   recalculateCollectionData,
+  updateCustomerPayment,
 };

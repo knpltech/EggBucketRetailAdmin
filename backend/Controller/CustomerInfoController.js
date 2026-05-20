@@ -9,9 +9,9 @@ const MAX_CUSTOMER_PAGE_SIZE = 50;
 const INDIA_TZ = "Asia/Kolkata";
 
 // ── In-memory daily active-count cache ──────────────────────────────────────
-// Stores { date: "YYYY-MM-DD", count: N } so we serve activeCount from memory
-// after the first computation of each day. Zero Firestore reads after warm-up.
-const _activeCountCache = { date: null, count: 0 };
+// Stores { date: "YYYY-MM-DD", count: N, lastComputed: Timestamp } so we serve activeCount
+// from memory, automatically refreshing every 5 minutes to pull updates from field agents.
+const _activeCountCache = { date: null, count: 0, lastComputed: 0 };
 
 const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
   try {
@@ -77,7 +77,7 @@ const getCurrentDeliveryFrequency = (last8Days = {}) => {
   let count = 0;
   const today = new Date();
 
-  for (let i = 1; i <= 7; i += 1) {
+  for (let i = 0; i <= 6; i += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);
     const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
@@ -910,6 +910,7 @@ const addCustomer = async (req, res) => {
     await counterRef.set({ counter: current + 1 });
     await invalidateCustomerInfoCache();
     await invalidateAllCustomerDeliveriesCache();
+    await invalidateActiveCountCache();
     res.status(200).json({ message: "Customer added successfully" });
   } catch (error) {
     console.error("Error in addCustomer:", error);
@@ -917,26 +918,50 @@ const addCustomer = async (req, res) => {
   }
 };
 
-// ── Computes activeCount for today by scanning all customers (runs ONCE/day) ─
+// ── Invalidation helper: clears memory cache and deletes Firestore doc ────────
+const invalidateActiveCountCache = async () => {
+  _activeCountCache.date = null;
+  _activeCountCache.count = 0;
+  _activeCountCache.lastComputed = 0;
+  try {
+    const db = getFirestore();
+    await db.collection("globalcounter").doc("dailyStats").delete();
+    console.log("[CACHE INVALIDATION] Cleared daily stats activeCount cache and document");
+  } catch (err) {
+    console.warn("invalidateActiveCountCache failed to delete Firestore doc:", err);
+  }
+};
+
+// ── Computes activeCount for today by scanning all customers (runs as 5 min sliding cache) ─
 const _computeAndCacheActiveCount = async (db, todayStr) => {
   const DAILY_STATS_REF = db.collection("globalcounter").doc("dailyStats");
+  const now = Date.now();
 
   // 1. Try stored value first (1 read)
   try {
     const statsDoc = await DAILY_STATS_REF.get();
     if (statsDoc.exists) {
       const data = statsDoc.data() || {};
-      if (data.date === todayStr && typeof data.activeCount === "number") {
+      const updatedAt = data.updatedAt || 0;
+      // If it is today's date AND fresh (updated within last 5 minutes), use it!
+      if (
+        data.date === todayStr &&
+        typeof data.activeCount === "number" &&
+        (now - updatedAt) < 5 * 60 * 1000
+      ) {
         _activeCountCache.date = todayStr;
         _activeCountCache.count = data.activeCount;
+        _activeCountCache.lastComputed = updatedAt;
+        console.log(`[CACHE HIT] Active count loaded from fresh Firestore doc: ${data.activeCount}`);
         return data.activeCount;
       }
     }
-  } catch {
-    // fall through to full scan
+  } catch (err) {
+    console.warn("Error reading dailyStats from Firestore:", err);
   }
 
-  // 2. Full scan – only happens once per server instance per day
+  // 2. Full scan – happens once every 5 minutes across all instances
+  console.log(`[CACHE MISS] Re-scanning Firestore to compute fresh activeCount for ${todayStr}...`);
   let activeCount = 0;
   try {
     const snap = await db.collection("customers").get();
@@ -961,40 +986,69 @@ const _computeAndCacheActiveCount = async (db, todayStr) => {
       activeCount += 1;
     });
 
-    // Persist for future server restarts (1 write)
-    await DAILY_STATS_REF.set({ date: todayStr, activeCount }, { merge: true });
+    // Persist for future server restarts and other instances (1 write)
+    await DAILY_STATS_REF.set(
+      { date: todayStr, activeCount, updatedAt: now },
+      { merge: true }
+    );
   } catch (err) {
     console.warn("_computeAndCacheActiveCount scan failed:", err);
   }
 
   _activeCountCache.date = todayStr;
   _activeCountCache.count = activeCount;
+  _activeCountCache.lastComputed = now;
   return activeCount;
 };
 
-// ── Public helper: called by toggleTodayDelivery to adjust the in-memory count
+// ── Public helper: called to adjust the count (e.g. during a manual toggle)
 // delta = +1 (became active) or -1 (became inactive)
-const adjustActiveCount = (todayStr, delta) => {
-  if (_activeCountCache.date === todayStr) {
-    _activeCountCache.count = Math.max(0, _activeCountCache.count + delta);
-  }
-
-  // Also persist asynchronously so restarts stay accurate
+const adjustActiveCount = async (todayStr, delta) => {
   try {
     const db = getFirestore();
-    db.collection("globalcounter").doc("dailyStats").set(
-      { date: todayStr, activeCount: _activeCountCache.count },
-      { merge: true },
-    ).catch(() => {});
-  } catch {
-    // ignore – best-effort
+    const DAILY_STATS_REF = db.collection("globalcounter").doc("dailyStats");
+    const now = Date.now();
+
+    let currentCount = null;
+    if (_activeCountCache.date === todayStr) {
+      currentCount = _activeCountCache.count;
+    } else {
+      // Warm up cache from Firestore
+      const statsDoc = await DAILY_STATS_REF.get();
+      if (statsDoc.exists) {
+        const data = statsDoc.data() || {};
+        if (data.date === todayStr && typeof data.activeCount === "number") {
+          currentCount = data.activeCount;
+        }
+      }
+    }
+
+    if (currentCount !== null) {
+      const nextCount = Math.max(0, currentCount + delta);
+      _activeCountCache.date = todayStr;
+      _activeCountCache.count = nextCount;
+      _activeCountCache.lastComputed = now;
+      await DAILY_STATS_REF.set(
+        { date: todayStr, activeCount: nextCount, updatedAt: now },
+        { merge: true }
+      );
+      console.log(`[CACHE ADJUST] Adjusted activeCount to ${nextCount} (delta: ${delta})`);
+    } else {
+      // Memory and Firestore are both cold/stale. Invalidate completely
+      // so that the next read will perform a full scan.
+      _activeCountCache.date = null;
+      await DAILY_STATS_REF.delete();
+      console.log("[CACHE INVALIDATION] Both cache and doc were cold; deleted stats doc to force full scan");
+    }
+  } catch (err) {
+    console.warn("adjustActiveCount error:", err);
   }
 };
 
 // ── GET /user-info/stats ─────────────────────────────────────────────────────
 // Returns { totalCustomers, totalActive } with minimal reads:
 //   • totalCustomers : count() aggregation → 1 Firestore read
-//   • totalActive    : in-memory cache (warm) OR 1 doc read + 1 full scan (cold, once/day)
+//   • totalActive    : in-memory cache (fresh within 5 mins) OR 1 doc read + 1 full scan (stale/cold)
 const getUserInfoStats = async (req, res) => {
   try {
     const db = getFirestore();
@@ -1003,9 +1057,10 @@ const getUserInfoStats = async (req, res) => {
     // 1. Total customers via aggregation (1 read)
     const totalCustomers = await getTotalCustomersCount(db);
 
-    // 2. Active count – serve from memory if already computed today
+    // 2. Active count – serve from memory if already computed today and fresh
     let totalActive;
-    if (_activeCountCache.date === todayStr) {
+    const cacheAge = Date.now() - _activeCountCache.lastComputed;
+    if (_activeCountCache.date === todayStr && cacheAge < 5 * 60 * 1000) {
       totalActive = _activeCountCache.count;
     } else {
       totalActive = await _computeAndCacheActiveCount(db, todayStr);
@@ -1026,4 +1081,5 @@ export {
   addCustomer,
   getUserInfoStats,
   adjustActiveCount,
+  invalidateActiveCountCache,
 };

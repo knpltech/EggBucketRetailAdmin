@@ -100,10 +100,27 @@ const getStatusClasses = (statusKey) => {
   return "bg-[#FF3B30] text-white";
 };
 
+const getDeliveredTrayCount = (status) => {
+  const value =
+    status?.traysDelivered ??
+    status?.trays ??
+    status?.quantity ??
+    status?.deliveredTrays ??
+    status?.trayCount ??
+    null;
+  const trays = Number(value);
+  return Number.isFinite(trays) && trays > 0 ? trays : null;
+};
+
+const formatTrayRemark = (value) => {
+  const trays = getDeliveredTrayCount(value);
+  if (!trays) return "";
+  return trays === 1 ? "1 tray" : `${trays} trays`;
+};
+
 const getStatusRemark = (status) => {
   if (status?.key === "delivered") {
-    const trays = Number(status.trays ?? 0);
-    return trays === 1 ? "1 Tray" : `${trays} Trays`;
+    return formatTrayRemark(status);
   }
   if (status?.key !== "checked") return "";
   const reason = normalizeRetentionRemark(status.reason);
@@ -228,7 +245,7 @@ const getStatusFromDelivery = (delivery) => {
       category: "",
       categoryLabel: "",
       reason: "",
-      trays: delivery.quantity || 0,
+      traysDelivered: getDeliveredTrayCount(delivery),
     };
   }
 
@@ -328,7 +345,7 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v2:${date}:${category}:${agent}:${sort}:${page}`;
       const cached = cacheRef.current[cacheKey];
 
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {

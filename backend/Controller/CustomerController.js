@@ -1,5 +1,6 @@
 import { getFirestore } from "firebase-admin/firestore";
 import cache from "./cache.js";
+import { invalidateActiveCountCache } from "./CustomerInfoController.js";
 
 const invalidateUserInfoCache = async () => {
   const keys = await cache.keysAsync("customerInfo:userInfo*");
@@ -57,6 +58,7 @@ const deleteCustomer = async (req, res) => {
       await cache.delAsync(`customer:${id}`);
       await cache.delAsync(`userDeliveries:${id}`);
       await invalidateAllCustomerDeliveriesCache();
+      await invalidateActiveCountCache();
     } catch (cacheError) {
       console.warn("Failed to invalidate customer caches:", cacheError);
     }

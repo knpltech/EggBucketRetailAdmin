@@ -14,10 +14,6 @@ export default function CustomerManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
-  // ⭐ Stats (total counts) – fetched once, independent of pagination
-  const [totalCustomers, setTotalCustomers] = useState(null);
-  const [totalActive, setTotalActive] = useState(null);
-
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
@@ -35,19 +31,12 @@ export default function CustomerManagement() {
       deliveryGap: computeDeliveryGap(c.last8Days, todayDate),
     }));
 
-  // ─── Initial load: stats + all customers in parallel ──────────────────────
+  // ─── Initial load: all customers ──────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       try {
-        const [statsRes, pageRes] = await Promise.all([
-          axios.get(`${ADMIN_PATH}/user-info/stats`),
-          axios.get(`${ADMIN_PATH}/user-info`),
-        ]);
-
-        // Stats (fixed for the session)
-        setTotalCustomers(statsRes.data?.totalCustomers ?? null);
-        setTotalActive(statsRes.data?.totalActive ?? null);
+        const pageRes = await axios.get(`${ADMIN_PATH}/user-info`);
 
         // Fetch all customers
         const paginationData = pageRes.data;
@@ -128,9 +117,30 @@ export default function CustomerManagement() {
     const status = typeof entry === "string" ? entry : entry?.status;
     if (status === "delivered") return "OFF";
     if (override) {
-      const overrideDate = override?.date ? String(override.date).slice(0, 10) : null;
+      const overrideType = String(override.type || "")
+        .trim()
+        .toUpperCase();
+
+      // MANUAL override persists forever
+      if (overrideType === "MANUAL") {
+        return String(override.status || "")
+          .trim()
+          .toUpperCase() === "OFF"
+          ? "OFF"
+          : "ON";
+      }
+
+      // SYSTEM override works only for same day
+      const overrideDate = override?.date
+        ? String(override.date).slice(0, 10)
+        : null;
+
       if (overrideDate === todayDate) {
-        return String(override.status || "").trim().toUpperCase() === "OFF" ? "OFF" : "ON";
+        return String(override.status || "")
+          .trim()
+          .toUpperCase() === "OFF"
+          ? "OFF"
+          : "ON";
       }
     }
     return "ON";
@@ -198,6 +208,10 @@ export default function CustomerManagement() {
     return list;
   }, [customers, activeTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const filteredActiveCount = useMemo(() => {
+    return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
+  }, [filtered, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
@@ -211,11 +225,6 @@ export default function CustomerManagement() {
     setCustomers((prev) =>
       prev.map((row) => row.id === customer.id ? { ...row, todayOverride: optimisticOverride } : row)
     );
-    // ⭐ Optimistic totalActive adjustment (no backend read)
-    setTotalActive((prev) => {
-      if (prev === null) return prev;
-      return nextStatus === "OFF" ? Math.max(0, prev - 1) : prev + 1;
-    });
 
     try {
       setUpdatingTodayId(customer.id);
@@ -235,11 +244,6 @@ export default function CustomerManagement() {
       setCustomers((prev) =>
         prev.map((row) => row.id === customer.id ? { ...row, todayOverride: previousOverride } : row)
       );
-      // Revert totalActive
-      setTotalActive((prev) => {
-        if (prev === null) return prev;
-        return nextStatus === "OFF" ? prev + 1 : Math.max(0, prev - 1);
-      });
     } finally {
       setUpdatingTodayId(null);
     }
@@ -322,7 +326,7 @@ export default function CustomerManagement() {
             <div>
               <p className="text-sm text-gray-600">Total Customers</p>
               <p className="text-2xl font-bold">
-                {loading ? "…" : totalCustomers ?? filtered.length}
+                {loading ? "…" : filtered.length}
               </p>
             </div>
 
@@ -352,11 +356,11 @@ export default function CustomerManagement() {
             )}
           </div>
 
-          {/* ⭐ Total Active: fixed from stats, never changes on scroll */}
+          {/* ⭐ Total Active: dynamic based on selected tab and manual overrides */}
           <div className="bg-white p-4 rounded-xl shadow border-l-4 border-green-500">
             <p className="text-sm text-gray-600">Total Active</p>
             <p className="text-2xl font-bold text-green-600">
-              {loading ? "…" : totalActive ?? "—"}
+              {loading ? "…" : filteredActiveCount}
             </p>
           </div>
         </div>
@@ -572,10 +576,7 @@ function resolvePeakFrequency(customer) {
 }
 
 function getPeakFrequencyLabel(customer) {
-  return (
-    normalizePeakFrequency(customer?.peakFrequency) ||
-    resolvePeakFrequency(customer)
-  );
+  return resolvePeakFrequency(customer);
 }
 
 function getPeakFrequencyNumber(customer) {
@@ -719,41 +720,24 @@ function getDateDayNumber(dateStr) {
 function computePeakFrequency(last8Days) {
   if (!last8Days || typeof last8Days !== "object") return "D0";
 
-  const weeklyDeliveries = {};
+  let count = 0;
+  const today = new Date();
 
-  Object.keys(last8Days).forEach((dateStr) => {
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
     const entry = last8Days[dateStr];
-    if (!entry) return;
-
     const status = String(
       typeof entry === "string" ? entry : entry?.status || entry?.type || "",
     )
       .trim()
-    .toLowerCase();
+      .toLowerCase();
 
-    if (status !== "delivered") return;
+    if (status === "delivered") count++;
+  }
 
-    try {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      // Create date in local timezone
-      const date = new Date(year, month - 1, day);
-      const dayOfWeek = date.getDay();
-
-      // Calculate Monday (week start) in local timezone
-      const diff = (dayOfWeek + 6) % 7;
-      const weekStartDate = new Date(year, month - 1, day - diff);
-      const weekKey = `${weekStartDate.getFullYear()}-${String(
-        weekStartDate.getMonth() + 1,
-      ).padStart(2, "0")}-${String(weekStartDate.getDate()).padStart(2, "0")}`;
-
-      weeklyDeliveries[weekKey] = (weeklyDeliveries[weekKey] || 0) + 1;
-    } catch {
-      // skip invalid date
-    }
-  });
-
-  const maxDeliveries = Math.max(0, ...Object.values(weeklyDeliveries));
-  return `D${Math.min(maxDeliveries, 7)}`;
+  return `D${Math.min(count, 7)}`;
 }
 
 function computePotential(last8Days) {
