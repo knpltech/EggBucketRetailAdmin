@@ -576,10 +576,7 @@ function resolvePeakFrequency(customer) {
 }
 
 function getPeakFrequencyLabel(customer) {
-  return (
-    normalizePeakFrequency(customer?.peakFrequency) ||
-    resolvePeakFrequency(customer)
-  );
+  return resolvePeakFrequency(customer);
 }
 
 function getPeakFrequencyNumber(customer) {
@@ -723,41 +720,24 @@ function getDateDayNumber(dateStr) {
 function computePeakFrequency(last8Days) {
   if (!last8Days || typeof last8Days !== "object") return "D0";
 
-  const weeklyDeliveries = {};
+  let count = 0;
+  const today = new Date();
 
-  Object.keys(last8Days).forEach((dateStr) => {
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
     const entry = last8Days[dateStr];
-    if (!entry) return;
-
     const status = String(
       typeof entry === "string" ? entry : entry?.status || entry?.type || "",
     )
       .trim()
-    .toLowerCase();
+      .toLowerCase();
 
-    if (status !== "delivered") return;
+    if (status === "delivered") count++;
+  }
 
-    try {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      // Create date in local timezone
-      const date = new Date(year, month - 1, day);
-      const dayOfWeek = date.getDay();
-
-      // Calculate Monday (week start) in local timezone
-      const diff = (dayOfWeek + 6) % 7;
-      const weekStartDate = new Date(year, month - 1, day - diff);
-      const weekKey = `${weekStartDate.getFullYear()}-${String(
-        weekStartDate.getMonth() + 1,
-      ).padStart(2, "0")}-${String(weekStartDate.getDate()).padStart(2, "0")}`;
-
-      weeklyDeliveries[weekKey] = (weeklyDeliveries[weekKey] || 0) + 1;
-    } catch {
-      // skip invalid date
-    }
-  });
-
-  const maxDeliveries = Math.max(0, ...Object.values(weeklyDeliveries));
-  return `D${Math.min(maxDeliveries, 7)}`;
+  return `D${Math.min(count, 7)}`;
 }
 
 function computePotential(last8Days) {

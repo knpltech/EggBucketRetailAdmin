@@ -55,7 +55,7 @@ const getCurrentDeliveryFrequency = (last8Days = {}) => {
   let count = 0;
   const today = new Date();
 
-  for (let i = 1; i <= 7; i += 1) {
+  for (let i = 0; i <= 6; i += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);
     const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
