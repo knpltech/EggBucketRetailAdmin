@@ -74,8 +74,8 @@ const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(last8Days);
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
-      customerData.peakFrequency ||
-      customerData.peak_frequency,
+    customerData.peakFrequency ||
+    customerData.peak_frequency,
   );
 
   return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
@@ -149,8 +149,8 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
     const peakFrequency = resolvePeakFrequency(customerData, last8Days);
     const savedPeak = normalizePeakFrequency(
       customerData.Peak_Frequency ||
-        customerData.peakFrequency ||
-        customerData.peak_frequency,
+      customerData.peakFrequency ||
+      customerData.peak_frequency,
     );
 
     const updateData = {
@@ -187,8 +187,8 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
 
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
-    "T1","T2","T3","T4","T5","T6","T7","T8","T9",
-    "T10","T15","T20","T25","T30","T50","T100",
+    "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9",
+    "T10", "T15", "T20", "T25", "T30", "T50", "T100",
   ];
 
   const raw = String(value ?? "")
@@ -416,7 +416,7 @@ const getRetentionCustomers = async (req, res) => {
 
     const todayKey = dates[dates.length - 1];
     const previousDates = dates.slice(0, -1);
-    
+
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
     const cacheKey = `customerRetention:v15:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
@@ -428,7 +428,7 @@ const getRetentionCustomers = async (req, res) => {
     console.log(`[CACHE MISS] Fetching retention data for ${todayKey} from Firestore`);
 
     const db = getFirestore();
-    
+
     // ⭐ OPTIMIZATION: Fetch delivery partners once to lookup names
     const deliveryPartnerSnap = await db.collection("DeliveryMan").get();
     const deliveryPartnerMap = new Map();
@@ -441,10 +441,10 @@ const getRetentionCustomers = async (req, res) => {
     // We do two queries to handle BOTH new object format and legacy string format in last8Days
     const customersRef = db.collection("customers");
     const statuses = ["reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"];
-    
+
     const q1 = customersRef.where(`last8Days.${todayKey}.status`, "in", statuses).get();
     const q2 = customersRef.where(`last8Days.${todayKey}`, "in", statuses).get();
-    
+
     const [snap1, snap2] = await Promise.all([q1, q2]);
 
     let allMatchedCustomers = [];
@@ -455,7 +455,7 @@ const getRetentionCustomers = async (req, res) => {
         allMatchedCustomers.push({ id: doc.id, ...doc.data() });
       }
     });
-    
+
     console.log(`Checking ${allMatchedCustomers.length} customers for ${todayKey} deliveries`);
 
     const counts = {
@@ -480,14 +480,19 @@ const getRetentionCustomers = async (req, res) => {
 
         // Normalize legacy string format to object format
         const entryObj = typeof todayEntry === 'string' ? { status: todayEntry } : todayEntry;
-        
+
         // Construct faux delivery doc to pass to getRetentionStatus
         const todayDeliveryData = {
           type: entryObj.status,
           checkReason: entryObj.reason || "",
           status: entryObj.status,
           time: entryObj.time || null,
-          deliveredBy: entryObj.agentId || null
+          deliveredBy: entryObj.agentId || null,
+          traysDelivered:
+            entryObj.quantity ??
+            entryObj.trays ??
+            entryObj.traysDelivered ??
+            0,
         };
 
         const todayStatus = getRetentionStatus(todayDeliveryData);
@@ -501,7 +506,7 @@ const getRetentionCustomers = async (req, res) => {
             counts[todayStatus.category] += 1;
           }
         } else {
-           customerCategories[customer.id] = "ignored";
+          customerCategories[customer.id] = "ignored";
         }
       } catch (err) {
         console.error(`Error processing today delivery for ${customer.id}:`, err);
@@ -588,9 +593,9 @@ const getRetentionCustomers = async (req, res) => {
     const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + limit);
 
     const rows = [];
-    
+
     // ⭐ Fetch today's delivery doc for the paginated customers to get the EXACT timestamp!
-    const paginatedDeliveryRefs = paginatedCustomers.map(c => 
+    const paginatedDeliveryRefs = paginatedCustomers.map(c =>
       db.collection("customers").doc(c.id).collection("deliveries").doc(todayKey).get()
     );
     const paginatedDeliverySnaps = await Promise.all(paginatedDeliveryRefs);
@@ -608,7 +613,7 @@ const getRetentionCustomers = async (req, res) => {
         previousDates.forEach((dateKey) => {
           const entry = customer.last8Days?.[dateKey];
           const entryObj = typeof entry === 'string' ? { status: entry } : (entry || null);
-          
+
           let previousDeliveryData = null;
           if (entryObj) {
             previousDeliveryData = {
@@ -620,16 +625,16 @@ const getRetentionCustomers = async (req, res) => {
               quantity: entryObj.quantity,
             };
           }
-          
+
           dayStatuses[dateKey] = getRetentionStatus(previousDeliveryData);
         });
-        
+
         dayStatuses[todayKey] = todayStatus;
 
         // Process delivery time into ISO string
         // We extract the exact timestamp from the actual delivery document
         let deliveryTime = actualTodayDeliveryData?.timestamp || actualTodayDeliveryData?.deliveryTime || actualTodayDeliveryData?.checkReasonAt || todayDeliveryData.time || null;
-        
+
         // Add TEMP fallback for old data as explicitly requested
         if (!deliveryTime && customer.last8DaysUpdatedAt) {
           deliveryTime = customer.last8DaysUpdatedAt;
@@ -652,7 +657,7 @@ const getRetentionCustomers = async (req, res) => {
 
         const deliveryAgentId = todayDeliveryData.deliveredBy || null;
         let deliveryAgent = "-";
-        
+
         if (deliveryAgentId) {
           if (typeof deliveryAgentId === "string") {
             deliveryAgent = deliveryPartnerMap.get(deliveryAgentId) || deliveryAgentId;
@@ -711,9 +716,9 @@ const getRetentionCustomers = async (req, res) => {
 const resetRetentionCustomer = async (req, res) => {
   try {
     const { customerId, date } = req.body || {};
-    
+
     console.log("Reset request received:", { customerId, date });
-    
+
     if (!customerId || !date) {
       return res
         .status(400)
@@ -753,7 +758,7 @@ const resetRetentionCustomer = async (req, res) => {
         [`last8Days.${date}`]: admin.firestore.FieldValue.delete(),
         last8DaysUpdatedAt: Date.now(),
       });
-      
+
       console.log(`Updated customer ${customerId} last8Days for ${date}`);
     });
 
@@ -800,12 +805,12 @@ const resetRetentionCustomer = async (req, res) => {
     });
   } catch (err) {
     console.error("resetRetentionCustomer error:", err);
-    
-    const message = err.message === "Customer not found" 
-      ? "Customer not found" 
+
+    const message = err.message === "Customer not found"
+      ? "Customer not found"
       : err.message || "Failed to reset customer. Please try again.";
     const statusCode = err.message === "Customer not found" ? 404 : 500;
-    
+
     return res.status(statusCode).json({ message });
   }
 };
@@ -1338,10 +1343,10 @@ const saveSkipConfig = async (req, res) => {
       normalizedType === "MANUAL"
         ? { type: "MANUAL", days: 0, startDate: null }
         : {
-            type: "AUTO",
-            days: normalizedDays,
-            startDate: getTodayDateString(),
-          };
+          type: "AUTO",
+          days: normalizedDays,
+          startDate: getTodayDateString(),
+        };
 
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(customerId);
