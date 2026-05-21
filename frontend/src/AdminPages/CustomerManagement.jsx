@@ -1,4 +1,4 @@
-import React, {  useEffect, useMemo,  useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { FiUsers } from "react-icons/fi";
 import * as XLSX from "xlsx";
@@ -202,6 +202,21 @@ export default function CustomerManagement() {
       withR.sort((a, b) => getRemarkDisplay(a).toLowerCase().localeCompare(getRemarkDisplay(b).toLowerCase()));
       noR.sort((a, b) => getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()));
       return [...withR, ...noR];
+    } else if (sortBy === "skipFrequency") {
+      list.sort((a, b) => {
+        const getRank = (c) => {
+          const val = getSkipSelectValue(c);
+          if (val === "MANUAL") return 999;
+          if (val.startsWith("AUTO:")) {
+            const num = Number(val.split(":")[1]);
+            return Number.isFinite(num) ? num : 999;
+          }
+          return 999;
+        };
+        const diff = getRank(a) - getRank(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
@@ -266,12 +281,6 @@ export default function CustomerManagement() {
     } finally {
       setUpdatingTodayId(null);
     }
-  };
-
-  const getSkipSelectValue = (customer) => {
-    const cfg = customer?.skipConfig;
-    if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
-    return `AUTO:${clampDays0to6(cfg.days)}`;
   };
 
   const updateSkipConfig = async (customer, selectedValue) => {
@@ -363,6 +372,7 @@ export default function CustomerManagement() {
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
               <option value="remarks">Remarks </option>
+              <option value="skipFrequency">Skip Frequency</option>
             </select>
 
             {canDownloadExcel && (
@@ -572,7 +582,7 @@ function getDateStringInTimeZone(date, timeZone) {
     const day = parts.find((p) => p.type === "day")?.value;
 
     if (year && month && day) return `${year}-${month}-${day}`;
-  // eslint-disable-next-line no-unused-vars
+    // eslint-disable-next-line no-unused-vars
   } catch (error) {
     // fall through
   }
@@ -815,3 +825,10 @@ function clampDays0to6(value) {
   if (n > 6) return 6;
   return n;
 }
+
+function getSkipSelectValue(customer) {
+  const cfg = customer?.skipConfig;
+  if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
+  return `AUTO:${clampDays0to6(cfg.days)}`;
+}
+
