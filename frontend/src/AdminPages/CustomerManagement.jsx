@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {  useEffect, useMemo,  useState } from "react";
 import axios from "axios";
 import { FiUsers } from "react-icons/fi";
 import * as XLSX from "xlsx";
@@ -65,7 +65,7 @@ export default function CustomerManagement() {
     const last8Days = customer.last8Days || {};
     let count = 0;
     const today = new Date();
-    for (let i = 0; i <= 6; i++) {
+    for (let i = 1; i <= 7; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -572,6 +572,7 @@ function getDateStringInTimeZone(date, timeZone) {
     const day = parts.find((p) => p.type === "day")?.value;
 
     if (year && month && day) return `${year}-${month}-${day}`;
+  // eslint-disable-next-line no-unused-vars
   } catch (error) {
     // fall through
   }
@@ -641,8 +642,8 @@ function getDeliveredCountForCustomer(customer) {
   let count = 0;
   const today = new Date();
 
-  // Include today + last 6 days (total 7 days)
-  for (let i = 0; i <= 6; i++) {
+  // Check last 7 days (excluding today: yesterday through 7 days ago)
+  for (let i = 1; i <= 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
