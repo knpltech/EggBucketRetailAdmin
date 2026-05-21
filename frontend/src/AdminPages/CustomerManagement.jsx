@@ -212,6 +212,25 @@ export default function CustomerManagement() {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
   }, [filtered, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ─── Total Peak Potential: sum of all T-numbers in current tab ────────────
+  const totalPeakPotential = useMemo(() => {
+    return filtered.reduce((sum, c) => sum + getPotentialNumber(c.potential), 0);
+  }, [filtered]);
+
+  // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
+  const potentialAchieved = useMemo(() => {
+    return filtered.reduce((sum, c) => {
+      const last8Days = c.last8Days || {};
+      const entry = last8Days[todayDate];
+      if (!entry) return sum;
+      const status = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
+      if (status !== "delivered") return sum;
+      const trays = entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
+      const numTrays = Number(trays);
+      return sum + (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
+    }, 0);
+  }, [filtered, todayDate]);
+
   // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
@@ -317,7 +336,7 @@ export default function CustomerManagement() {
   // ─── UI ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">Customer Management</h1>
 
         <div className="flex items-center gap-4">
@@ -363,6 +382,23 @@ export default function CustomerManagement() {
               {loading ? "…" : filteredActiveCount}
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* ⭐ Total Peak Potential & Potential Achieved row */}
+      <div className="flex gap-4 mb-4">
+        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500">
+          <p className="text-xs text-gray-500 whitespace-nowrap">Total Peak Potential</p>
+          <p className="text-xl font-bold text-orange-600">
+            {loading ? "…" : `T(${totalPeakPotential})`}
+          </p>
+        </div>
+
+        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500">
+          <p className="text-xs text-gray-500 whitespace-nowrap">Potential Achieved</p>
+          <p className="text-xl font-bold text-purple-600">
+            {loading ? "…" : potentialAchieved}
+          </p>
         </div>
       </div>
 
