@@ -1,7 +1,7 @@
 import React from "react";
 import AISuggestionRow from "./AISuggestionRow";
 
-const AISuggestionTable = ({ data, loading }) => {
+const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId }) => {
   if (loading) {
     return (
       <div className="overflow-x-auto bg-white shadow rounded mt-6">
@@ -83,6 +83,8 @@ const AISuggestionTable = ({ data, loading }) => {
                 key={item.customer.id}
                 customer={item.customer}
                 suggestionData={item.suggestion}
+                onApplySuggestion={onApplySuggestion}
+                isUpdating={updatingSuggestionId === item.customer.id}
               />
             ))}
           </tbody>
