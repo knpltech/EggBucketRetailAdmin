@@ -254,29 +254,7 @@ export const runSkipDeliveryJobOnce = async () => {
       continue;
     }
 
-    // ✅ AUTO mode: Skip logic ALWAYS applies - ignore same-day protection
-    // Manual toggle should NOT override skip behavior
-    if (debugThisDoc) {
-      console.log(
-        "[skipDeliveryCron][debug] AUTO mode: recalculating (ignoring same-day changes)",
-        {
-          today,
-          existingOverrideDate,
-        },
-      );
-    }
-
-    const days = clampDays0to6(skipConfig.days);
-    if (days <= 0) {
-      if (debugThisDoc) {
-        console.log("[skipDeliveryCron][debug] skip: days<=0", {
-          rawDays: skipConfig.days,
-          normalizedDays: days,
-        });
-      }
-      continue;
-    }
-
+    // ✅ AUTO mode: Validate config and apply skip logic
     const startDateStr = skipConfig.startDate
       ? String(skipConfig.startDate).trim()
       : "";
@@ -292,12 +270,42 @@ export const runSkipDeliveryJobOnce = async () => {
 
     eligible += 1;
 
+    const days = clampDays0to6(skipConfig.days);
+
+    // ✅ FIX: Reset AUTO customers with days <= 0 to prevent infinite OFF state
+    // When days <= 0, skip window is invalid/completed, reset todayOverride to ON
+    // (skipConfig remains unchanged)
+    if (days <= 0) {
+      if (debugThisDoc) {
+        console.log("[skipDeliveryCron][debug] reset: AUTO with days<=0", {
+          today,
+          rawDays: skipConfig.days,
+          normalizedDays: days,
+        });
+      }
+
+      batch.update(doc.ref, {
+        todayOverride: {
+          date: today,
+          status: "ON",
+          type: "SYSTEM",
+        },
+      });
+
+      batchCount += 1;
+      updated += 1;
+
+      await commitBatchIfNeeded(false);
+      continue;
+    }
+
     const diffDays = Math.floor(
       (todayStart.getTime() - start.getTime()) / 86400000,
     );
 
-    // If skip window is completed, reset to MANUAL to avoid future cron work and UI confusion.
+    // If skip window is completed, reset todayOverride to ON.
     // Condition: diffDays > days  (skip starts from NEXT day, so days are counted after startDate)
+    // Note: skipConfig remains unchanged to preserve AUTO skip settings
     if (diffDays > days) {
       if (debugThisDoc) {
         console.log("[skipDeliveryCron][debug] reset: skip completed", {
@@ -309,11 +317,6 @@ export const runSkipDeliveryJobOnce = async () => {
       }
 
       batch.update(doc.ref, {
-        skipConfig: {
-          type: "MANUAL",
-          days: 0,
-          startDate: null,
-        },
         todayOverride: {
           date: today,
           status: "ON",
