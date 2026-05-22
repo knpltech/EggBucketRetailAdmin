@@ -15,7 +15,7 @@ export default function CustomerManagement() {
   const PAGE_SIZE = 25;
 
   const [activeTab, setActiveTab] = useState("ALL");
-  const [sortBy, setSortBy] = useState("name");
+  const [sortBy, setSortBy] = useState("deliveryGap");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
@@ -192,7 +192,7 @@ export default function CustomerManagement() {
       });
     } else if (sortBy === "deliveryGap") {
       list.sort((a, b) => {
-        const diff = getDeliveryGapNumber(b.deliveryGap) - getDeliveryGapNumber(a.deliveryGap);
+        const diff = getDeliveryGapNumber(a.deliveryGap) - getDeliveryGapNumber(b.deliveryGap);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });

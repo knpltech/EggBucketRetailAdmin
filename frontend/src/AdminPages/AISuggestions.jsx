@@ -1,8 +1,49 @@
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
-import { generateAISuggestion } from "../utils/aiSuggestionEngine";
+import {
+  computeDeliveryGap,
+  generateAISuggestion,
+  getDateStringInTimeZone,
+  getDeliveryGapNumber,
+  getPeakFrequencyNumber,
+  normalizeDeliveryGap,
+  resolvePeakFrequency,
+} from "../utils/aiSuggestionEngine";
 import AISuggestionTable from "../components/AISuggestionTable";
+
+const normalizePotential = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T1";
+
+  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
+  const match = normalized.match(/^T(\d+)$/);
+  if (match) {
+    const num = Number(match[1]);
+    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
+  }
+
+  return "T1";
+};
+
+const getPotentialNumber = (value) => {
+  const potential = normalizePotential(value);
+  const n = Number(potential.slice(1));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
+const getCustomerDeliveryGapNumber = (customer) => {
+  const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+  const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+  const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+  return getDeliveryGapNumber(deliveryGap);
+};
+
+const compareByName = (a, b) =>
+  (a.customer.name || "").localeCompare(b.customer.name || "");
 
 const AISuggestions = () => {
   const [customers, setCustomers] = useState([]);
@@ -11,7 +52,7 @@ const AISuggestions = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOption, setFilterOption] = useState("ALL");
-  const [sortOption, setSortOption] = useState("DEFAULT");
+  const [sortOption, setSortOption] = useState("DELIVERY_GAP");
   const [logicOption, setLogicOption] = useState("logic1");
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -110,6 +151,27 @@ const AISuggestions = () => {
           const bOn = b.customer.todayOverride?.status === "ON" ? 1 : 0;
           return aOn - bOn;
         });
+      case "PEAK_FREQUENCY":
+        return dataToSort.sort((a, b) => {
+          const diff =
+            getPeakFrequencyNumber(resolvePeakFrequency(b.customer)) -
+            getPeakFrequencyNumber(resolvePeakFrequency(a.customer));
+          return diff || compareByName(a, b);
+        });
+      case "PEAK_POTENTIAL":
+        return dataToSort.sort((a, b) => {
+          const diff =
+            getPotentialNumber(b.customer.potential) -
+            getPotentialNumber(a.customer.potential);
+          return diff || compareByName(a, b);
+        });
+      case "DELIVERY_GAP":
+        return dataToSort.sort((a, b) => {
+          const diff =
+            getCustomerDeliveryGapNumber(a.customer) -
+            getCustomerDeliveryGapNumber(b.customer);
+          return diff || compareByName(a, b);
+        });
       case "DEFAULT":
       default:
         return dataToSort;
@@ -190,6 +252,9 @@ const AISuggestions = () => {
             <option value="NAME_DESC">Name (Z-A)</option>
             <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
             <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
+            <option value="PEAK_FREQUENCY">Peak Frequency</option>
+            <option value="PEAK_POTENTIAL">Peak Potential</option>
+            <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
           </select>
           <select
             value={logicOption}

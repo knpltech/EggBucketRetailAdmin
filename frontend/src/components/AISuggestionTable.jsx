@@ -10,8 +10,8 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
             <tr>
               <th className="p-3 text-left font-semibold text-gray-800">Customer ID</th>
               <th className="p-3 text-left font-semibold text-gray-800">Customer Name</th>
-              <th className="p-3 text-left font-semibold text-gray-800">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800">Peak_Potential</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800">Delivery_Gap</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
@@ -69,8 +69,8 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
             <tr>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Customer ID</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Customer Name</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Peak_Potential</th>
+              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Delivery_Gap</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Current Toggle</th>
               <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">AI Suggestion</th>

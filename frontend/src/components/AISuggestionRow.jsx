@@ -1,13 +1,17 @@
 import React from "react";
 
-const getSuggestionConfig = (suggestion, reason, confidence) => {
+const getSuggestionConfig = (suggestion, reason, score) => {
+  const scoreReason = String(reason || "").includes("AI Score")
+    ? reason
+    : `AI Score: ${score} - ${reason}`;
+
   switch (suggestion) {
     case "TURN_ON_TOMORROW":
       return {
         colorClass: "text-green-600",
         dotClass: "bg-green-500",
         text: "Turn ON",
-        subText: `(${confidence >= 80 ? "High probability" : reason})`
+        subText: `(${scoreReason})`
       };
     case "TURN_OFF_TOMORROW":
       return {
@@ -226,7 +230,7 @@ const AISuggestionRow = ({
   const { dotClass, text, subText } = getSuggestionConfig(
     suggestionData.suggestion,
     suggestionData.reason,
-    suggestionData.confidence
+    suggestionData.score
   );
 
   return (
@@ -237,18 +241,18 @@ const AISuggestionRow = ({
       <td className="p-4 py-5 text-gray-700 font-medium">
         <span
           className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
+          style={{ backgroundColor: getPotentialColor(peakPotential) }}
         >
-          {peakFrequency}
+          {peakPotential}
         </span>
       </td>
 
       <td className="p-4 py-5 text-gray-700 font-medium">
         <span
           className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-          style={{ backgroundColor: getPotentialColor(peakPotential) }}
+          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
-          {peakPotential}
+          {peakFrequency}
         </span>
       </td>
 
