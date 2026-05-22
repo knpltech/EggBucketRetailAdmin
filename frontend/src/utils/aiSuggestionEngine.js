@@ -155,6 +155,45 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
     };
   }
 
+  // LOGIC 2: Peak frequency retention/upmove rules
+  if (logicOption === "logic2") {
+    const peakFrequencyStr = resolvePeakFrequency(customer);
+    const peakFrequencyNumber = getPeakFrequencyNumber(peakFrequencyStr);
+
+    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+    const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+    const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+    const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
+
+    if (peakFrequencyNumber >= 4) {
+      return {
+        suggestion: "TURN_ON_TOMORROW",
+        confidence: 100,
+        score: peakFrequencyNumber,
+        reason: `Logic 2: D${peakFrequencyNumber} customer. Permanent ON for retention/upmove.`,
+      };
+    }
+
+    if (peakFrequencyNumber >= 1 && peakFrequencyNumber <= 3) {
+      const maxAllowedGap = 4 - peakFrequencyNumber;
+      const shouldTurnOn = deliveryGapNumber <= maxAllowedGap;
+
+      return {
+        suggestion: shouldTurnOn ? "TURN_ON_TOMORROW" : "TURN_OFF_TOMORROW",
+        confidence: shouldTurnOn ? 90 : 80,
+        score: maxAllowedGap - deliveryGapNumber,
+        reason: `Logic 2: D${peakFrequencyNumber} customer. ON when gap is G0-G${maxAllowedGap}; current gap is G${deliveryGapNumber}.`,
+      };
+    }
+
+    return {
+      suggestion: "KEEP_OFF_TOMORROW",
+      confidence: 100,
+      score: 0,
+      reason: "Logic 2: D0 customer. Manual approach for retention/data understanding stage.",
+    };
+  }
+
   // Fallback if an unknown logic is selected
   return {
     suggestion: "TURN_OFF_TOMORROW",

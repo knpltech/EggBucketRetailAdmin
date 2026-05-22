@@ -15,6 +15,7 @@ const AISuggestions = () => {
   const [logicOption, setLogicOption] = useState("logic1");
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
@@ -129,6 +130,44 @@ const AISuggestions = () => {
     if (currentPage > 1) setCurrentPage((prev) => prev - 1);
   };
 
+  const handleApplySuggestion = async (customer, nextStatus) => {
+    if (!customer?.id || updatingSuggestionId === customer.id) return;
+
+    const previousOverride = customer.todayOverride;
+    const optimisticOverride = { ...previousOverride, status: nextStatus };
+
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id ? { ...row, todayOverride: optimisticOverride } : row
+      )
+    );
+
+    try {
+      setUpdatingSuggestionId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer/toggle-delivery`, {
+        id: customer.id,
+        status: nextStatus,
+      });
+      const saved = res?.data?.todayOverride;
+      if (saved?.date && saved?.status) {
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row
+          )
+        );
+      }
+    } catch (err) {
+      console.error("AI suggestion apply error:", err);
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id ? { ...row, todayOverride: previousOverride } : row
+        )
+      );
+    } finally {
+      setUpdatingSuggestionId(null);
+    }
+  };
+
   return (
     <div className="p-6 bg-gray-100 min-h-screen">
       <div className="flex justify-between items-center mb-6">
@@ -158,6 +197,7 @@ const AISuggestions = () => {
             className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="logic1">Logic 1</option>
+            <option value="logic2">Logic 2</option>
           </select>
           <select
             value={filterOption}
@@ -179,7 +219,12 @@ const AISuggestions = () => {
         </div>
       )}
 
-      <AISuggestionTable data={currentData} loading={loading} />
+      <AISuggestionTable
+        data={currentData}
+        loading={loading}
+        onApplySuggestion={handleApplySuggestion}
+        updatingSuggestionId={updatingSuggestionId}
+      />
 
       {!loading && !error && (
         <div className="mt-4 flex items-center justify-between">
