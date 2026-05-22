@@ -4,6 +4,10 @@ import { FiUsers } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
+import {
+  getCachedUserInfo,
+  patchCachedUserInfoCustomer,
+} from "../utils/customerInfoClientCache";
 
 // TABS
 const TABS = ["ALL", "ONBOARDING", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"];
@@ -36,10 +40,10 @@ export default function CustomerManagement() {
     const init = async () => {
       setLoading(true);
       try {
-        const pageRes = await axios.get(`${ADMIN_PATH}/user-info`);
+        const userInfoData = await getCachedUserInfo();
 
         // Fetch all customers
-        const paginationData = pageRes.data;
+        const paginationData = userInfoData;
         const rows = Array.isArray(paginationData.customers)
           ? paginationData.customers
           : Array.isArray(paginationData)
@@ -268,6 +272,10 @@ export default function CustomerManagement() {
       });
       const saved = res?.data?.todayOverride;
       if (saved?.date && saved?.status) {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          todayOverride: saved,
+        }));
         setCustomers((prev) =>
           prev.map((row) => row.id === customer.id ? { ...row, todayOverride: saved } : row)
         );
@@ -302,6 +310,10 @@ export default function CustomerManagement() {
       });
       const saved = res?.data?.skipConfig;
       if (saved && typeof saved === "object") {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          skipConfig: saved,
+        }));
         setCustomers((prev) =>
           prev.map((row) => row.id === customer.id ? { ...row, skipConfig: saved } : row)
         );

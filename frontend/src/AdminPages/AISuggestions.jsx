@@ -10,6 +10,10 @@ import {
   normalizeDeliveryGap,
   resolvePeakFrequency,
 } from "../utils/aiSuggestionEngine";
+import {
+  getCachedUserInfo,
+  patchCachedUserInfoCustomer,
+} from "../utils/customerInfoClientCache";
 import AISuggestionTable from "../components/AISuggestionTable";
 
 const normalizePotential = (value) => {
@@ -71,15 +75,15 @@ const AISuggestions = () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetching all customers (omitting pagination parameters)
-      const response = await axios.get(`${ADMIN_PATH}/user-info`);
+      // Fetching all customers through a short-lived client cache.
+      const userInfoData = await getCachedUserInfo();
       let allCustomers = [];
 
       // Backend returns an array if no pagination is requested, or { customers: [...] } 
-      if (Array.isArray(response.data)) {
-        allCustomers = response.data;
-      } else if (response.data && Array.isArray(response.data.customers)) {
-        allCustomers = response.data.customers;
+      if (Array.isArray(userInfoData)) {
+        allCustomers = userInfoData;
+      } else if (userInfoData && Array.isArray(userInfoData.customers)) {
+        allCustomers = userInfoData.customers;
       }
 
       // 1. Filter out customers with missing todayOverride
@@ -212,6 +216,10 @@ const AISuggestions = () => {
       });
       const saved = res?.data?.todayOverride;
       if (saved?.date && saved?.status) {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          todayOverride: saved,
+        }));
         setCustomers((prev) =>
           prev.map((row) =>
             row.id === customer.id ? { ...row, todayOverride: saved } : row
