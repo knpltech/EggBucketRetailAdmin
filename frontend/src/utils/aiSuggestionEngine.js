@@ -176,13 +176,13 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
 
     if (peakFrequencyNumber >= 1 && peakFrequencyNumber <= 3) {
       const maxAllowedGap = 4 - peakFrequencyNumber;
-      const shouldTurnOn = deliveryGapNumber <= maxAllowedGap;
+      const shouldTurnOn = deliveryGapNumber > maxAllowedGap;
 
       return {
         suggestion: shouldTurnOn ? "TURN_ON_TOMORROW" : "TURN_OFF_TOMORROW",
         confidence: shouldTurnOn ? 90 : 80,
-        score: maxAllowedGap - deliveryGapNumber,
-        reason: `Logic 2: D${peakFrequencyNumber} customer. ON when gap is G0-G${maxAllowedGap}; current gap is G${deliveryGapNumber}.`,
+        score: deliveryGapNumber - maxAllowedGap,
+        reason: `Logic 2: D${peakFrequencyNumber} customer. OFF when gap is G0-G${maxAllowedGap}; current gap is G${deliveryGapNumber}.`,
       };
     }
 
