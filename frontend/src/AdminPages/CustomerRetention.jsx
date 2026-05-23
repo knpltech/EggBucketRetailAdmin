@@ -321,6 +321,8 @@ const CustomerRetention = () => {
   const [sortBy, setSortBy] = useState("name");
   const [selectedAgent, setSelectedAgent] = useState("all");
   const [deliveryAgentOptions, setDeliveryAgentOptions] = useState([]);
+  const [agentStats, setAgentStats] = useState([]);
+  const [overallStats, setOverallStats] = useState({ checked: 0, delivered: 0, pending: 0, total: 0 });
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
   const [dates, setDates] = useState(() => getPastThreeDatesPlusToday(getTodayDate()));
@@ -345,7 +347,7 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:v2:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v3:${date}:${category}:${agent}:${sort}:${page}`;
       const cached = cacheRef.current[cacheKey];
 
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
@@ -353,6 +355,8 @@ const CustomerRetention = () => {
         setCustomers(cached.customers || []);
         setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0 });
         setDeliveryAgentOptions(cached.deliveryAgentOptions || []);
+        setAgentStats(cached.agentStats || []);
+        setOverallStats(cached.overallStats || { checked: 0, delivered: 0, pending: 0, total: 0 });
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
         setError("");
@@ -401,6 +405,8 @@ const CustomerRetention = () => {
         const newDeliveryAgentOptions = Array.isArray(payload.deliveryAgentOptions)
           ? payload.deliveryAgentOptions
           : [];
+        const newAgentStats = Array.isArray(payload.agentStats) ? payload.agentStats : [];
+        const newOverallStats = payload.overallStats || { checked: 0, delivered: 0, pending: 0, total: 0 };
         const newTotalPages = payload.totalPages || 1;
         const newTotal = payload.total || 0;
 
@@ -410,6 +416,8 @@ const CustomerRetention = () => {
           customers: nextCustomers,
           counts: newCounts,
           deliveryAgentOptions: newDeliveryAgentOptions,
+          agentStats: newAgentStats,
+          overallStats: newOverallStats,
           totalPages: newTotalPages,
           total: newTotal,
         };
@@ -418,6 +426,8 @@ const CustomerRetention = () => {
         setCustomers(nextCustomers);
         setCounts(newCounts);
         setDeliveryAgentOptions(newDeliveryAgentOptions);
+        setAgentStats(newAgentStats);
+        setOverallStats(newOverallStats);
         setTotalPages(newTotalPages);
         setTotalCustomers(newTotal);
         setError("");
@@ -426,6 +436,8 @@ const CustomerRetention = () => {
         setCustomers([]);
         setCounts({ all: 0, stock_available: 0, shop_closed: 0, other_vendor: 0 });
         setDeliveryAgentOptions([]);
+        setAgentStats([]);
+        setOverallStats({ checked: 0, delivered: 0, pending: 0, total: 0 });
         setTotalPages(1);
         setTotalCustomers(0);
         setDates(getPastThreeDatesPlusToday(date));
@@ -435,6 +447,10 @@ const CustomerRetention = () => {
     },
     [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent],
   );
+
+  const currentAgentStats = selectedAgent === "all"
+    ? overallStats
+    : (agentStats.find((a) => a.name === selectedAgent) || { checked: 0, delivered: 0, pending: 0, total: 0 });
 
   // Load data whenever relevant state changes
   useEffect(() => {
@@ -706,10 +722,12 @@ const CustomerRetention = () => {
               onChange={handleAgentChange}
               className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
-              <option value="all">All Delivery Agents</option>
-              {deliveryAgentOptions.map((agent) => (
-                <option key={agent} value={agent}>
-                  {agent}
+              <option value="all">
+                {`All Delivery Agents | Checked: ${overallStats.checked} | Delivered: ${overallStats.delivered} | Pending: ${overallStats.pending} | Total: ${overallStats.total}`}
+              </option>
+              {agentStats.map((agent) => (
+                <option key={agent.name} value={agent.name}>
+                  {`${agent.name} | Checked: ${agent.checked} | Delivered: ${agent.delivered} | Pending: ${agent.pending} | Total: ${agent.total}`}
                 </option>
               ))}
             </select>
@@ -758,6 +776,57 @@ const CustomerRetention = () => {
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {currentAgentStats && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-center gap-3 shadow-sm">
+          <span className="text-sm font-semibold uppercase tracking-wide text-slate-700 mr-2">
+            {selectedAgent === "all" ? "All Delivery Agents" : selectedAgent}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 border border-yellow-300 shadow-sm transition-all hover:scale-105">
+            Checked: {currentAgentStats.checked}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 border border-green-300 shadow-sm transition-all hover:scale-105">
+            Delivered: {currentAgentStats.delivered}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800 border border-red-300 shadow-sm transition-all hover:scale-105">
+            Pending: {currentAgentStats.pending}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800 border border-slate-300 shadow-sm transition-all hover:scale-105">
+            Total: {currentAgentStats.total}
+          </span>
+        </div>
+      )}
+
+      {selectedAgent === "all" && agentStats.length > 0 && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">
+          <div className="space-y-2">
+            {agentStats.map((agent) => (
+              <div
+                key={agent.name}
+                className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-blue-50/70 px-3 py-2 shadow-sm sm:grid-cols-[minmax(140px,1fr)_auto] sm:items-center sm:gap-4 hover:shadow-md transition-shadow"
+              >
+                <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                  {agent.name}
+                </span>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 border border-yellow-300 shadow-sm transition-all hover:scale-105">
+                    Checked: {agent.checked}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 border border-green-300 shadow-sm transition-all hover:scale-105">
+                    Delivered: {agent.delivered}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800 border border-red-300 shadow-sm transition-all hover:scale-105">
+                    Pending: {agent.pending}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800 border border-slate-300 shadow-sm transition-all hover:scale-105">
+                    Total: {agent.total}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
