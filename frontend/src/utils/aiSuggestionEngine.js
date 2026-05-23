@@ -164,13 +164,14 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
     const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
     const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
     const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
+    const logic1Score = peakFrequencyNumber - 7 + deliveryGapNumber;
 
     if (peakFrequencyNumber >= 4) {
       return {
         suggestion: "TURN_ON_TOMORROW",
         confidence: 100,
-        score: peakFrequencyNumber,
-        reason: `Logic 2: D${peakFrequencyNumber} customer. Permanent ON for retention/upmove.`,
+        score: logic1Score,
+        reason: `AI Score: ${logic1Score} - Logic 2: D${peakFrequencyNumber} customer. Permanent ON for retention/upmove.`,
       };
     }
 
@@ -181,16 +182,16 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
       return {
         suggestion: shouldTurnOn ? "TURN_ON_TOMORROW" : "TURN_OFF_TOMORROW",
         confidence: shouldTurnOn ? 90 : 80,
-        score: deliveryGapNumber - maxAllowedGap,
-        reason: `Logic 2: D${peakFrequencyNumber} customer. OFF when gap is G0-G${maxAllowedGap}; current gap is G${deliveryGapNumber}.`,
+        score: logic1Score,
+        reason: `AI Score: ${logic1Score} - Logic 2: D${peakFrequencyNumber} customer. OFF when gap is G0-G${maxAllowedGap}; current gap is G${deliveryGapNumber}.`,
       };
     }
 
     return {
       suggestion: "KEEP_OFF_TOMORROW",
       confidence: 100,
-      score: 0,
-      reason: "Logic 2: D0 customer. Manual approach for retention/data understanding stage.",
+      score: logic1Score,
+      reason: `AI Score: ${logic1Score} - Logic 2: D0 customer. Manual approach for retention/data understanding stage.`,
     };
   }
 
