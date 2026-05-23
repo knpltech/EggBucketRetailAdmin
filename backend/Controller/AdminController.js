@@ -418,7 +418,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v15:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v16:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(`[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`);
@@ -437,27 +437,106 @@ const getRetentionCustomers = async (req, res) => {
       deliveryPartnerMap.set(doc.id, data.name || data.display_name || doc.id);
     });
 
-    // ⭐ OPTIMIZATION: Query customers who have a "checked" status today
-    // We do two queries to handle BOTH new object format and legacy string format in last8Days
-    const customersRef = db.collection("customers");
-    const statuses = ["reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"];
-
-    const q1 = customersRef.where(`last8Days.${todayKey}.status`, "in", statuses).get();
-    const q2 = customersRef.where(`last8Days.${todayKey}`, "in", statuses).get();
-
-    const [snap1, snap2] = await Promise.all([q1, q2]);
-
-    let allMatchedCustomers = [];
-    const seen = new Set();
-    [...(snap1.docs || []), ...(snap2.docs || [])].forEach((doc) => {
-      if (!seen.has(doc.id)) {
-        seen.add(doc.id);
-        allMatchedCustomers.push({ id: doc.id, ...doc.data() });
+    const getRetentionAgentName = (customer) => {
+      const entry = customer.last8Days?.[todayKey];
+      const entryObj = typeof entry === "string" ? { status: entry } : (entry || {});
+      
+      // 1. Check nested agent object or string (deliveryMan or agent)
+      const nestedAgent = entryObj.deliveryMan || entryObj.agent || null;
+      if (nestedAgent) {
+        if (typeof nestedAgent === "string" && nestedAgent.trim()) {
+          const mapped = deliveryPartnerMap.get(nestedAgent.trim());
+          if (mapped) return mapped;
+          return nestedAgent.trim();
+        }
+        if (typeof nestedAgent === "object") {
+          const nestedName = String(nestedAgent.name || nestedAgent.display_name || nestedAgent.agentName || "").trim();
+          if (nestedName) return nestedName;
+        }
       }
+
+      // 2. Check direct agent name
+      const directAgentName = String(entryObj.agentName || "").trim();
+      if (directAgentName) {
+        return directAgentName;
+      }
+
+      // 3. Check agentId or deliveredBy
+      const agentId = entryObj.agentId || entryObj.deliveredBy || "";
+      if (agentId) {
+        return deliveryPartnerMap.get(agentId) || agentId;
+      }
+
+      // 4. Fallback to default assigned delivery partner
+      const defaultAgentId = customer.deliveredBy || customer.deliveryMan || "";
+      if (defaultAgentId) {
+        if (typeof defaultAgentId === "string") {
+          return deliveryPartnerMap.get(defaultAgentId) || defaultAgentId;
+        } else if (typeof defaultAgentId === "object") {
+          return defaultAgentId.name || defaultAgentId.display_name || "";
+        }
+      }
+
+      return "";
+    };
+
+    const getCustomerStatus = (customer) => {
+      const entry = customer.last8Days?.[todayKey];
+      const entryObj = typeof entry === "string" ? { status: entry } : (entry || {});
+      const status = String(entryObj.status || "").trim().toLowerCase();
+
+      if (status === "delivered") {
+        return "delivered";
+      }
+
+      const checkedStatuses = ["checked", "reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"];
+      if (checkedStatuses.includes(status)) {
+        return "checked";
+      }
+
+      return "pending";
+    };
+
+    // Fetch all customers from Firestore to compute exact statistics
+    const customersSnap = await db.collection("customers").get();
+    const allCustomers = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    const agentStatsMap = {};
+    // Pre-populate with all delivery partners from collection
+    deliveryPartnerMap.forEach((agentName) => {
+      agentStatsMap[agentName] = { name: agentName, checked: 0, delivered: 0, pending: 0, total: 0 };
     });
 
-    console.log(`Checking ${allMatchedCustomers.length} customers for ${todayKey} deliveries`);
+    allCustomers.forEach((customer) => {
+      const agentName = getRetentionAgentName(customer);
+      if (!agentName) return;
 
+      if (!agentStatsMap[agentName]) {
+        agentStatsMap[agentName] = { name: agentName, checked: 0, delivered: 0, pending: 0, total: 0 };
+      }
+
+      const status = getCustomerStatus(customer);
+      if (status === "checked") {
+        agentStatsMap[agentName].checked += 1;
+      } else if (status === "delivered") {
+        agentStatsMap[agentName].delivered += 1;
+      } else if (status === "pending") {
+        agentStatsMap[agentName].pending += 1;
+      }
+      agentStatsMap[agentName].total += 1;
+    });
+
+    const agentStats = Object.values(agentStatsMap).sort((a, b) => a.name.localeCompare(b.name));
+    const overallStats = { checked: 0, delivered: 0, pending: 0, total: 0 };
+    agentStats.forEach((stats) => {
+      overallStats.checked += stats.checked;
+      overallStats.delivered += stats.delivered;
+      overallStats.pending += stats.pending;
+      overallStats.total += stats.total;
+    });
+
+    // Populate allMatchedCustomers with only those who have "checked" status today
+    let allMatchedCustomers = [];
     const counts = {
       all: 0,
       stock_available: 0,
@@ -465,69 +544,48 @@ const getRetentionCustomers = async (req, res) => {
       shop_closed: 0,
       other_vendor: 0,
     };
-
     const todayDeliveriesMap = {};
     const customerCategories = {};
 
-    // ⭐ ZERO SUBCOLLECTION READS: Compute exact categories/counts directly from last8Days!
-    for (const customer of allMatchedCustomers) {
-      try {
-        const todayEntry = customer.last8Days?.[todayKey];
-        if (!todayEntry) {
-          customerCategories[customer.id] = "ignored";
-          continue;
+    allCustomers.forEach((customer) => {
+      const todayEntry = customer.last8Days?.[todayKey];
+      if (!todayEntry) return;
+
+      const entryObj = typeof todayEntry === 'string' ? { status: todayEntry } : todayEntry;
+      const todayDeliveryData = {
+        type: entryObj.status,
+        checkReason: entryObj.reason || "",
+        status: entryObj.status,
+        time: entryObj.time || null,
+        deliveredBy: entryObj.agentId || null,
+        traysDelivered:
+          entryObj.quantity ??
+          entryObj.trays ??
+          entryObj.traysDelivered ??
+          0,
+      };
+
+      const todayStatus = getRetentionStatus(todayDeliveryData);
+
+      if (todayStatus.key === "checked") {
+        todayDeliveriesMap[customer.id] = { status: todayStatus, data: todayDeliveryData };
+        customerCategories[customer.id] = todayStatus.category;
+        allMatchedCustomers.push(customer);
+
+        counts.all += 1;
+        if (counts[todayStatus.category] !== undefined) {
+          counts[todayStatus.category] += 1;
         }
-
-        // Normalize legacy string format to object format
-        const entryObj = typeof todayEntry === 'string' ? { status: todayEntry } : todayEntry;
-
-        // Construct faux delivery doc to pass to getRetentionStatus
-        const todayDeliveryData = {
-          type: entryObj.status,
-          checkReason: entryObj.reason || "",
-          status: entryObj.status,
-          time: entryObj.time || null,
-          deliveredBy: entryObj.agentId || null,
-          traysDelivered:
-            entryObj.quantity ??
-            entryObj.trays ??
-            entryObj.traysDelivered ??
-            0,
-        };
-
-        const todayStatus = getRetentionStatus(todayDeliveryData);
-
-        if (todayStatus.key === "checked") {
-          todayDeliveriesMap[customer.id] = { status: todayStatus, data: todayDeliveryData };
-          customerCategories[customer.id] = todayStatus.category;
-
-          counts.all += 1;
-          if (counts[todayStatus.category] !== undefined) {
-            counts[todayStatus.category] += 1;
-          }
-        } else {
-          customerCategories[customer.id] = "ignored";
-        }
-      } catch (err) {
-        console.error(`Error processing today delivery for ${customer.id}:`, err);
-        customerCategories[customer.id] = "ignored";
       }
-    }
+    });
 
     // Filter out ignored ones and apply category filter
-    let filteredCustomers = allMatchedCustomers.filter(c => customerCategories[c.id] !== "ignored");
+    let filteredCustomers = allMatchedCustomers;
     if (categoryFilter !== "all") {
       filteredCustomers = filteredCustomers.filter(
         (c) => customerCategories[c.id] === categoryFilter
       );
     }
-
-    const getRetentionAgentName = (customer) => {
-      const entry = customer.last8Days?.[todayKey];
-      const entryObj = typeof entry === "string" ? { status: entry } : (entry || {});
-      const agentId = entryObj.agentId || "";
-      return deliveryPartnerMap.get(agentId) || entryObj.agentName || agentId || "";
-    };
 
     const deliveryAgentOptions = [
       ...new Set(filteredCustomers.map(getRetentionAgentName).filter(Boolean)),
@@ -655,17 +713,6 @@ const getRetentionCustomers = async (req, res) => {
           }
         }
 
-        const deliveryAgentId = todayDeliveryData.deliveredBy || null;
-        let deliveryAgent = "-";
-
-        if (deliveryAgentId) {
-          if (typeof deliveryAgentId === "string") {
-            deliveryAgent = deliveryPartnerMap.get(deliveryAgentId) || deliveryAgentId;
-          } else if (typeof deliveryAgentId === "object" && (deliveryAgentId.name || deliveryAgentId.display_name)) {
-            deliveryAgent = deliveryAgentId.name || deliveryAgentId.display_name || "-";
-          }
-        }
-
         rows.push({
           id: customer.id,
           custid: customer.custid || "",
@@ -676,7 +723,7 @@ const getRetentionCustomers = async (req, res) => {
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
           deliveryTime: deliveryTime,
-          deliveryAgent: deliveryAgent,
+          deliveryAgent: getRetentionAgentName(customer) || "-",
           days: dayStatuses,
         });
       } catch (err) {
@@ -699,6 +746,8 @@ const getRetentionCustomers = async (req, res) => {
       ],
       counts,
       deliveryAgentOptions,
+      agentStats,
+      overallStats,
       total,
       totalPages,
       currentPage: page,
@@ -782,6 +831,7 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customerRetention:v13") ||
           key.startsWith("customerRetention:v14") ||
           key.startsWith("customerRetention:v15") ||
+          key.startsWith("customerRetention:v16") ||
           key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );

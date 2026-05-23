@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -320,7 +320,7 @@ const CustomerRetention = () => {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("name");
   const [selectedAgent, setSelectedAgent] = useState("all");
-  const [deliveryAgentOptions, setDeliveryAgentOptions] = useState([]);
+  const [allCustomersForStats, setAllCustomersForStats] = useState([]);
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
   const [dates, setDates] = useState(() => getPastThreeDatesPlusToday(getTodayDate()));
@@ -345,14 +345,13 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:v2:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v3:${date}:${category}:${agent}:${sort}:${page}`;
       const cached = cacheRef.current[cacheKey];
 
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
         setCustomers(cached.customers || []);
         setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0 });
-        setDeliveryAgentOptions(cached.deliveryAgentOptions || []);
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
         setError("");
@@ -398,9 +397,6 @@ const CustomerRetention = () => {
         };
         newCounts.shop_closed =
           payload.counts?.shop_closed ?? payload.counts?.price_mismatch ?? newCounts.shop_closed;
-        const newDeliveryAgentOptions = Array.isArray(payload.deliveryAgentOptions)
-          ? payload.deliveryAgentOptions
-          : [];
         const newTotalPages = payload.totalPages || 1;
         const newTotal = payload.total || 0;
 
@@ -409,7 +405,6 @@ const CustomerRetention = () => {
           dates: nextDates,
           customers: nextCustomers,
           counts: newCounts,
-          deliveryAgentOptions: newDeliveryAgentOptions,
           totalPages: newTotalPages,
           total: newTotal,
         };
@@ -417,7 +412,6 @@ const CustomerRetention = () => {
         setDates(nextDates);
         setCustomers(nextCustomers);
         setCounts(newCounts);
-        setDeliveryAgentOptions(newDeliveryAgentOptions);
         setTotalPages(newTotalPages);
         setTotalCustomers(newTotal);
         setError("");
@@ -425,7 +419,6 @@ const CustomerRetention = () => {
         setError(err?.response?.data?.message || `Unable to load customer retention data for ${date}`);
         setCustomers([]);
         setCounts({ all: 0, stock_available: 0, shop_closed: 0, other_vendor: 0 });
-        setDeliveryAgentOptions([]);
         setTotalPages(1);
         setTotalCustomers(0);
         setDates(getPastThreeDatesPlusToday(date));
@@ -435,6 +428,108 @@ const CustomerRetention = () => {
     },
     [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent],
   );
+
+  // ⭐ Fetch ALL customer retention records for stats (ignores pagination and current agent filter)
+  useEffect(() => {
+    let active = true;
+    const fetchStatsData = async () => {
+      try {
+        const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
+          params: {
+            date: selectedDate,
+            page: 1,
+            limit: 5000,
+            category: selectedCategory,
+            sortBy: "name",
+            agent: "all",
+          },
+        });
+        if (active) {
+          const payload = res?.data || {};
+          const nextDates = payload.dates?.length ? payload.dates : getPastThreeDatesPlusToday(selectedDate);
+          const nextCustomers = Array.isArray(payload.customers)
+            ? payload.customers.map((customer) => {
+              const dayStatuses = {};
+              nextDates.forEach((dateKey) => {
+                dayStatuses[dateKey] = getStatusFromDelivery(customer?.days?.[dateKey] || null);
+              });
+              return {
+                ...customer,
+                phone: customer.phone || "",
+                zone: customer.zone || "UNASSIGNED",
+                todayCategory: customer.todayCategory || "",
+                todayCategoryLabel: customer.todayCategoryLabel || "-",
+                todayReason: customer.todayReason || "",
+                deliveryTime: customer.deliveryTime || customer.delivery_time || customer.time || null,
+                deliveryAgent: customer.deliveryAgent || "-",
+                days: dayStatuses,
+              };
+            })
+            : [];
+          setAllCustomersForStats(nextCustomers);
+        }
+      } catch (err) {
+        console.error("Failed to load statistics data:", err);
+        if (active) {
+          setAllCustomersForStats([]);
+        }
+      }
+    };
+
+    fetchStatsData();
+    return () => {
+      active = false;
+    };
+  }, [selectedDate, selectedCategory]);
+
+  const computedAgentStats = useMemo(() => {
+    const statsMap = {};
+    const todayDateKey = dates[dates.length - 1];
+
+    allCustomersForStats.forEach((customer) => {
+      const agentName = customer.deliveryAgent;
+      if (!agentName || agentName === "-") return;
+
+      if (!statsMap[agentName]) {
+        statsMap[agentName] = {
+          name: agentName,
+          checked: 0,
+          delivered: 0,
+          total: 0,
+        };
+      }
+
+      const todayStatus = customer.days?.[todayDateKey];
+      if (todayStatus) {
+        if (todayStatus.key === "checked") {
+          statsMap[agentName].checked += 1;
+        } else if (todayStatus.key === "delivered") {
+          statsMap[agentName].delivered += 1;
+        }
+      }
+    });
+
+    return Object.values(statsMap)
+      .map((agent) => ({
+        ...agent,
+        total: agent.checked + agent.delivered,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allCustomersForStats, dates]);
+
+  const computedOverallStats = useMemo(() => {
+    const overall = { checked: 0, delivered: 0, total: 0 };
+    computedAgentStats.forEach((agent) => {
+      overall.checked += agent.checked;
+      overall.delivered += agent.delivered;
+      overall.total += agent.total;
+    });
+    return overall;
+  }, [computedAgentStats]);
+
+  const currentAgentStats = selectedAgent === "all"
+    ? computedOverallStats
+    : (computedAgentStats.find((a) => a.name === selectedAgent) || { checked: 0, delivered: 0, total: 0 });
 
   // Load data whenever relevant state changes
   useEffect(() => {
@@ -453,6 +548,7 @@ const CustomerRetention = () => {
   const handleCategoryChange = useCallback((category) => {
     setSelectedCategory(category);
     setCurrentPage(1);
+    setSelectedAgent("all");
   }, []);
 
   const handleSortChange = (e) => {
@@ -706,10 +802,12 @@ const CustomerRetention = () => {
               onChange={handleAgentChange}
               className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
-              <option value="all">All Delivery Agents</option>
-              {deliveryAgentOptions.map((agent) => (
-                <option key={agent} value={agent}>
-                  {agent}
+              <option value="all">
+                {`All Delivery Agents | Checked: ${computedOverallStats.checked} | Delivered: ${computedOverallStats.delivered} | Total: ${computedOverallStats.total}`}
+              </option>
+              {computedAgentStats.map((agent) => (
+                <option key={agent.name} value={agent.name}>
+                  {`${agent.name} | Checked: ${agent.checked} | Delivered: ${agent.delivered} | Total: ${agent.total}`}
                 </option>
               ))}
             </select>
@@ -758,6 +856,51 @@ const CustomerRetention = () => {
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {currentAgentStats && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-center gap-3 shadow-sm">
+          <span className="text-sm font-semibold uppercase tracking-wide text-slate-700 mr-2">
+            {selectedAgent === "all" ? "All Delivery Agents" : selectedAgent}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 border border-yellow-300 shadow-sm transition-all hover:scale-105">
+            Checked: {currentAgentStats.checked}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 border border-green-300 shadow-sm transition-all hover:scale-105">
+            Delivered: {currentAgentStats.delivered}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800 border border-slate-300 shadow-sm transition-all hover:scale-105">
+            Total: {currentAgentStats.total}
+          </span>
+        </div>
+      )}
+
+      {selectedAgent === "all" && computedAgentStats.length > 0 && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">
+          <div className="space-y-2">
+            {computedAgentStats.map((agent) => (
+              <div
+                key={agent.name}
+                className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-blue-50/70 px-3 py-2 shadow-sm sm:grid-cols-[minmax(140px,1fr)_auto] sm:items-center sm:gap-4 hover:shadow-md transition-shadow"
+              >
+                <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                  {agent.name}
+                </span>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 border border-yellow-300 shadow-sm transition-all hover:scale-105">
+                    Checked: {agent.checked}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 border border-green-300 shadow-sm transition-all hover:scale-105">
+                    Delivered: {agent.delivered}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800 border border-slate-300 shadow-sm transition-all hover:scale-105">
+                    Total: {agent.total}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
