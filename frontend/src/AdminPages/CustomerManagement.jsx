@@ -1,9 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { FiUsers } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
+import {
+  getCachedUserInfo,
+  patchCachedUserInfoCustomer,
+} from "../utils/customerInfoClientCache";
 
 // TABS
 const TABS = ["ALL", "ONBOARDING", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"];
@@ -15,7 +19,7 @@ export default function CustomerManagement() {
   const PAGE_SIZE = 25;
 
   const [activeTab, setActiveTab] = useState("ALL");
-  const [sortBy, setSortBy] = useState("name");
+  const [sortBy, setSortBy] = useState("deliveryGap");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingSkipId, setUpdatingSkipId] = useState(null);
 
@@ -36,10 +40,10 @@ export default function CustomerManagement() {
     const init = async () => {
       setLoading(true);
       try {
-        const pageRes = await axios.get(`${ADMIN_PATH}/user-info`);
+        const userInfoData = await getCachedUserInfo();
 
         // Fetch all customers
-        const paginationData = pageRes.data;
+        const paginationData = userInfoData;
         const rows = Array.isArray(paginationData.customers)
           ? paginationData.customers
           : Array.isArray(paginationData)
@@ -65,7 +69,7 @@ export default function CustomerManagement() {
     const last8Days = customer.last8Days || {};
     let count = 0;
     const today = new Date();
-    for (let i = 0; i <= 6; i++) {
+    for (let i = 1; i <= 7; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -192,7 +196,7 @@ export default function CustomerManagement() {
       });
     } else if (sortBy === "deliveryGap") {
       list.sort((a, b) => {
-        const diff = getDeliveryGapNumber(b.deliveryGap) - getDeliveryGapNumber(a.deliveryGap);
+        const diff = getDeliveryGapNumber(a.deliveryGap) - getDeliveryGapNumber(b.deliveryGap);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
@@ -202,6 +206,21 @@ export default function CustomerManagement() {
       withR.sort((a, b) => getRemarkDisplay(a).toLowerCase().localeCompare(getRemarkDisplay(b).toLowerCase()));
       noR.sort((a, b) => getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()));
       return [...withR, ...noR];
+    } else if (sortBy === "skipFrequency") {
+      list.sort((a, b) => {
+        const getRank = (c) => {
+          const val = getSkipSelectValue(c);
+          if (val === "MANUAL") return 999;
+          if (val.startsWith("AUTO:")) {
+            const num = Number(val.split(":")[1]);
+            return Number.isFinite(num) ? num : 999;
+          }
+          return 999;
+        };
+        const diff = getRank(a) - getRank(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
@@ -211,6 +230,25 @@ export default function CustomerManagement() {
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
   }, [filtered, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Total Peak Potential: sum of all T-numbers in current tab ────────────
+  const totalPeakPotential = useMemo(() => {
+    return filtered.reduce((sum, c) => sum + getPotentialNumber(c.potential), 0);
+  }, [filtered]);
+
+  // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
+  const potentialAchieved = useMemo(() => {
+    return filtered.reduce((sum, c) => {
+      const last8Days = c.last8Days || {};
+      const entry = last8Days[todayDate];
+      if (!entry) return sum;
+      const status = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
+      if (status !== "delivered") return sum;
+      const trays = entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
+      const numTrays = Number(trays);
+      return sum + (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
+    }, 0);
+  }, [filtered, todayDate]);
 
   // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
@@ -234,6 +272,10 @@ export default function CustomerManagement() {
       });
       const saved = res?.data?.todayOverride;
       if (saved?.date && saved?.status) {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          todayOverride: saved,
+        }));
         setCustomers((prev) =>
           prev.map((row) => row.id === customer.id ? { ...row, todayOverride: saved } : row)
         );
@@ -247,12 +289,6 @@ export default function CustomerManagement() {
     } finally {
       setUpdatingTodayId(null);
     }
-  };
-
-  const getSkipSelectValue = (customer) => {
-    const cfg = customer?.skipConfig;
-    if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
-    return `AUTO:${clampDays0to6(cfg.days)}`;
   };
 
   const updateSkipConfig = async (customer, selectedValue) => {
@@ -274,6 +310,10 @@ export default function CustomerManagement() {
       });
       const saved = res?.data?.skipConfig;
       if (saved && typeof saved === "object") {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          skipConfig: saved,
+        }));
         setCustomers((prev) =>
           prev.map((row) => row.id === customer.id ? { ...row, skipConfig: saved } : row)
         );
@@ -317,7 +357,7 @@ export default function CustomerManagement() {
   // ─── UI ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">Customer Management</h1>
 
         <div className="flex items-center gap-4">
@@ -344,6 +384,7 @@ export default function CustomerManagement() {
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
               <option value="remarks">Remarks </option>
+              <option value="skipFrequency">Skip Frequency</option>
             </select>
 
             {canDownloadExcel && (
@@ -363,6 +404,23 @@ export default function CustomerManagement() {
               {loading ? "…" : filteredActiveCount}
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* ⭐ Total Peak Potential & Potential Achieved row */}
+      <div className="flex gap-4 mb-4">
+        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500">
+          <p className="text-xs text-gray-500 whitespace-nowrap">Total Peak Potential</p>
+          <p className="text-xl font-bold text-orange-600">
+            {loading ? "…" : `T(${totalPeakPotential})`}
+          </p>
+        </div>
+
+        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500">
+          <p className="text-xs text-gray-500 whitespace-nowrap">Potential Achieved</p>
+          <p className="text-xl font-bold text-purple-600">
+            {loading ? "…" : potentialAchieved}
+          </p>
         </div>
       </div>
 
@@ -536,6 +594,7 @@ function getDateStringInTimeZone(date, timeZone) {
     const day = parts.find((p) => p.type === "day")?.value;
 
     if (year && month && day) return `${year}-${month}-${day}`;
+    // eslint-disable-next-line no-unused-vars
   } catch (error) {
     // fall through
   }
@@ -605,8 +664,8 @@ function getDeliveredCountForCustomer(customer) {
   let count = 0;
   const today = new Date();
 
-  // Include today + last 6 days (total 7 days)
-  for (let i = 0; i <= 6; i++) {
+  // Check last 7 days (excluding today: yesterday through 7 days ago)
+  for (let i = 1; i <= 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -778,3 +837,10 @@ function clampDays0to6(value) {
   if (n > 6) return 6;
   return n;
 }
+
+function getSkipSelectValue(customer) {
+  const cfg = customer?.skipConfig;
+  if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
+  return `AUTO:${clampDays0to6(cfg.days)}`;
+}
+

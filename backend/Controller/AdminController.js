@@ -1400,13 +1400,43 @@ const saveSkipConfig = async (req, res) => {
 
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(customerId);
-    const customerSnap = await customerRef.get();
-
-    if (!customerSnap.exists) {
-      return res.status(404).json({ message: "Customer not found" });
-    }
 
     await customerRef.update({ skipConfig });
+
+    // Keep cached customer lists fresh without re-reading all customers.
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const customerInfoKeys = keys.filter((key) =>
+        key.startsWith("customerInfo:userInfo"),
+      );
+
+      customerInfoKeys.forEach((key) => {
+        const cachedPayload = cache.get(key);
+        const patchRows = (rows) =>
+          Array.isArray(rows)
+            ? rows.map((row) =>
+                row.id === customerId ? { ...row, skipConfig } : row,
+              )
+            : rows;
+
+        if (Array.isArray(cachedPayload)) {
+          cache.set(key, patchRows(cachedPayload), 300);
+          return;
+        }
+
+        if (cachedPayload && Array.isArray(cachedPayload.customers)) {
+          cache.set(
+            key,
+            { ...cachedPayload, customers: patchRows(cachedPayload.customers) },
+            300,
+          );
+        }
+      });
+
+      cache.del(`customer:${customerId}`);
+    } catch (cacheErr) {
+      console.warn("saveSkipConfig customerInfo cache patch failed:", cacheErr);
+    }
 
     // Invalidate caches that depend on customer meta.
     try {
@@ -1428,6 +1458,10 @@ const saveSkipConfig = async (req, res) => {
       skipConfig,
     });
   } catch (err) {
+    if (err?.code === 5 || err?.details?.includes("NOT_FOUND")) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
     console.error("saveSkipConfig error:", err);
     return res.status(500).json({ message: "Server error" });
   }
@@ -1452,11 +1486,6 @@ const toggleTodayDelivery = async (req, res) => {
 
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(id);
-    const customerSnap = await customerRef.get();
-
-    if (!customerSnap.exists) {
-      return res.status(404).json({ message: "Customer not found" });
-    }
 
     const todayOverride = {
       date: getTodayDateString(),
@@ -1465,6 +1494,41 @@ const toggleTodayDelivery = async (req, res) => {
     };
 
     await customerRef.update({ todayOverride });
+
+    // Keep cached customer lists fresh without re-reading all customers.
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const customerInfoKeys = keys.filter((key) =>
+        key.startsWith("customerInfo:userInfo"),
+      );
+
+      customerInfoKeys.forEach((key) => {
+        const cachedPayload = cache.get(key);
+        const patchRows = (rows) =>
+          Array.isArray(rows)
+            ? rows.map((row) =>
+                row.id === id ? { ...row, todayOverride } : row,
+              )
+            : rows;
+
+        if (Array.isArray(cachedPayload)) {
+          cache.set(key, patchRows(cachedPayload), 300);
+          return;
+        }
+
+        if (cachedPayload && Array.isArray(cachedPayload.customers)) {
+          cache.set(
+            key,
+            { ...cachedPayload, customers: patchRows(cachedPayload.customers) },
+            300,
+          );
+        }
+      });
+
+      cache.del(`customer:${id}`);
+    } catch (cacheErr) {
+      console.warn("toggleTodayDelivery cache patch failed:", cacheErr);
+    }
 
     // Keep the in-memory active-count accurate (no extra Firestore reads).
     // ON → customer became active (+1), OFF → became inactive (-1).
@@ -1493,6 +1557,10 @@ const toggleTodayDelivery = async (req, res) => {
       todayOverride,
     });
   } catch (err) {
+    if (err?.code === 5 || err?.details?.includes("NOT_FOUND")) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
     console.error("toggleTodayDelivery error:", err);
     return res.status(500).json({ message: "Server error" });
   }

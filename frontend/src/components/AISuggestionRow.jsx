@@ -1,13 +1,17 @@
-import React, { useState } from "react";
+import React from "react";
 
-const getSuggestionConfig = (suggestion, reason, confidence) => {
+const getSuggestionConfig = (suggestion, reason, score) => {
+  const scoreReason = String(reason || "").includes("AI Score")
+    ? reason
+    : `AI Score: ${score} - ${reason}`;
+
   switch (suggestion) {
     case "TURN_ON_TOMORROW":
       return {
         colorClass: "text-green-600",
         dotClass: "bg-green-500",
         text: "Turn ON",
-        subText: `(${confidence >= 80 ? "High probability" : reason})`
+        subText: `(${scoreReason})`
       };
     case "TURN_OFF_TOMORROW":
       return {
@@ -58,6 +62,19 @@ const getPeakFrequencyColor = (value) => {
   if (n <= 2) return "#FF3B30"; // red
   if (n <= 4) return "#FB8C00"; // orange
   return "#0F9D58"; // green
+};
+
+const getSuggestionStatus = (suggestion) => {
+  switch (suggestion) {
+    case "TURN_ON_TOMORROW":
+    case "KEEP_ON_TOMORROW":
+      return "ON";
+    case "TURN_OFF_TOMORROW":
+    case "KEEP_OFF_TOMORROW":
+      return "OFF";
+    default:
+      return null;
+  }
 };
 
 const getPeakFrequencyNumber = (value) => {
@@ -196,28 +213,24 @@ function getDeliveryGapColor(value) {
   return "#FF3B30";
 }
 
-const AISuggestionRow = ({ customer, suggestionData }) => {
-  const [applied, setApplied] = useState(false);
-
-  const handleApply = () => {
-    // Show temporary toast (mock functionality)
-    alert("AI Suggestion Applied");
-    setApplied(true);
-    
-    // Reset back after a bit for demo purposes, or keep it applied
-    setTimeout(() => setApplied(false), 3000);
-  };
-
+const AISuggestionRow = ({
+  customer,
+  suggestionData,
+  onApplySuggestion,
+  isUpdating = false,
+}) => {
   const isTodayOn = customer?.todayOverride?.status === "ON";
+  const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
+  const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
   const peakFrequency = resolvePeakFrequency(customer);
   const peakPotential = normalizePotential(customer?.potential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
   const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
-  const { colorClass, dotClass, text, subText } = getSuggestionConfig(
+  const { dotClass, text, subText } = getSuggestionConfig(
     suggestionData.suggestion,
     suggestionData.reason,
-    suggestionData.confidence
+    suggestionData.score
   );
 
   return (
@@ -228,18 +241,18 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
       <td className="p-4 py-5 text-gray-700 font-medium">
         <span
           className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
+          style={{ backgroundColor: getPotentialColor(peakPotential) }}
         >
-          {peakFrequency}
+          {peakPotential}
         </span>
       </td>
 
       <td className="p-4 py-5 text-gray-700 font-medium">
         <span
           className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-          style={{ backgroundColor: getPotentialColor(peakPotential) }}
+          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
-          {peakPotential}
+          {peakFrequency}
         </span>
       </td>
 
@@ -276,21 +289,29 @@ const AISuggestionRow = ({ customer, suggestionData }) => {
 
       {/* Apply AI Suggestion Column */}
       <td className="p-4 py-5">
-        {applied ? (
-          <div className="flex items-center text-gray-700 space-x-1">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            <span className="text-sm">Applied</span>
-          </div>
-        ) : (
-          <button
-            onClick={handleApply}
-            className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
+        <div className="flex items-center gap-2">
+          <label
+            className={`relative inline-flex items-center ${
+              isUpdating || !suggestedStatus || alreadyApplied
+                ? "opacity-70 cursor-not-allowed"
+                : "cursor-pointer"
+            }`}
           >
-            [Apply]
-          </button>
-        )}
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={isTodayOn}
+              disabled={isUpdating || !suggestedStatus || alreadyApplied}
+              onChange={() => onApplySuggestion?.(customer, suggestedStatus)}
+              aria-label={`Apply AI suggestion: ${suggestedStatus || "Unknown"}`}
+            />
+            <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+            <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
+          </label>
+          <span className="text-xs font-medium text-gray-600">
+            {suggestedStatus || "--"}
+          </span>
+        </div>
       </td>
     </tr>
   );

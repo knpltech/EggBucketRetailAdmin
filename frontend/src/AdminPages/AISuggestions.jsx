@@ -1,8 +1,53 @@
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
-import { generateAISuggestion } from "../utils/aiSuggestionEngine";
+import {
+  computeDeliveryGap,
+  generateAISuggestion,
+  getDateStringInTimeZone,
+  getDeliveryGapNumber,
+  getPeakFrequencyNumber,
+  normalizeDeliveryGap,
+  resolvePeakFrequency,
+} from "../utils/aiSuggestionEngine";
+import {
+  getCachedUserInfo,
+  patchCachedUserInfoCustomer,
+} from "../utils/customerInfoClientCache";
 import AISuggestionTable from "../components/AISuggestionTable";
+
+const normalizePotential = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "T1";
+
+  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
+  const match = normalized.match(/^T(\d+)$/);
+  if (match) {
+    const num = Number(match[1]);
+    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
+  }
+
+  return "T1";
+};
+
+const getPotentialNumber = (value) => {
+  const potential = normalizePotential(value);
+  const n = Number(potential.slice(1));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
+const getCustomerDeliveryGapNumber = (customer) => {
+  const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+  const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+  const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+  return getDeliveryGapNumber(deliveryGap);
+};
+
+const compareByName = (a, b) =>
+  (a.customer.name || "").localeCompare(b.customer.name || "");
 
 const AISuggestions = () => {
   const [customers, setCustomers] = useState([]);
@@ -11,10 +56,11 @@ const AISuggestions = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOption, setFilterOption] = useState("ALL");
-  const [sortOption, setSortOption] = useState("DEFAULT");
+  const [sortOption, setSortOption] = useState("DELIVERY_GAP");
   const [logicOption, setLogicOption] = useState("logic1");
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
@@ -29,15 +75,15 @@ const AISuggestions = () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetching all customers (omitting pagination parameters)
-      const response = await axios.get(`${ADMIN_PATH}/user-info`);
+      // Fetching all customers through a short-lived client cache.
+      const userInfoData = await getCachedUserInfo();
       let allCustomers = [];
 
       // Backend returns an array if no pagination is requested, or { customers: [...] } 
-      if (Array.isArray(response.data)) {
-        allCustomers = response.data;
-      } else if (response.data && Array.isArray(response.data.customers)) {
-        allCustomers = response.data.customers;
+      if (Array.isArray(userInfoData)) {
+        allCustomers = userInfoData;
+      } else if (userInfoData && Array.isArray(userInfoData.customers)) {
+        allCustomers = userInfoData.customers;
       }
 
       // 1. Filter out customers with missing todayOverride
@@ -109,6 +155,27 @@ const AISuggestions = () => {
           const bOn = b.customer.todayOverride?.status === "ON" ? 1 : 0;
           return aOn - bOn;
         });
+      case "PEAK_FREQUENCY":
+        return dataToSort.sort((a, b) => {
+          const diff =
+            getPeakFrequencyNumber(resolvePeakFrequency(b.customer)) -
+            getPeakFrequencyNumber(resolvePeakFrequency(a.customer));
+          return diff || compareByName(a, b);
+        });
+      case "PEAK_POTENTIAL":
+        return dataToSort.sort((a, b) => {
+          const diff =
+            getPotentialNumber(b.customer.potential) -
+            getPotentialNumber(a.customer.potential);
+          return diff || compareByName(a, b);
+        });
+      case "DELIVERY_GAP":
+        return dataToSort.sort((a, b) => {
+          const diff =
+            getCustomerDeliveryGapNumber(a.customer) -
+            getCustomerDeliveryGapNumber(b.customer);
+          return diff || compareByName(a, b);
+        });
       case "DEFAULT":
       default:
         return dataToSort;
@@ -127,6 +194,48 @@ const AISuggestions = () => {
 
   const handlePrevPage = () => {
     if (currentPage > 1) setCurrentPage((prev) => prev - 1);
+  };
+
+  const handleApplySuggestion = async (customer, nextStatus) => {
+    if (!customer?.id || updatingSuggestionId === customer.id) return;
+
+    const previousOverride = customer.todayOverride;
+    const optimisticOverride = { ...previousOverride, status: nextStatus };
+
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id ? { ...row, todayOverride: optimisticOverride } : row
+      )
+    );
+
+    try {
+      setUpdatingSuggestionId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer/toggle-delivery`, {
+        id: customer.id,
+        status: nextStatus,
+      });
+      const saved = res?.data?.todayOverride;
+      if (saved?.date && saved?.status) {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          todayOverride: saved,
+        }));
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row
+          )
+        );
+      }
+    } catch (err) {
+      console.error("AI suggestion apply error:", err);
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id ? { ...row, todayOverride: previousOverride } : row
+        )
+      );
+    } finally {
+      setUpdatingSuggestionId(null);
+    }
   };
 
   return (
@@ -151,6 +260,9 @@ const AISuggestions = () => {
             <option value="NAME_DESC">Name (Z-A)</option>
             <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
             <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
+            <option value="PEAK_FREQUENCY">Peak Frequency</option>
+            <option value="PEAK_POTENTIAL">Peak Potential</option>
+            <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
           </select>
           <select
             value={logicOption}
@@ -158,6 +270,7 @@ const AISuggestions = () => {
             className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="logic1">Logic 1</option>
+            <option value="logic2">Logic 2</option>
           </select>
           <select
             value={filterOption}
@@ -179,7 +292,12 @@ const AISuggestions = () => {
         </div>
       )}
 
-      <AISuggestionTable data={currentData} loading={loading} />
+      <AISuggestionTable
+        data={currentData}
+        loading={loading}
+        onApplySuggestion={handleApplySuggestion}
+        updatingSuggestionId={updatingSuggestionId}
+      />
 
       {!loading && !error && (
         <div className="mt-4 flex items-center justify-between">
