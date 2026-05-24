@@ -8,12 +8,21 @@ import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
-import {
-  getTodayEffectiveStatus as resolveTodayEffectiveStatus,
-} from "../utils/aiSuggestionEngine";
+import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 
 // TABS
-const TABS = ["ALL", "ONBOARDING", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"];
+const TABS = [
+  "ALL",
+  "ONBOARDING",
+  "D0",
+  "D1",
+  "D2",
+  "D3",
+  "D4",
+  "D5",
+  "D6",
+  "D7",
+];
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
@@ -24,7 +33,8 @@ export default function CustomerManagement() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("deliveryGap");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
-  const [updatingSkipId, setUpdatingSkipId] = useState(null);
+  const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
+  const [openScheduleId, setOpenScheduleId] = useState(null);
 
   const canDownloadExcel = true;
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -67,6 +77,18 @@ export default function CustomerManagement() {
     setCurrentPage(1);
   }, [activeTab, sortBy]);
 
+  // ─── Close dropdown on outside click ──────────────────────────────────────
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenScheduleId(null);
+    };
+
+    document.addEventListener("click", handleClickOutside);
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+    };
+  }, []);
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
   const getDeliveredCount = (customer) => {
     const last8Days = customer.last8Days || {};
@@ -86,10 +108,21 @@ export default function CustomerManagement() {
   const getLatestStatus = (customer) => {
     const last8Days = customer.last8Days || {};
     const entry = last8Days[todayDate];
-    const todayStatus = (typeof entry === "string" ? entry : entry?.status || "")
-      .trim().toLowerCase();
+    const todayStatus = (
+      typeof entry === "string" ? entry : entry?.status || ""
+    )
+      .trim()
+      .toLowerCase();
     if (todayStatus === "delivered") return "Delivered";
-    if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(todayStatus))
+    if (
+      [
+        "checked",
+        "reached",
+        "price_mismatch",
+        "stock_available",
+        "other_vendor",
+      ].includes(todayStatus)
+    )
       return "Checked";
     return "Pending";
   };
@@ -114,7 +147,10 @@ export default function CustomerManagement() {
   const formatReasonLabel = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return "";
-    return raw.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    return raw
+      .replace(/_/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   const getTodayEffectiveStatus = (customer) => {
@@ -125,15 +161,27 @@ export default function CustomerManagement() {
   const filtered = useMemo(() => {
     let list = [...customers];
     if (activeTab === "ONBOARDING") {
-      list = list.filter((c) => !c.zone || c.zone === "" || c.zone === null || c.zone === "UNASSIGNED");
+      list = list.filter(
+        (c) =>
+          !c.zone ||
+          c.zone === "" ||
+          c.zone === null ||
+          c.zone === "UNASSIGNED",
+      );
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
     if (sortBy === "name") {
-      list.sort((a, b) => getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()));
+      list.sort((a, b) =>
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
+      );
     } else if (sortBy === "zone") {
-      list.sort((a, b) => String(a.zone || "").toLowerCase().localeCompare(String(b.zone || "").toLowerCase()));
+      list.sort((a, b) =>
+        String(a.zone || "")
+          .toLowerCase()
+          .localeCompare(String(b.zone || "").toLowerCase()),
+      );
     } else if (sortBy === "delivery") {
       const onFirst = (c) => (getTodayEffectiveStatus(c) === "ON" ? 0 : 1);
       list.sort((a, b) => {
@@ -161,37 +209,31 @@ export default function CustomerManagement() {
       });
     } else if (sortBy === "peakPotential") {
       list.sort((a, b) => {
-        const diff = getPotentialNumber(b.potential) - getPotentialNumber(a.potential);
+        const diff =
+          getPotentialNumber(b.potential) - getPotentialNumber(a.potential);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
     } else if (sortBy === "deliveryGap") {
       list.sort((a, b) => {
-        const diff = getDeliveryGapNumber(a.deliveryGap) - getDeliveryGapNumber(b.deliveryGap);
+        const diff =
+          getDeliveryGapNumber(a.deliveryGap) -
+          getDeliveryGapNumber(b.deliveryGap);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
     } else if (sortBy === "remarks") {
       const withR = list.filter((c) => getRemarkDisplay(c) !== "");
       const noR = list.filter((c) => getRemarkDisplay(c) === "");
-      withR.sort((a, b) => getRemarkDisplay(a).toLowerCase().localeCompare(getRemarkDisplay(b).toLowerCase()));
-      noR.sort((a, b) => getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()));
+      withR.sort((a, b) =>
+        getRemarkDisplay(a)
+          .toLowerCase()
+          .localeCompare(getRemarkDisplay(b).toLowerCase()),
+      );
+      noR.sort((a, b) =>
+        getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
+      );
       return [...withR, ...noR];
-    } else if (sortBy === "skipFrequency") {
-      list.sort((a, b) => {
-        const getRank = (c) => {
-          const val = getSkipSelectValue(c);
-          if (val === "MANUAL") return 999;
-          if (val.startsWith("AUTO:")) {
-            const num = Number(val.split(":")[1]);
-            return Number.isFinite(num) ? num : 999;
-          }
-          return 999;
-        };
-        const diff = getRank(a) - getRank(b);
-        if (diff !== 0) return diff;
-        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
-      });
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
@@ -204,7 +246,10 @@ export default function CustomerManagement() {
 
   // ─── Total Peak Potential: sum of all T-numbers in current tab ────────────
   const totalPeakPotential = useMemo(() => {
-    return filtered.reduce((sum, c) => sum + getPotentialNumber(c.potential), 0);
+    return filtered.reduce(
+      (sum, c) => sum + getPotentialNumber(c.potential),
+      0,
+    );
   }, [filtered]);
 
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
@@ -213,9 +258,16 @@ export default function CustomerManagement() {
       const last8Days = c.last8Days || {};
       const entry = last8Days[todayDate];
       if (!entry) return sum;
-      const status = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
+      const status = (typeof entry === "string" ? entry : entry?.status || "")
+        .trim()
+        .toLowerCase();
       if (status !== "delivered") return sum;
-      const trays = entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
+      const trays =
+        entry.traysDelivered ??
+        entry.trays ??
+        entry.quantity ??
+        entry?.deliveredTrays ??
+        0;
       const numTrays = Number(trays);
       return sum + (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
     }, 0);
@@ -225,14 +277,46 @@ export default function CustomerManagement() {
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
 
+    // ⭐ PROTECTION: Refuse toggle if delivery/check already completed
+    const last8Days = customer.last8Days || {};
+    const todayEntry = last8Days[todayDate];
+
+    const todayStatus = String(
+      typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const completedStatuses = [
+      "delivered",
+      "checked",
+      "reached",
+      "price_mismatch",
+      "stock_available",
+      "other_vendor",
+      "shop_closed",
+    ];
+
+    if (completedStatuses.includes(todayStatus)) {
+      return; // Silently refuse - toggle is locked
+    }
+
     const current = getTodayEffectiveStatus(customer);
     const nextStatus = current === "ON" ? "OFF" : "ON";
     const previousOverride = customer.todayOverride;
-    const optimisticOverride = { date: todayDate, status: nextStatus };
+    const optimisticOverride = {
+      date: todayDate,
+      status: nextStatus,
+      type: "MANUAL",
+    };
 
     // Optimistic UI: row update
     setCustomers((prev) =>
-      prev.map((row) => row.id === customer.id ? { ...row, todayOverride: optimisticOverride } : row)
+      prev.map((row) =>
+        row.id === customer.id
+          ? { ...row, todayOverride: optimisticOverride }
+          : row,
+      ),
     );
 
     try {
@@ -248,54 +332,81 @@ export default function CustomerManagement() {
           todayOverride: saved,
         }));
         setCustomers((prev) =>
-          prev.map((row) => row.id === customer.id ? { ...row, todayOverride: saved } : row)
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row,
+          ),
         );
       }
     } catch (err) {
       console.error("Today delivery toggle error:", err);
       // Revert row
       setCustomers((prev) =>
-        prev.map((row) => row.id === customer.id ? { ...row, todayOverride: previousOverride } : row)
+        prev.map((row) =>
+          row.id === customer.id
+            ? { ...row, todayOverride: previousOverride }
+            : row,
+        ),
       );
     } finally {
       setUpdatingTodayId(null);
     }
   };
 
-  const updateSkipConfig = async (customer, selectedValue) => {
-    if (!customer?.id || updatingSkipId === customer.id) return;
-    const previousConfig = customer.skipConfig;
-    const today = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-    let nextConfig = { type: "MANUAL", days: 0, startDate: null };
-    if (String(selectedValue || "").toUpperCase() !== "MANUAL") {
-      const parts = String(selectedValue).split(":");
-      nextConfig = { type: "AUTO", days: clampDays0to6(parts[1]), startDate: today };
-    }
+  const updateWeeklySchedule = async (customer, day) => {
+    if (!customer?.id || updatingScheduleId === customer.id) return;
+
+    const current = customer.weeklySchedule || {
+      mon: true,
+      tue: true,
+      wed: true,
+      thu: true,
+      fri: true,
+      sat: true,
+      sun: true,
+    };
+
+    const updated = {
+      ...current,
+      [day]: !current[day],
+    };
+
+    const previousSchedule = customer.weeklySchedule;
+
     setCustomers((prev) =>
-      prev.map((row) => row.id === customer.id ? { ...row, skipConfig: nextConfig } : row)
+      prev.map((c) =>
+        c.id === customer.id ? { ...c, weeklySchedule: updated } : c,
+      ),
     );
+
     try {
-      setUpdatingSkipId(customer.id);
-      const res = await axios.post(`${ADMIN_PATH}/customer/skip-config`, {
-        id: customer.id, type: nextConfig.type, days: nextConfig.days, startDate: nextConfig.startDate,
+      setUpdatingScheduleId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer/weekly-schedule`, {
+        id: customer.id,
+        weeklySchedule: updated,
       });
-      const saved = res?.data?.skipConfig;
+      const saved = res?.data?.weeklySchedule;
       if (saved && typeof saved === "object") {
         patchCachedUserInfoCustomer(customer.id, (row) => ({
           ...row,
-          skipConfig: saved,
+          weeklySchedule: saved,
         }));
         setCustomers((prev) =>
-          prev.map((row) => row.id === customer.id ? { ...row, skipConfig: saved } : row)
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, weeklySchedule: saved } : row,
+          ),
         );
       }
     } catch (err) {
-      console.error("Skip config update error:", err);
+      console.error("Weekly schedule update error:", err);
       setCustomers((prev) =>
-        prev.map((row) => row.id === customer.id ? { ...row, skipConfig: previousConfig } : row)
+        prev.map((row) =>
+          row.id === customer.id
+            ? { ...row, weeklySchedule: previousSchedule }
+            : row,
+        ),
       );
     } finally {
-      setUpdatingSkipId(null);
+      setUpdatingScheduleId(null);
     }
   };
 
@@ -322,7 +433,7 @@ export default function CustomerManagement() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginatedCustomers = filtered.slice(
     (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
+    currentPage * PAGE_SIZE,
   );
 
   // ─── UI ───────────────────────────────────────────────────────────────────
@@ -355,7 +466,6 @@ export default function CustomerManagement() {
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
               <option value="remarks">Remarks </option>
-              <option value="skipFrequency">Skip Frequency</option>
             </select>
 
             {canDownloadExcel && (
@@ -381,14 +491,18 @@ export default function CustomerManagement() {
       {/* ⭐ Total Peak Potential & Potential Achieved row */}
       <div className="flex gap-4 mb-4">
         <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500">
-          <p className="text-xs text-gray-500 whitespace-nowrap">Total Peak Potential</p>
+          <p className="text-xs text-gray-500 whitespace-nowrap">
+            Total Peak Potential
+          </p>
           <p className="text-xl font-bold text-orange-600">
             {loading ? "…" : `T(${totalPeakPotential})`}
           </p>
         </div>
 
         <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500">
-          <p className="text-xs text-gray-500 whitespace-nowrap">Potential Achieved</p>
+          <p className="text-xs text-gray-500 whitespace-nowrap">
+            Potential Achieved
+          </p>
           <p className="text-xl font-bold text-purple-600">
             {loading ? "…" : potentialAchieved}
           </p>
@@ -417,7 +531,7 @@ export default function CustomerManagement() {
               <th className="p-3">Name</th>
               <th className="p-3">Zone</th>
               <th className="p-3">Delivery Plan</th>
-              <th className="p-3">Skip</th>
+              <th className="p-3">Weekly Schedule</th>
               <th className="p-3">Peak_Potential</th>
               <th className="p-3">Peak_Frequency</th>
               <th className="p-3">Delivery_Gap</th>
@@ -430,7 +544,9 @@ export default function CustomerManagement() {
               <tr key={c.id} className="border-t">
                 <td className="p-3 font-medium">{c.custid || c.id}</td>
                 <td className="p-3 font-medium">{getName(c)}</td>
-                <td className="p-3 font-medium text-gray-700">{c.zone || "UNASSIGNED"}</td>
+                <td className="p-3 font-medium text-gray-700">
+                  {c.zone || "UNASSIGNED"}
+                </td>
 
                 <td className="p-3">
                   {(() => {
@@ -444,12 +560,12 @@ export default function CustomerManagement() {
                     const todayStatus = String(
                       typeof todayEntry === "string"
                         ? todayEntry
-                        : todayEntry?.status || ""
+                        : todayEntry?.status || "",
                     )
                       .trim()
                       .toLowerCase();
 
-                    const isLocked = [
+                    const completedStatuses = [
                       "delivered",
                       "checked",
                       "reached",
@@ -457,15 +573,28 @@ export default function CustomerManagement() {
                       "stock_available",
                       "other_vendor",
                       "shop_closed",
-                    ].includes(todayStatus);
+                    ];
+
+                    const isCompleted = completedStatuses.includes(todayStatus);
+
+                    const isLocked = isCompleted;
 
                     return (
-                      <label className={`relative inline-flex items-center ${isUpdating || isLocked
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-pointer"}`}>
-                        <input type="checkbox" className="sr-only peer" checked={isOn}
-                          disabled={isUpdating || isLocked} onChange={() => toggleTodayDelivery(c)}
-                          aria-label={isOn ? "Today: ON" : "Today: OFF"} />
+                      <label
+                        className={`relative inline-flex items-center ${
+                          isUpdating || isLocked
+                            ? "opacity-50 cursor-not-allowed"
+                            : "cursor-pointer"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={isOn}
+                          disabled={isUpdating || isLocked}
+                          onChange={() => toggleTodayDelivery(c)}
+                          aria-label={isOn ? "Today: ON" : "Today: OFF"}
+                        />
                         <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
                         <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
                       </label>
@@ -475,53 +604,121 @@ export default function CustomerManagement() {
 
                 <td className="p-3">
                   {(() => {
-                    const isUpdating = updatingSkipId === c.id;
+                    const isOpen = openScheduleId === c.id;
+                    const isUpdating = updatingScheduleId === c.id;
+                    const schedule = c.weeklySchedule || {
+                      mon: true,
+                      tue: true,
+                      wed: true,
+                      thu: true,
+                      fri: true,
+                      sat: true,
+                      sun: true,
+                    };
+                    const days = [
+                      "mon",
+                      "tue",
+                      "wed",
+                      "thu",
+                      "fri",
+                      "sat",
+                      "sun",
+                    ];
+                    const labels = {
+                      mon: "MON",
+                      tue: "TUE",
+                      wed: "WED",
+                      thu: "THU",
+                      fri: "FRI",
+                      sat: "SAT",
+                      sun: "SUN",
+                    };
+                    const activeDaysCount =
+                      Object.values(schedule).filter(Boolean).length;
                     return (
-                      <div className="flex items-center justify-center">
-                        <select value={getSkipSelectValue(c)} disabled={isUpdating}
-                          onChange={(e) => updateSkipConfig(c, e.target.value)}
-                          className={`border rounded-lg px-3 py-2 ${isUpdating ? "opacity-70 cursor-not-allowed" : ""}`}>
-                          <option value="MANUAL">Manual Override</option>
-                          <option value="AUTO:0">0 Days</option>
-                          <option value="AUTO:1">1 Days</option>
-                          <option value="AUTO:2">2 Days</option>
-                          <option value="AUTO:3">3 Days</option>
-                          <option value="AUTO:4">4 Days</option>
-                          <option value="AUTO:5">5 Days</option>
-                          <option value="AUTO:6">6 Days</option>
-                        </select>
+                      <div className="relative inline-block">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenScheduleId(isOpen ? null : c.id);
+                          }}
+                          className="px-3 py-1 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 transition"
+                          disabled={isUpdating}
+                        >
+                          {activeDaysCount} Days {isOpen ? "▲" : "▼"}
+                        </button>
+                        {isOpen && (
+                          <div
+                            className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 p-2 min-w-[120px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {days.map((day) => (
+                              <button
+                                key={day}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateWeeklySchedule(c, day);
+                                }}
+                                disabled={isUpdating}
+                                className={`block w-full text-left px-3 py-1 rounded mb-1 last:mb-0 font-medium text-sm transition ${
+                                  schedule[day]
+                                    ? "bg-green-500 text-white border border-green-600"
+                                    : "bg-red-500 text-white border border-red-600"
+                                } ${
+                                  isUpdating
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : "cursor-pointer hover:opacity-90"
+                                }`}
+                              >
+                                {labels[day]}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
                 </td>
 
                 <td className="p-3">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getPotentialColor(c.potential) }}>
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getPotentialColor(c.potential) }}
+                  >
                     {normalizePotential(c.potential)}
                   </span>
                 </td>
 
                 <td className="p-3">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getPeakFrequencyColor(c) }}>
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getPeakFrequencyColor(c) }}
+                  >
                     {getPeakFrequencyLabel(c)}
                   </span>
                 </td>
 
                 <td className="p-3">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getDeliveryGapColor(c.deliveryGap) }}>
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{
+                      backgroundColor: getDeliveryGapColor(c.deliveryGap),
+                    }}
+                  >
                     {normalizeDeliveryGap(c.deliveryGap)}
                   </span>
                 </td>
 
                 <td className="p-3">
                   <div className="flex flex-col items-center gap-1">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}>
+                    <span
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
+                    >
                       {getLatestStatus(c)}
                     </span>
-                    <span className="text-[10px] text-gray-500 font-medium">{getRemarkDisplay(c)}</span>
+                    <span className="text-[10px] text-gray-500 font-medium">
+                      {getRemarkDisplay(c)}
+                    </span>
                   </div>
                 </td>
               </tr>
@@ -543,7 +740,9 @@ export default function CustomerManagement() {
               Page {currentPage} of {totalPages}
             </span>
             <button
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+              }
               disabled={currentPage === totalPages}
               className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
@@ -618,8 +817,8 @@ function resolvePeakFrequency(customer) {
   const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
     customer?.Peak_Frequency ||
-    customer?.peakFrequency ||
-    customer?.peak_frequency,
+      customer?.peakFrequency ||
+      customer?.peak_frequency,
   );
 
   if (!savedPeak) return currentPeak;
@@ -747,7 +946,10 @@ function computeDeliveryGap(last8Days, todayDate) {
     const dayNumber = getDateDayNumber(dateStr);
     if (dayNumber === null || dayNumber > todayDayNumber) return;
 
-    if (latestDeliveredDayNumber === null || dayNumber > latestDeliveredDayNumber) {
+    if (
+      latestDeliveredDayNumber === null ||
+      dayNumber > latestDeliveredDayNumber
+    ) {
       latestDeliveredDayNumber = dayNumber;
     }
   });
@@ -803,9 +1005,7 @@ function computePotential(last8Days) {
     if (!entry) return;
 
     const status = String(
-      typeof entry === "string"
-        ? entry
-        : entry?.status || entry?.type || "",
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
     )
       .trim()
       .toLowerCase();
@@ -813,7 +1013,11 @@ function computePotential(last8Days) {
     if (status !== "delivered") return;
 
     const trays =
-      entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
+      entry.traysDelivered ??
+      entry.trays ??
+      entry.quantity ??
+      entry?.deliveredTrays ??
+      0;
     const numTrays = Number(trays);
 
     if (Number.isFinite(numTrays) && numTrays > maxTrays) {
@@ -823,19 +1027,3 @@ function computePotential(last8Days) {
 
   return maxTrays > 0 ? `T${maxTrays}` : "T1";
 }
-
-function clampDays0to6(value) {
-  let n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  n = Math.floor(n);
-  if (n < 0) return 0;
-  if (n > 6) return 6;
-  return n;
-}
-
-function getSkipSelectValue(customer) {
-  const cfg = customer?.skipConfig;
-  if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
-  return `AUTO:${clampDays0to6(cfg.days)}`;
-}
-

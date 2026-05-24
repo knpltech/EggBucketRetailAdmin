@@ -10,7 +10,8 @@ export function getDateStringInTimeZone(date, timeZone) {
     const month = parts.find((p) => p.type === "month")?.value;
     const day = parts.find((p) => p.type === "day")?.value;
     if (year && month && day) return `${year}-${month}-${day}`;
-  } catch (error) { }
+  // eslint-disable-next-line no-unused-vars
+  } catch (error) { /* empty */ }
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -67,11 +68,14 @@ export const computePeakFrequency = (last8Days) => {
 
 export const resolvePeakFrequency = (customer) => {
   const savedPeak = normalizePeakFrequency(
-    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
+    customer?.Peak_Frequency ||
+      customer?.peakFrequency ||
+      customer?.peak_frequency,
   );
   const currentPeak = computePeakFrequency(customer?.last8Days);
 
-  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
+  return getPeakFrequencyNumber(savedPeak) >=
+    getPeakFrequencyNumber(currentPeak)
     ? savedPeak
     : currentPeak;
 };
@@ -84,11 +88,16 @@ export function computeDeliveryGap(last8Days, todayDate) {
   Object.entries(last8Days).forEach(([dateStr, entry]) => {
     const status = String(
       typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    ).trim().toLowerCase();
+    )
+      .trim()
+      .toLowerCase();
     if (status !== "delivered") return;
     const dayNumber = getDateDayNumber(dateStr);
     if (dayNumber === null || dayNumber > todayDayNumber) return;
-    if (latestDeliveredDayNumber === null || dayNumber > latestDeliveredDayNumber) {
+    if (
+      latestDeliveredDayNumber === null ||
+      dayNumber > latestDeliveredDayNumber
+    ) {
       latestDeliveredDayNumber = dayNumber;
     }
   });
@@ -97,7 +106,9 @@ export function computeDeliveryGap(last8Days, todayDate) {
 }
 
 export function normalizeDeliveryGap(value) {
-  const raw = String(value ?? "").trim().toUpperCase();
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
   const match = raw.match(/^G?(\d+)$/);
   if (!match) return "G10";
   const n = Number(match[1]);
@@ -115,44 +126,30 @@ export const getTodayEffectiveStatus = (
   customer,
   todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata"),
 ) => {
-  const last8Days = customer?.last8Days || {};
-  const override = customer?.todayOverride;
-  const entry = last8Days[todayDate];
-  const deliveredStatus = String(
-    typeof entry === "string" ? entry : entry?.status || "",
-  )
-    .trim()
-    .toLowerCase();
+  const override = customer?.todayOverride || {};
 
-  if (deliveredStatus === "delivered") return "OFF";
+  const overrideDate = String(override?.date || "").slice(0, 10);
 
-  if (override) {
-    const overrideType = String(override.type || "")
-      .trim()
-      .toUpperCase();
-
-    if (overrideType === "MANUAL") {
-      return String(override.status || "")
-        .trim()
-        .toUpperCase() === "OFF"
-        ? "OFF"
-        : "ON";
-    }
-
-    const overrideDate = override?.date
-      ? String(override.date).slice(0, 10)
-      : null;
-
-    if (overrideDate === todayDate) {
-      return String(override.status || "")
-        .trim()
-        .toUpperCase() === "OFF"
-        ? "OFF"
-        : "ON";
-    }
+  // ⭐ HIGHEST PRIORITY: todayOverride for today
+  if (
+    overrideDate === todayDate &&
+    (override?.status === "ON" || override?.status === "OFF")
+  ) {
+    return override.status;
   }
 
-  return "ON";
+  // Fallback: Weekly schedule
+  const weeklySchedule = customer?.weeklySchedule || {};
+
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    timeZone: "Asia/Kolkata",
+  })
+    .format(new Date())
+    .toLowerCase()
+    .substring(0, 3);
+
+  return weeklySchedule[weekday] ? "ON" : "OFF";
 };
 
 export const generateAISuggestion = (customer, logicOption = "logic1") => {
@@ -175,7 +172,9 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
 
     const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
     const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-    const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+    const deliveryGapStr = normalizeDeliveryGap(
+      customer?.deliveryGap || rawDeliveryGap,
+    );
     const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
 
     const aiScore = peakFrequencyNumber - 7 + deliveryGapNumber;
@@ -206,7 +205,9 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
 
     const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
     const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-    const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+    const deliveryGapStr = normalizeDeliveryGap(
+      customer?.deliveryGap || rawDeliveryGap,
+    );
     const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
     const logic1Score = peakFrequencyNumber - 7 + deliveryGapNumber;
 

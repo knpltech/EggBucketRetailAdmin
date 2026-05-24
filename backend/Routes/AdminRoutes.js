@@ -55,14 +55,14 @@ import {
   resetRetentionCustomer,
   getCustomersByDeliveryCount,
   getLatestRemarks,
-  saveSkipConfig,
+  saveWeeklySchedule,
   toggleTodayDelivery,
   getCollectionSummary,
   recalculateCollectionData,
   updateCustomerPayment,
 } from "../Controller/AdminController.js";
 
-// Customer routes 
+// Customer routes
 router.route("/login").post(login);
 router.use(authenticateToken);
 
@@ -76,7 +76,7 @@ router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single("image"), addCustomer);
 router.post("/customer/status", updateCustomerMeta);
 router.post("/customer/potential", updateCustomerPotential);
-router.post("/customer/skip-config", saveSkipConfig);
+router.post("/customer/weekly-schedule", saveWeeklySchedule);
 router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
