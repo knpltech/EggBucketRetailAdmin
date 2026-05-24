@@ -6,7 +6,10 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
 import { signAuthToken } from "../utils/jwt.js";
-import { adjustActiveCount, invalidateActiveCountCache } from "./CustomerInfoController.js";
+import {
+  adjustActiveCount,
+  invalidateActiveCountCache,
+} from "./CustomerInfoController.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -74,18 +77,25 @@ const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(last8Days);
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
-    customerData.peakFrequency ||
-    customerData.peak_frequency,
+      customerData.peakFrequency ||
+      customerData.peak_frequency,
   );
 
-  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
+  return getPeakFrequencyNumber(savedPeak) >=
+    getPeakFrequencyNumber(currentPeak)
     ? savedPeak
     : currentPeak;
 };
 
 // HELPER: Maintain denormalized last8Days field in customer doc
 
-const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {}) => {
+const updateLast8Days = async (
+  db,
+  customerId,
+  deliveryDate,
+  type,
+  extraData = {},
+) => {
   try {
     if (!customerId || !deliveryDate || !type) return;
 
@@ -111,11 +121,15 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
     if (normalizedType === "delivered") {
       status = "delivered";
     } else if (
-      ["reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"].includes(
-        normalizedType,
-      )
+      [
+        "reached",
+        "price_mismatch",
+        "shop_closed",
+        "stock_available",
+        "other_vendor",
+      ].includes(normalizedType)
     ) {
-      status = "reached";
+      status = normalizedType;
     }
 
     // Update the specific date entry
@@ -126,7 +140,10 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
 
     // ⭐ OPTIMIZED: Preserve existing object structure and append new data
     const existingEntry = last8Days[dateStr] || {};
-    const newEntry = typeof existingEntry === 'object' ? { ...existingEntry } : { status: existingEntry };
+    const newEntry =
+      typeof existingEntry === "object"
+        ? { ...existingEntry }
+        : { status: existingEntry };
 
     newEntry.status = status;
     newEntry.time = extraData.time || Date.now();
@@ -149,8 +166,8 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
     const peakFrequency = resolvePeakFrequency(customerData, last8Days);
     const savedPeak = normalizePeakFrequency(
       customerData.Peak_Frequency ||
-      customerData.peakFrequency ||
-      customerData.peak_frequency,
+        customerData.peakFrequency ||
+        customerData.peak_frequency,
     );
 
     const updateData = {
@@ -158,7 +175,9 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
       last8DaysUpdatedAt: Date.now(),
     };
 
-    if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)) {
+    if (
+      getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)
+    ) {
       updateData.Peak_Frequency = peakFrequency;
     }
 
@@ -187,8 +206,22 @@ const updateLast8Days = async (db, customerId, deliveryDate, type, extraData = {
 
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
-    "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9",
-    "T10", "T15", "T20", "T25", "T30", "T50", "T100",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "T9",
+    "T10",
+    "T15",
+    "T20",
+    "T25",
+    "T30",
+    "T50",
+    "T100",
   ];
 
   const raw = String(value ?? "")
@@ -234,7 +267,7 @@ const resolveDeliveryAgent = (entry, fallbackAgent, deliveryManMap = null) => {
   }
 
   const agentId =
-    (entryIsObject ? (entry.agentId || entry.deliveredBy) : null) ||
+    (entryIsObject ? entry.agentId || entry.deliveredBy : null) ||
     fallbackAgent;
 
   if (typeof agentId === "string") {
@@ -310,7 +343,8 @@ const getRetentionCategoryFromDelivery = (delivery = {}) => {
 };
 
 const getRetentionCategoryLabel = (category) => {
-  if (category === "price_mismatch" || category === "shop_closed") return "Shop Closed";
+  if (category === "price_mismatch" || category === "shop_closed")
+    return "Shop Closed";
   if (category === "stock_available") return "Stock Available";
   if (category === "other_vendor") return "Other Vendor";
   return "-";
@@ -355,7 +389,10 @@ const getRetentionStatus = (delivery = null) => {
       label: "Checked",
       category,
       categoryLabel: getRetentionCategoryLabel(category),
-      reason: delivery.checkReason || delivery.reason || getRetentionCategoryLabel(type),
+      reason:
+        delivery.checkReason ||
+        delivery.reason ||
+        getRetentionCategoryLabel(type),
     };
   }
 
@@ -404,7 +441,12 @@ const getRetentionCustomers = async (req, res) => {
     const limit = parseInt(req.query.limit, 10) || 25;
     const categoryFilter = req.query.category || "all";
     const agentFilter = req.query.agent || "all";
-    const allowedSorts = new Set(["name", "zone", "deliveryTime", "deliveryAgent"]);
+    const allowedSorts = new Set([
+      "name",
+      "zone",
+      "deliveryTime",
+      "deliveryAgent",
+    ]);
     const sortBy = allowedSorts.has(req.query.sortBy)
       ? req.query.sortBy
       : "name";
@@ -421,11 +463,15 @@ const getRetentionCustomers = async (req, res) => {
     const cacheKey = `customerRetention:v16:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
-      console.log(`[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`);
+      console.log(
+        `[CACHE HIT] Retention data for ${todayKey} page ${page} category ${categoryFilter} served from cache`,
+      );
       return res.status(200).json(cached);
     }
 
-    console.log(`[CACHE MISS] Fetching retention data for ${todayKey} from Firestore`);
+    console.log(
+      `[CACHE MISS] Fetching retention data for ${todayKey} from Firestore`,
+    );
 
     const db = getFirestore();
 
@@ -439,8 +485,9 @@ const getRetentionCustomers = async (req, res) => {
 
     const getRetentionAgentName = (customer) => {
       const entry = customer.last8Days?.[todayKey];
-      const entryObj = typeof entry === "string" ? { status: entry } : (entry || {});
-      
+      const entryObj =
+        typeof entry === "string" ? { status: entry } : entry || {};
+
       // 1. Check nested agent object or string (deliveryMan or agent)
       const nestedAgent = entryObj.deliveryMan || entryObj.agent || null;
       if (nestedAgent) {
@@ -450,7 +497,12 @@ const getRetentionCustomers = async (req, res) => {
           return nestedAgent.trim();
         }
         if (typeof nestedAgent === "object") {
-          const nestedName = String(nestedAgent.name || nestedAgent.display_name || nestedAgent.agentName || "").trim();
+          const nestedName = String(
+            nestedAgent.name ||
+              nestedAgent.display_name ||
+              nestedAgent.agentName ||
+              "",
+          ).trim();
           if (nestedName) return nestedName;
         }
       }
@@ -482,14 +534,24 @@ const getRetentionCustomers = async (req, res) => {
 
     const getCustomerStatus = (customer) => {
       const entry = customer.last8Days?.[todayKey];
-      const entryObj = typeof entry === "string" ? { status: entry } : (entry || {});
-      const status = String(entryObj.status || "").trim().toLowerCase();
+      const entryObj =
+        typeof entry === "string" ? { status: entry } : entry || {};
+      const status = String(entryObj.status || "")
+        .trim()
+        .toLowerCase();
 
       if (status === "delivered") {
         return "delivered";
       }
 
-      const checkedStatuses = ["checked", "reached", "price_mismatch", "shop_closed", "stock_available", "other_vendor"];
+      const checkedStatuses = [
+        "checked",
+        "reached",
+        "price_mismatch",
+        "shop_closed",
+        "stock_available",
+        "other_vendor",
+      ];
       if (checkedStatuses.includes(status)) {
         return "checked";
       }
@@ -499,12 +561,21 @@ const getRetentionCustomers = async (req, res) => {
 
     // Fetch all customers from Firestore to compute exact statistics
     const customersSnap = await db.collection("customers").get();
-    const allCustomers = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const allCustomers = customersSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     const agentStatsMap = {};
     // Pre-populate with all delivery partners from collection
     deliveryPartnerMap.forEach((agentName) => {
-      agentStatsMap[agentName] = { name: agentName, checked: 0, delivered: 0, pending: 0, total: 0 };
+      agentStatsMap[agentName] = {
+        name: agentName,
+        checked: 0,
+        delivered: 0,
+        pending: 0,
+        total: 0,
+      };
     });
 
     allCustomers.forEach((customer) => {
@@ -512,7 +583,13 @@ const getRetentionCustomers = async (req, res) => {
       if (!agentName) return;
 
       if (!agentStatsMap[agentName]) {
-        agentStatsMap[agentName] = { name: agentName, checked: 0, delivered: 0, pending: 0, total: 0 };
+        agentStatsMap[agentName] = {
+          name: agentName,
+          checked: 0,
+          delivered: 0,
+          pending: 0,
+          total: 0,
+        };
       }
 
       const status = getCustomerStatus(customer);
@@ -526,7 +603,9 @@ const getRetentionCustomers = async (req, res) => {
       agentStatsMap[agentName].total += 1;
     });
 
-    const agentStats = Object.values(agentStatsMap).sort((a, b) => a.name.localeCompare(b.name));
+    const agentStats = Object.values(agentStatsMap).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
     const overallStats = { checked: 0, delivered: 0, pending: 0, total: 0 };
     agentStats.forEach((stats) => {
       overallStats.checked += stats.checked;
@@ -551,7 +630,8 @@ const getRetentionCustomers = async (req, res) => {
       const todayEntry = customer.last8Days?.[todayKey];
       if (!todayEntry) return;
 
-      const entryObj = typeof todayEntry === 'string' ? { status: todayEntry } : todayEntry;
+      const entryObj =
+        typeof todayEntry === "string" ? { status: todayEntry } : todayEntry;
       const todayDeliveryData = {
         type: entryObj.status,
         checkReason: entryObj.reason || "",
@@ -559,16 +639,16 @@ const getRetentionCustomers = async (req, res) => {
         time: entryObj.time || null,
         deliveredBy: entryObj.agentId || null,
         traysDelivered:
-          entryObj.quantity ??
-          entryObj.trays ??
-          entryObj.traysDelivered ??
-          0,
+          entryObj.quantity ?? entryObj.trays ?? entryObj.traysDelivered ?? 0,
       };
 
       const todayStatus = getRetentionStatus(todayDeliveryData);
 
       if (todayStatus.key === "checked") {
-        todayDeliveriesMap[customer.id] = { status: todayStatus, data: todayDeliveryData };
+        todayDeliveriesMap[customer.id] = {
+          status: todayStatus,
+          data: todayDeliveryData,
+        };
         customerCategories[customer.id] = todayStatus.category;
         allMatchedCustomers.push(customer);
 
@@ -583,7 +663,7 @@ const getRetentionCustomers = async (req, res) => {
     let filteredCustomers = allMatchedCustomers;
     if (categoryFilter !== "all") {
       filteredCustomers = filteredCustomers.filter(
-        (c) => customerCategories[c.id] === categoryFilter
+        (c) => customerCategories[c.id] === categoryFilter,
       );
     }
 
@@ -620,10 +700,16 @@ const getRetentionCustomers = async (req, res) => {
       if (sortBy === "deliveryTime") {
         const aEntry = a.last8Days?.[todayKey];
         const bEntry = b.last8Days?.[todayKey];
-        const aEntryObj = typeof aEntry === "string" ? { status: aEntry } : (aEntry || {});
-        const bEntryObj = typeof bEntry === "string" ? { status: bEntry } : (bEntry || {});
-        const aTime = parseSortableTime(aEntryObj.time || aEntryObj.timestamp || a.last8DaysUpdatedAt);
-        const bTime = parseSortableTime(bEntryObj.time || bEntryObj.timestamp || b.last8DaysUpdatedAt);
+        const aEntryObj =
+          typeof aEntry === "string" ? { status: aEntry } : aEntry || {};
+        const bEntryObj =
+          typeof bEntry === "string" ? { status: bEntry } : bEntry || {};
+        const aTime = parseSortableTime(
+          aEntryObj.time || aEntryObj.timestamp || a.last8DaysUpdatedAt,
+        );
+        const bTime = parseSortableTime(
+          bEntryObj.time || bEntryObj.timestamp || b.last8DaysUpdatedAt,
+        );
 
         if (aTime == null && bTime == null) return 0;
         if (aTime == null) return 1;
@@ -648,20 +734,30 @@ const getRetentionCustomers = async (req, res) => {
 
     // Apply pagination
     const startIndex = (page - 1) * limit;
-    const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + limit);
+    const paginatedCustomers = filteredCustomers.slice(
+      startIndex,
+      startIndex + limit,
+    );
 
     const rows = [];
 
     // ⭐ Fetch today's delivery doc for the paginated customers to get the EXACT timestamp!
-    const paginatedDeliveryRefs = paginatedCustomers.map(c =>
-      db.collection("customers").doc(c.id).collection("deliveries").doc(todayKey).get()
+    const paginatedDeliveryRefs = paginatedCustomers.map((c) =>
+      db
+        .collection("customers")
+        .doc(c.id)
+        .collection("deliveries")
+        .doc(todayKey)
+        .get(),
     );
     const paginatedDeliverySnaps = await Promise.all(paginatedDeliveryRefs);
 
     for (let i = 0; i < paginatedCustomers.length; i++) {
       const customer = paginatedCustomers[i];
       const todayDeliverySnap = paginatedDeliverySnaps[i];
-      const actualTodayDeliveryData = todayDeliverySnap.exists ? todayDeliverySnap.data() : null;
+      const actualTodayDeliveryData = todayDeliverySnap.exists
+        ? todayDeliverySnap.data()
+        : null;
       try {
         const todayData = todayDeliveriesMap[customer.id];
         const todayStatus = todayData.status;
@@ -670,7 +766,8 @@ const getRetentionCustomers = async (req, res) => {
         const dayStatuses = {};
         previousDates.forEach((dateKey) => {
           const entry = customer.last8Days?.[dateKey];
-          const entryObj = typeof entry === 'string' ? { status: entry } : (entry || null);
+          const entryObj =
+            typeof entry === "string" ? { status: entry } : entry || null;
 
           let previousDeliveryData = null;
           if (entryObj) {
@@ -691,7 +788,12 @@ const getRetentionCustomers = async (req, res) => {
 
         // Process delivery time into ISO string
         // We extract the exact timestamp from the actual delivery document
-        let deliveryTime = actualTodayDeliveryData?.timestamp || actualTodayDeliveryData?.deliveryTime || actualTodayDeliveryData?.checkReasonAt || todayDeliveryData.time || null;
+        let deliveryTime =
+          actualTodayDeliveryData?.timestamp ||
+          actualTodayDeliveryData?.deliveryTime ||
+          actualTodayDeliveryData?.checkReasonAt ||
+          todayDeliveryData.time ||
+          null;
 
         // Add TEMP fallback for old data as explicitly requested
         if (!deliveryTime && customer.last8DaysUpdatedAt) {
@@ -700,7 +802,11 @@ const getRetentionCustomers = async (req, res) => {
         if (deliveryTime) {
           if (typeof deliveryTime.toDate === "function") {
             deliveryTime = deliveryTime.toDate().toISOString();
-          } else if (deliveryTime && typeof deliveryTime === "object" && deliveryTime._seconds !== undefined) {
+          } else if (
+            deliveryTime &&
+            typeof deliveryTime === "object" &&
+            deliveryTime._seconds !== undefined
+          ) {
             deliveryTime = new Date(deliveryTime._seconds * 1000).toISOString();
           } else if (typeof deliveryTime === "number") {
             const ms = deliveryTime < 1e12 ? deliveryTime * 1000 : deliveryTime;
@@ -727,12 +833,17 @@ const getRetentionCustomers = async (req, res) => {
           days: dayStatuses,
         });
       } catch (err) {
-        console.error(`Error processing paginated customer ${customer.id}:`, err);
+        console.error(
+          `Error processing paginated customer ${customer.id}:`,
+          err,
+        );
       }
     }
 
     // Ensure ordering matches the sorted slice
-    const orderedRows = paginatedCustomers.map((c) => rows.find((r) => r.id === c.id)).filter(Boolean);
+    const orderedRows = paginatedCustomers
+      .map((c) => rows.find((r) => r.id === c.id))
+      .filter(Boolean);
 
     const payload = {
       date: todayKey,
@@ -856,9 +967,10 @@ const resetRetentionCustomer = async (req, res) => {
   } catch (err) {
     console.error("resetRetentionCustomer error:", err);
 
-    const message = err.message === "Customer not found"
-      ? "Customer not found"
-      : err.message || "Failed to reset customer. Please try again.";
+    const message =
+      err.message === "Customer not found"
+        ? "Customer not found"
+        : err.message || "Failed to reset customer. Please try again.";
     const statusCode = err.message === "Customer not found" ? 404 : 500;
 
     return res.status(statusCode).json({ message });
@@ -882,14 +994,19 @@ const getCustomerMapStatus = async (req, res) => {
       const c = doc.data();
       if (!c.location) return;
 
-      const parts = c.location.replace("Lat:", "").replace("Lng:", "").split(",");
+      const parts = c.location
+        .replace("Lat:", "")
+        .replace("Lng:", "")
+        .split(",");
       const lat = parseFloat(parts[0]?.trim());
       const lng = parseFloat(parts[1]?.trim());
       if (isNaN(lat) || isNaN(lng)) return;
 
       // Check today's status in last8Days map
       const entry = c.last8Days?.[todayStr];
-      const todayStatus = (typeof entry === "string" ? entry : entry?.status || "pending").toLowerCase();
+      const todayStatus = (
+        typeof entry === "string" ? entry : entry?.status || "pending"
+      ).toLowerCase();
 
       result.push({
         id: doc.id,
@@ -1016,7 +1133,6 @@ const getZones = async (req, res) => {
   }
 };
 
-
 const getAnalyticsLast8 = async (req, res) => {
   const cacheKey = "analytics:last8:v2";
 
@@ -1060,7 +1176,8 @@ const getAnalyticsLast8 = async (req, res) => {
         zone: c.zone || "UNASSIGNED",
         todayOverride: c.todayOverride || null,
         skipConfig: c.skipConfig || null,
-        Peak_Frequency: c.Peak_Frequency || c.peakFrequency || c.peak_frequency || null,
+        Peak_Frequency:
+          c.Peak_Frequency || c.peakFrequency || c.peak_frequency || null,
         deliveries,
       };
     });
@@ -1256,7 +1373,6 @@ const getCustomersByDeliveryCount = async (req, res) => {
   }
 };
 
-
 //  returns only the latest delivery remark per customer
 const getLatestRemarks = async (req, res) => {
   try {
@@ -1363,49 +1479,37 @@ const updateCustomerPotential = async (req, res) => {
   }
 };
 
-// Save skip delivery config per customer
-// POST /customer/skip-config
-// Body: { id, type: "MANUAL"|"AUTO", days: number, startDate: "YYYY-MM-DD"|null }
-// Note: For AUTO, startDate is always set to "today" (Asia/Kolkata) on the server.
-const saveSkipConfig = async (req, res) => {
+// Save weekly delivery schedule per customer
+// POST /customer/weekly-schedule
+// Body: { id, weeklySchedule: { mon, tue, wed, thu, fri, sat, sun } }
+const saveWeeklySchedule = async (req, res) => {
   try {
-    const { id, type, days } = req.body || {};
+    const { id, weeklySchedule } = req.body || {};
 
     const customerId = String(id || "").trim();
     if (!customerId) {
       return res.status(400).json({ message: "Customer id is required" });
     }
 
-    const normalizedType = String(type || "")
-      .trim()
-      .toUpperCase();
-    if (!["MANUAL", "AUTO"].includes(normalizedType)) {
+    if (!weeklySchedule || typeof weeklySchedule !== "object") {
       return res.status(400).json({
-        message: "Invalid type. Expected MANUAL or AUTO",
+        message: "weeklySchedule object is required",
       });
     }
 
-    let normalizedDays = Number(days);
-    if (!Number.isFinite(normalizedDays)) normalizedDays = 0;
-    normalizedDays = Math.floor(normalizedDays);
-    if (normalizedDays < 0) normalizedDays = 0;
-    if (normalizedDays > 6) normalizedDays = 6;
-
-    const skipConfig =
-      normalizedType === "MANUAL"
-        ? { type: "MANUAL", days: 0, startDate: null }
-        : {
-          type: "AUTO",
-          days: normalizedDays,
-          startDate: getTodayDateString(),
-        };
+    // Validate and normalize schedule
+    const validDays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    const normalizedSchedule = {};
+    validDays.forEach((day) => {
+      normalizedSchedule[day] = weeklySchedule[day] === true ? true : false;
+    });
 
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(customerId);
 
-    await customerRef.update({ skipConfig });
+    await customerRef.update({ weeklySchedule: normalizedSchedule });
 
-    // Keep cached customer lists fresh without re-reading all customers.
+    // Keep cached customer lists fresh
     try {
       const keys = typeof cache.keys === "function" ? cache.keys() : [];
       const customerInfoKeys = keys.filter((key) =>
@@ -1417,7 +1521,9 @@ const saveSkipConfig = async (req, res) => {
         const patchRows = (rows) =>
           Array.isArray(rows)
             ? rows.map((row) =>
-                row.id === customerId ? { ...row, skipConfig } : row,
+                row.id === customerId
+                  ? { ...row, weeklySchedule: normalizedSchedule }
+                  : row,
               )
             : rows;
 
@@ -1429,7 +1535,10 @@ const saveSkipConfig = async (req, res) => {
         if (cachedPayload && Array.isArray(cachedPayload.customers)) {
           cache.set(
             key,
-            { ...cachedPayload, customers: patchRows(cachedPayload.customers) },
+            {
+              ...cachedPayload,
+              customers: patchRows(cachedPayload.customers),
+            },
             300,
           );
         }
@@ -1437,11 +1546,15 @@ const saveSkipConfig = async (req, res) => {
 
       cache.del(`customer:${customerId}`);
     } catch (cacheErr) {
-      console.warn("saveSkipConfig customerInfo cache patch failed:", cacheErr);
+      console.warn(
+        "saveWeeklySchedule customerInfo cache patch failed:",
+        cacheErr,
+      );
     }
 
-    // Invalidate caches that depend on customer meta.
+    // Invalidate caches that depend on customer meta
     try {
+      cache.del("analytics:last8:v2");
       cache.del("analytics:last8:v10");
       cache.del("customerMapStatus:today");
       const allDeliveriesKeys = cache
@@ -1452,19 +1565,19 @@ const saveSkipConfig = async (req, res) => {
       }
       await invalidateActiveCountCache();
     } catch (cacheErr) {
-      console.warn("skip-config cache invalidation error:", cacheErr);
+      console.warn("weekly-schedule cache invalidation error:", cacheErr);
     }
 
     return res.status(200).json({
-      message: "Skip config saved",
-      skipConfig,
+      message: "Weekly schedule saved",
+      weeklySchedule: normalizedSchedule,
     });
   } catch (err) {
     if (err?.code === 5 || err?.details?.includes("NOT_FOUND")) {
       return res.status(404).json({ message: "Customer not found" });
     }
 
-    console.error("saveSkipConfig error:", err);
+    console.error("saveWeeklySchedule error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -1742,7 +1855,8 @@ const recalculateCollectionData = async (req, res) => {
 
 const updateCustomerPayment = async (req, res) => {
   try {
-    const { docId, date, quantity, cashAmount, upiAmount, totalAmount } = req.body;
+    const { docId, date, quantity, cashAmount, upiAmount, totalAmount } =
+      req.body;
     if (!docId || !date) {
       return res.status(400).json({
         success: false,
@@ -1788,7 +1902,8 @@ const updateCustomerPayment = async (req, res) => {
         quantity: quantity !== undefined ? Number(quantity) : undefined,
         cashAmount: cashAmount !== undefined ? Number(cashAmount) : undefined,
         upiAmount: upiAmount !== undefined ? Number(upiAmount) : undefined,
-        totalAmount: totalAmount !== undefined ? Number(totalAmount) : undefined,
+        totalAmount:
+          totalAmount !== undefined ? Number(totalAmount) : undefined,
       },
     });
   } catch (err) {
@@ -1804,7 +1919,7 @@ export {
   getCustomerMapStatus,
   updateCustomerMeta,
   updateCustomerPotential,
-  saveSkipConfig,
+  saveWeeklySchedule,
   toggleTodayDelivery,
   addZone,
   getZones,

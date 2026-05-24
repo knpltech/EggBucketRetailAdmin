@@ -28,24 +28,6 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 const getTodayDateStringIST = () =>
   getDateStringInTimeZone(new Date(), INDIA_TZ);
 
-const parseDateStringISTStart = (dateString) => {
-  const s = String(dateString || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-
-  // Interpret as start-of-day in India.
-  const d = new Date(`${s}T00:00:00+05:30`);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-
-const clampDays0to6 = (value) => {
-  let n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  n = Math.floor(n);
-  if (n < 0) return 0;
-  if (n > 6) return 6;
-  return n;
-};
-
 const isDebugEnabled = () =>
   String(process.env.SKIP_CRON_DEBUG || "")
     .trim()
@@ -77,6 +59,7 @@ const safeJson = (value) => {
 
 const invalidateSkipRelatedCaches = () => {
   try {
+    cache.del("analytics:last8:v2");
     cache.del("analytics:last8:v10");
     cache.del("customerMapStatus:today");
     cache.del("latestRemarks");
@@ -99,8 +82,15 @@ const invalidateSkipRelatedCaches = () => {
 
 export const runSkipDeliveryJobOnce = async () => {
   const today = getTodayDateStringIST();
-  const todayStart = parseDateStringISTStart(today);
-  if (!todayStart) return;
+
+  // Get current weekday (mon, tue, wed, etc.)
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    timeZone: INDIA_TZ,
+  })
+    .format(new Date())
+    .toLowerCase()
+    .substring(0, 3);
 
   const db = getFirestore();
 
@@ -115,12 +105,11 @@ export const runSkipDeliveryJobOnce = async () => {
 
   if (debug) {
     console.log(
-      `[skipDeliveryCron][debug] projectId=${process.env.PROJECT_ID || ""} totalCustomers=${customersSnap.size} today=${today}`,
+      `[skipDeliveryCron][weekly] projectId=${process.env.PROJECT_ID || ""} totalCustomers=${customersSnap.size} today=${today} weekday=${weekday}`,
     );
   }
 
-  let autoDetected = 0;
-  let eligible = 0;
+  let processed = 0;
   let updated = 0;
 
   let batch = db.batch();
@@ -137,42 +126,32 @@ export const runSkipDeliveryJobOnce = async () => {
 
   for (const doc of customersSnap.docs) {
     const data = doc.data() || {};
-    const rawSkipConfig = data?.skipConfig;
 
-    const isObject =
-      rawSkipConfig !== null &&
-      rawSkipConfig !== undefined &&
-      typeof rawSkipConfig === "object" &&
-      !Array.isArray(rawSkipConfig);
-
-    const skipConfig = isObject ? rawSkipConfig : null;
+    // Default to all days enabled if no schedule exists
+    const weeklySchedule = data?.weeklySchedule || {
+      mon: true,
+      tue: true,
+      wed: true,
+      thu: true,
+      fri: true,
+      sat: true,
+      sun: true,
+    };
 
     const debugThisDoc =
       debug && shouldDebugDoc(doc.id, debugIds, debugRemaining);
     if (debugThisDoc && !debugIds && debugRemaining > 0) debugRemaining -= 1;
 
-    const skipType = skipConfig?.type
-      ? String(skipConfig.type).trim().toUpperCase()
-      : "";
-
     if (debugThisDoc) {
-      console.log("[skipDeliveryCron][debug] Customer ID:", doc.id);
+      console.log("[skipDeliveryCron][weekly] Customer ID:", doc.id);
       console.log(
-        "[skipDeliveryCron][debug] SkipConfig:",
-        skipConfig ? safeJson(skipConfig) : String(rawSkipConfig),
+        "[skipDeliveryCron][weekly] WeeklySchedule:",
+        safeJson(weeklySchedule),
       );
-      console.log("[skipDeliveryCron][debug] SkipType:", skipType);
-      if (!isObject && rawSkipConfig !== undefined) {
-        console.log(
-          "[skipDeliveryCron][debug] skipConfig is not an object. typeof=",
-          typeof rawSkipConfig,
-        );
-      }
+      console.log("[skipDeliveryCron][weekly] Current weekday:", weekday);
     }
 
-    if (skipType === "AUTO") {
-      autoDetected += 1;
-    }
+    processed += 1;
 
     const existingOverride = data?.todayOverride || null;
     const existingOverrideDate = existingOverride?.date
@@ -182,186 +161,89 @@ export const runSkipDeliveryJobOnce = async () => {
       ? String(existingOverride.type).trim().toUpperCase()
       : null;
 
-    // ✅ MANUAL or NO CONFIG: Reset to ON at start of new day (unless MANUAL OFF)
-    if (!skipConfig || skipType !== "AUTO") {
-      // ✅ MANUAL OFF: Preserve MANUAL OFF indefinitely
-      // ✅ MANUAL ON: Reset to SYSTEM ON next day (don't persist forever)
-      if (existingOverrideType === "MANUAL") {
-        const isManualOff = existingOverride?.status === "OFF";
-        if (isManualOff) {
-          if (debugThisDoc) {
-            console.log(
-              "[skipDeliveryCron][debug] MANUAL OFF: preserving manual OFF state",
-              {
-                today,
-                existingStatus: existingOverride?.status,
-              },
-            );
-          }
-          continue; // ← Preserve MANUAL OFF forever
-        }
-        // MANUAL ON: Fall through to reset to SYSTEM ON at next day
-        if (debugThisDoc) {
-          console.log(
-            "[skipDeliveryCron][debug] MANUAL ON: resetting to SYSTEM ON at next day",
-            {
-              today,
-              existingStatus: existingOverride?.status,
-            },
-          );
-        }
-      }
+    // ✅ MANUAL OFF protection: Preserve MANUAL OFF for today
+    const existingOverrideStatus = existingOverride?.status
+      ? String(existingOverride.status).trim().toUpperCase()
+      : null;
 
-      // ✅ Same-day protection ONLY for non-AUTO mode
-      // If already updated today (and not MANUAL), preserve DELIVERED/SYSTEM state for today
-      if (existingOverrideDate === today) {
-        if (debugThisDoc) {
-          console.log(
-            "[skipDeliveryCron][debug] MANUAL mode: already updated today, skipping",
-            {
-              today,
-              existingOverrideDate,
-              existingType: existingOverrideType,
-            },
-          );
-        }
-        continue; // ← Preserve state for rest of today
-      }
+    const isManualOff =
+      existingOverrideType === "MANUAL" &&
+      existingOverrideDate === today &&
+      existingOverrideStatus === "OFF";
 
+    if (isManualOff) {
       if (debugThisDoc) {
         console.log(
-          "[skipDeliveryCron][debug] MANUAL mode: resetting to ON for new day",
+          "[skipDeliveryCron][weekly] MANUAL OFF: preserving today's OFF status",
           {
             today,
-            skipType: skipType || "NO_CONFIG",
-            previousType: existingOverrideType,
+            existingStatus: existingOverride?.status,
           },
         );
       }
-
-      batch.update(doc.ref, {
-        todayOverride: {
-          date: today,
-          status: "ON",
-          type: "SYSTEM",
-        },
-      });
-
-      batchCount += 1;
-      updated += 1;
-
-      await commitBatchIfNeeded(false);
-      continue;
+      continue; // ← Preserve MANUAL OFF for rest of today
     }
 
-    // ✅ AUTO mode: Validate config and apply skip logic
-    const startDateStr = skipConfig.startDate
-      ? String(skipConfig.startDate).trim()
-      : "";
-    const start = parseDateStringISTStart(startDateStr);
-    if (!start) {
+    // ⭐ NEW: Check if already completed today (delivered, reached, or check reason)
+    const todayEntry = data?.last8Days?.[today];
+    const todayStatus = String(
+      typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const completedStatuses = [
+      "delivered",
+      "reached",
+      "price_mismatch",
+      "shop_closed",
+      "stock_available",
+      "other_vendor",
+    ];
+
+    const isCompleted = completedStatuses.includes(todayStatus);
+
+    if (isCompleted) {
       if (debugThisDoc) {
-        console.log("[skipDeliveryCron][debug] skip: invalid startDate", {
-          startDate: startDateStr,
-        });
+        console.log(
+          "[skipDeliveryCron][weekly] Already completed today, skipping",
+          {
+            today,
+            status: todayStatus,
+          },
+        );
       }
-      continue;
+      continue; // ← Skip this customer - don't modify todayOverride
     }
 
-    eligible += 1;
+    // ✅ Determine if delivery should be ON based on weeklySchedule
+    const shouldDeliver = weeklySchedule[weekday] === true;
 
-    const days = clampDays0to6(skipConfig.days);
-
-    // ✅ FIX: Reset AUTO customers with days <= 0 to prevent infinite OFF state
-    // When days <= 0, skip window is invalid/completed, reset todayOverride to ON
-    // (skipConfig remains unchanged)
-    if (days <= 0) {
-      console.log(
-        "[skipDeliveryCron] ⚠️  AUTO with days<=0 - RESETTING TO ON",
-        {
-        custid: doc.id,
+    if (debugThisDoc) {
+      console.log("[skipDeliveryCron][weekly] Computed status", {
         today,
-        rawDays: skipConfig.days,
-        normalizedDays: days,
-        startDate: startDateStr,
-      },
-      );
-
-      batch.update(doc.ref, {
-        todayOverride: {
-          date: today,
-          status: "ON",
-          type: "SYSTEM",
-        },
+        weekday,
+        weeklySchedule,
+        shouldDeliver,
+        existingStatus: existingOverride?.status,
       });
-
-      batchCount += 1;
-      updated += 1;
-
-      await commitBatchIfNeeded(false);
-      continue;
     }
 
-    const diffDays = Math.floor(
-      (todayStart.getTime() - start.getTime()) / 86400000,
-    );
+    const status = shouldDeliver ? "ON" : "OFF";
 
-    // If skip window is completed, reset todayOverride to ON.
-    // Condition: diffDays > days  (skip starts from NEXT day, so days are counted after startDate)
-    // Note: skipConfig remains unchanged to preserve AUTO skip settings
-    if (diffDays > days) {
-      if (debugThisDoc) {
-        console.log("[skipDeliveryCron][debug] reset: skip completed", {
-          today,
-          startDate: startDateStr,
-          diffDays,
-          days,
-        });
-      }
-
-      batch.update(doc.ref, {
-        todayOverride: {
-          date: today,
-          status: "ON",
-          type: "SYSTEM",
-        },
-      });
-
-      batchCount += 1;
-      updated += 1;
-
-      await commitBatchIfNeeded(false);
-      continue;
-    }
-
-    // Skip starts from NEXT day.
-    const status = diffDays >= 1 && diffDays <= days ? "OFF" : "ON";
-
+    // ✅ Optimization: Don't write if already correct for today
     const existingStatus = existingOverride?.status
       ? String(existingOverride.status).trim().toUpperCase()
       : null;
 
-    if (debugThisDoc) {
-      console.log("[skipDeliveryCron] AUTO skip: computed status", {
-        custid: doc.id,
-        today,
-        startDate: startDateStr,
-        diffDays,
-        days,
-        status,
-        existingStatus,
-        shouldUpdate: !(
-          existingOverrideDate === today && existingStatus === status
-        ),
-      });
-    }
-
-    // ✅ Optimization: Don't write if already correct for today
-    // (Prevents redundant writes, not same-day protection)
-    if (existingOverrideDate === today && existingStatus === status) {
+    if (
+      existingOverrideDate === today &&
+      existingStatus === status &&
+      existingOverrideType === "SYSTEM"
+    ) {
       if (debugThisDoc) {
         console.log(
-          "[skipDeliveryCron][debug] AUTO skip: already correct for today",
+          "[skipDeliveryCron][weekly] Already correct for today, skipping",
           {
             today,
             status,
@@ -372,11 +254,8 @@ export const runSkipDeliveryJobOnce = async () => {
     }
 
     if (debugThisDoc) {
-      console.log("[skipDeliveryCron][debug] AUTO skip: computed status", {
+      console.log("[skipDeliveryCron][weekly] Updating todayOverride", {
         today,
-        startDate: startDateStr,
-        diffDays,
-        days,
         status,
       });
     }
@@ -402,7 +281,7 @@ export const runSkipDeliveryJobOnce = async () => {
   }
 
   console.log(
-    `[skipDeliveryCron] ${today}: autoDetected=${autoDetected}, eligible=${eligible}, updated=${updated}`,
+    `[skipDeliveryCron][weekly] ${today} weekday=${weekday}: processed=${processed}, updated=${updated}`,
   );
 };
 
@@ -434,7 +313,7 @@ export const startSkipDeliveryCron = () => {
 
   // ✅ NEW: Run on startup if today's cron hasn't executed yet
   // This ensures skip configs are processed even if server restarted after midnight
-   // Run startup recovery ONLY in production
+  // Run startup recovery ONLY in production
   if (process.env.NODE_ENV === "production") {
     (async () => {
       try {
