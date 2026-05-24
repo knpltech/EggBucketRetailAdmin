@@ -136,6 +136,26 @@ const Analytics = () => {
           return String(a.name || "").localeCompare(String(b.name || ""));
         });
       }
+      if (option === "skip") {
+        sorted.sort((a, b) => {
+          const skipA = getSkipSelectValue(a);
+          const skipB = getSkipSelectValue(b);
+          if (skipA === skipB) {
+            return String(a.name || "").localeCompare(String(b.name || ""));
+          }
+          return skipA.localeCompare(skipB);
+        });
+      }
+      if (option === "peakFreq") {
+        sorted.sort((a, b) => {
+          const pA = getPeakFrequencyNumber(a);
+          const pB = getPeakFrequencyNumber(b);
+          if (pA === pB) {
+            return String(a.name || "").localeCompare(String(b.name || ""));
+          }
+          return pB - pA; // Descending by default for frequency
+        });
+      }
       setCustomers(sorted);
       setCurrentPage(1);
       setExpandedCustomerId(null);
@@ -429,6 +449,8 @@ const Analytics = () => {
             <option value="createdAt">Created Date</option>
             <option value="zone">Zone </option>
             <option value="status">Delivery-Plan(ON first)</option>
+            <option value="skip">Skip Frequency</option>
+            <option value="peakFreq">Peak Frequency</option>
           </select>
 
           <input
@@ -538,6 +560,12 @@ const Analytics = () => {
                   <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
                     Delivery Plan
                   </th>
+                  <th className="px-1.5 py-2 text-center font-semibold w-[80px]">
+                    Skip
+                  </th>
+                  <th className="px-1.5 py-2 text-center font-semibold w-[100px]">
+                    Peak Freq
+                  </th>
                   {last7DaysHeader.map((d, i) => (
                     <th
                       key={i}
@@ -569,6 +597,14 @@ const Analytics = () => {
                       {/* Delivery Plan */}
                       <td className="px-1.5 py-2">
                         <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
+                      </td>
+                      {/* Skip */}
+                      <td className="px-1.5 py-2">
+                        <div className="w-12 h-4 bg-gray-300 rounded mx-auto animate-pulse"></div>
+                      </td>
+                      {/* Peak Frequency */}
+                      <td className="px-1.5 py-2">
+                        <div className="w-8 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                       </td>
                       {[...Array(8)].map((_, i) => (
                         <td key={i} className="px-1 py-2 text-center">
@@ -620,6 +656,17 @@ const Analytics = () => {
                               );
                             })()}
                           </td>
+                          <td className="px-1.5 py-2 text-center font-medium text-xs text-gray-700">
+                            {getSkipDisplay(c)}
+                          </td>
+                          <td className="px-1.5 py-2 text-center">
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                              style={{ backgroundColor: getPeakFrequencyColor(c) }}
+                            >
+                              {getPeakFrequencyLabel(c)}
+                            </span>
+                          </td>
                           {c.last7.map((d, index) => (
                             <td key={index} className="px-1 py-2 text-center">
                               {getStatusPill(d.type)}
@@ -629,7 +676,7 @@ const Analytics = () => {
 
                         {isExpanded && (
                           <tr className="border-t border-gray-100 bg-blue-50/40">
-                            <td colSpan={detailColumnSpan} className="px-4 py-4">
+                            <td colSpan={detailColumnSpan + 2} className="px-4 py-4">
                               <div className="grid gap-4 md:grid-cols-[96px_1fr]">
                                 <div className="flex justify-center md:justify-start">
                                   {c.imageUrl ? (
@@ -784,8 +831,79 @@ function getDateStringInTimeZone(date, timeZone) {
     // fall through
   }
 
-  // Fallback (UTC)
+// Fallback (UTC)
   return new Date().toISOString().slice(0, 10);
+}
+
+function clampDays0to6(value) {
+  let n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  n = Math.floor(n);
+  if (n < 0) return 0;
+  if (n > 6) return 6;
+  return n;
+}
+
+function getSkipSelectValue(customer) {
+  const cfg = customer?.skipConfig;
+  if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
+  return `AUTO:${clampDays0to6(cfg.days)}`;
+}
+
+function getSkipDisplay(customer) {
+  const val = getSkipSelectValue(customer);
+  if (val === "MANUAL") return "Manual";
+  const num = val.split(":")[1];
+  return `${num} Days`;
+}
+
+function normalizePeakFrequency(value) {
+  const raw = String(value ?? "").trim().toUpperCase();
+  if (/^D[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `D${raw}`;
+  return "";
+}
+
+function getFrequencyNumber(value) {
+  const normalized = normalizePeakFrequency(value);
+  const n = Number(String(normalized).slice(1));
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
+}
+
+function getDeliveredCountForAnalytics(customer) {
+  if (!customer?.last7) return 0;
+  // customer.last7 has 8 elements (index 0 is 7 days ago, index 7 is today)
+  // We want to count deliveries from today down to 6 days ago (last 7 elements)
+  return customer.last7.slice(1).filter((d) => {
+    const type = String(d.type || "").trim().toLowerCase();
+    return type === "delivered";
+  }).length;
+}
+
+function getPeakFrequencyLabel(customer) {
+  const currentPeak = `D${getDeliveredCountForAnalytics(customer)}`;
+  const savedPeak = normalizePeakFrequency(
+    customer?.Peak_Frequency ||
+    customer?.peakFrequency ||
+    customer?.peak_frequency
+  );
+
+  if (!savedPeak) return currentPeak;
+
+  return getFrequencyNumber(savedPeak) >= getFrequencyNumber(currentPeak)
+    ? savedPeak
+    : currentPeak;
+}
+
+function getPeakFrequencyNumber(customer) {
+  return getFrequencyNumber(getPeakFrequencyLabel(customer));
+}
+
+function getPeakFrequencyColor(customer) {
+  const n = getPeakFrequencyNumber(customer);
+  if (n <= 2) return "#FF3B30";
+  if (n <= 4) return "#FB8C00";
+  return "#0F9D58";
 }
 
 export default Analytics;

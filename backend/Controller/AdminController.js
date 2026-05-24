@@ -1059,6 +1059,8 @@ const getAnalyticsLast8 = async (req, res) => {
         createdAt: c.createdAt,
         zone: c.zone || "UNASSIGNED",
         todayOverride: c.todayOverride || null,
+        skipConfig: c.skipConfig || null,
+        Peak_Frequency: c.Peak_Frequency || c.peakFrequency || c.peak_frequency || null,
         deliveries,
       };
     });
