@@ -111,6 +111,50 @@ export function getDeliveryGapNumber(value) {
   return Number.isFinite(n) && n >= 0 && n <= 10 ? n : 10;
 }
 
+export const getTodayEffectiveStatus = (
+  customer,
+  todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata"),
+) => {
+  const last8Days = customer?.last8Days || {};
+  const override = customer?.todayOverride;
+  const entry = last8Days[todayDate];
+  const deliveredStatus = String(
+    typeof entry === "string" ? entry : entry?.status || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (deliveredStatus === "delivered") return "OFF";
+
+  if (override) {
+    const overrideType = String(override.type || "")
+      .trim()
+      .toUpperCase();
+
+    if (overrideType === "MANUAL") {
+      return String(override.status || "")
+        .trim()
+        .toUpperCase() === "OFF"
+        ? "OFF"
+        : "ON";
+    }
+
+    const overrideDate = override?.date
+      ? String(override.date).slice(0, 10)
+      : null;
+
+    if (overrideDate === todayDate) {
+      return String(override.status || "")
+        .trim()
+        .toUpperCase() === "OFF"
+        ? "OFF"
+        : "ON";
+    }
+  }
+
+  return "ON";
+};
+
 export const generateAISuggestion = (customer, logicOption = "logic1") => {
   const skipConfig = customer?.skipConfig || {};
 

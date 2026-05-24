@@ -1,4 +1,5 @@
 import React from "react";
+import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 
 const getSuggestionConfig = (suggestion, reason, score) => {
   const scoreReason = String(reason || "").includes("AI Score")
@@ -219,7 +220,7 @@ const AISuggestionRow = ({
   onApplySuggestion,
   isUpdating = false,
 }) => {
-  const isTodayOn = customer?.todayOverride?.status === "ON";
+  const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
   const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
   const peakFrequency = resolvePeakFrequency(customer);

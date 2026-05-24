@@ -8,6 +8,9 @@ import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
+import {
+  getTodayEffectiveStatus as resolveTodayEffectiveStatus,
+} from "../utils/aiSuggestionEngine";
 
 // TABS
 const TABS = ["ALL", "ONBOARDING", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"];
@@ -115,39 +118,7 @@ export default function CustomerManagement() {
   };
 
   const getTodayEffectiveStatus = (customer) => {
-    const last8Days = customer?.last8Days || {};
-    const override = customer?.todayOverride;
-    const entry = last8Days[todayDate];
-    const status = typeof entry === "string" ? entry : entry?.status;
-    if (status === "delivered") return "OFF";
-    if (override) {
-      const overrideType = String(override.type || "")
-        .trim()
-        .toUpperCase();
-
-      // MANUAL override persists forever
-      if (overrideType === "MANUAL") {
-        return String(override.status || "")
-          .trim()
-          .toUpperCase() === "OFF"
-          ? "OFF"
-          : "ON";
-      }
-
-      // SYSTEM override works only for same day
-      const overrideDate = override?.date
-        ? String(override.date).slice(0, 10)
-        : null;
-
-      if (overrideDate === todayDate) {
-        return String(override.status || "")
-          .trim()
-          .toUpperCase() === "OFF"
-          ? "OFF"
-          : "ON";
-      }
-    }
-    return "ON";
+    return resolveTodayEffectiveStatus(customer, todayDate);
   };
 
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────

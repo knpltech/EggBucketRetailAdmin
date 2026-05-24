@@ -7,6 +7,7 @@ import {
   getDateStringInTimeZone,
   getDeliveryGapNumber,
   getPeakFrequencyNumber,
+  getTodayEffectiveStatus,
   normalizeDeliveryGap,
   resolvePeakFrequency,
 } from "../utils/aiSuggestionEngine";
@@ -145,14 +146,14 @@ const AISuggestions = () => {
         return dataToSort.sort((a, b) => (b.customer.name || "").localeCompare(a.customer.name || ""));
       case "TOGGLE_ON_FIRST":
         return dataToSort.sort((a, b) => {
-          const aOn = a.customer.todayOverride?.status === "ON" ? 1 : 0;
-          const bOn = b.customer.todayOverride?.status === "ON" ? 1 : 0;
+          const aOn = getTodayEffectiveStatus(a.customer) === "ON" ? 1 : 0;
+          const bOn = getTodayEffectiveStatus(b.customer) === "ON" ? 1 : 0;
           return bOn - aOn;
         });
       case "TOGGLE_OFF_FIRST":
         return dataToSort.sort((a, b) => {
-          const aOn = a.customer.todayOverride?.status === "ON" ? 1 : 0;
-          const bOn = b.customer.todayOverride?.status === "ON" ? 1 : 0;
+          const aOn = getTodayEffectiveStatus(a.customer) === "ON" ? 1 : 0;
+          const bOn = getTodayEffectiveStatus(b.customer) === "ON" ? 1 : 0;
           return aOn - bOn;
         });
       case "PEAK_FREQUENCY":
