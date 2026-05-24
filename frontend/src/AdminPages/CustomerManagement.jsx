@@ -437,10 +437,34 @@ export default function CustomerManagement() {
                     const effective = getTodayEffectiveStatus(c);
                     const isOn = effective === "ON";
                     const isUpdating = updatingTodayId === c.id;
+
+                    // Detect today's delivery/check status
+                    const last8Days = c.last8Days || {};
+                    const todayEntry = last8Days[todayDate];
+                    const todayStatus = String(
+                      typeof todayEntry === "string"
+                        ? todayEntry
+                        : todayEntry?.status || ""
+                    )
+                      .trim()
+                      .toLowerCase();
+
+                    const isLocked = [
+                      "delivered",
+                      "checked",
+                      "reached",
+                      "price_mismatch",
+                      "stock_available",
+                      "other_vendor",
+                      "shop_closed",
+                    ].includes(todayStatus);
+
                     return (
-                      <label className={`relative inline-flex items-center ${isUpdating ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}>
+                      <label className={`relative inline-flex items-center ${isUpdating || isLocked
+                        ? "opacity-50 cursor-not-allowed"
+                        : "cursor-pointer"}`}>
                         <input type="checkbox" className="sr-only peer" checked={isOn}
-                          disabled={isUpdating} onChange={() => toggleTodayDelivery(c)}
+                          disabled={isUpdating || isLocked} onChange={() => toggleTodayDelivery(c)}
                           aria-label={isOn ? "Today: ON" : "Today: OFF"} />
                         <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
                         <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
