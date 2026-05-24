@@ -276,13 +276,16 @@ export const runSkipDeliveryJobOnce = async () => {
     // When days <= 0, skip window is invalid/completed, reset todayOverride to ON
     // (skipConfig remains unchanged)
     if (days <= 0) {
-      if (debugThisDoc) {
-        console.log("[skipDeliveryCron][debug] reset: AUTO with days<=0", {
+      console.log(
+        "[skipDeliveryCron] ⚠️  AUTO with days<=0 - RESETTING TO ON",
+        {
+          custid: doc.id,
           today,
           rawDays: skipConfig.days,
           normalizedDays: days,
-        });
-      }
+          startDate: startDateStr,
+        },
+      );
 
       batch.update(doc.ref, {
         todayOverride: {
@@ -337,6 +340,21 @@ export const runSkipDeliveryJobOnce = async () => {
     const existingStatus = existingOverride?.status
       ? String(existingOverride.status).trim().toUpperCase()
       : null;
+
+    if (debugThisDoc) {
+      console.log("[skipDeliveryCron] AUTO skip: computed status", {
+        custid: doc.id,
+        today,
+        startDate: startDateStr,
+        diffDays,
+        days,
+        status,
+        existingStatus,
+        shouldUpdate: !(
+          existingOverrideDate === today && existingStatus === status
+        ),
+      });
+    }
 
     // ✅ Optimization: Don't write if already correct for today
     // (Prevents redundant writes, not same-day protection)
@@ -413,4 +431,16 @@ export const startSkipDeliveryCron = () => {
   );
 
   console.log(`[skipDeliveryCron] Scheduled: ${cronExpr} (${INDIA_TZ})`);
+
+  // ✅ NEW: Run on startup if today's cron hasn't executed yet
+  // This ensures skip configs are processed even if server restarted after midnight
+  (async () => {
+    try {
+      console.log("[skipDeliveryCron] Running startup check...");
+      await runSkipDeliveryJobOnce();
+      console.log("[skipDeliveryCron] Startup check completed");
+    } catch (err) {
+      console.error("[skipDeliveryCron] Startup check error:", err);
+    }
+  })();
 };
