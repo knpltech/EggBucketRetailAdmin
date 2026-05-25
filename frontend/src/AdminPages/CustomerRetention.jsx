@@ -203,11 +203,6 @@ const getStatusFromDelivery = (delivery) => {
     };
   }
 
-  // If the backend already processed this into a status object, use it directly
-  if (delivery.key) {
-    return delivery;
-  }
-
   const apiStatus = String(delivery.status || "")
     .trim()
     .toLowerCase();
@@ -229,33 +224,36 @@ const getStatusFromDelivery = (delivery) => {
     : checkedCategories.includes(normalizedReasonLabel)
       ? normalizedReasonLabel
       : "";
-  const categoryLabel =
-    category === "stock_available"
-      ? "Stock Available"
-      : category === "shop_closed"
-        ? "Shop Closed"
-        : category === "other_vendor"
-          ? "Other Vendor"
-          : "";
 
-  if (apiStatus === "delivered" || type === "delivered") {
+  if (delivery.key === "delivered" || apiStatus === "delivered" || type === "delivered") {
     return {
       key: "delivered",
       label: "Delivered",
-      category: "",
-      categoryLabel: "",
-      reason: "",
+      category: "stock_available",
+      categoryLabel: "Stock Available",
+      reason: "Stock Available",
       traysDelivered: getDeliveredTrayCount(delivery),
     };
   }
 
-  if (apiStatus === "checked" || CHECKED_TYPES.includes(type) || category) {
+  const isChecked = delivery.key === "checked" || apiStatus === "checked" || CHECKED_TYPES.includes(type) || category;
+  if (isChecked) {
+    const finalCategory = category || delivery.category || "";
+    const finalCategoryLabel =
+      finalCategory === "stock_available"
+        ? "Stock Available"
+        : (finalCategory === "shop_closed" || finalCategory === "price_mismatch")
+          ? "Shop Closed"
+          : finalCategory === "other_vendor"
+            ? "Other Vendor"
+            : "";
+
     return {
       key: "checked",
       label: "Checked",
-      category,
-      categoryLabel,
-      reason: reason || categoryLabel,
+      category: finalCategory,
+      categoryLabel: finalCategoryLabel,
+      reason: reason || delivery.reason || finalCategoryLabel,
     };
   }
 
@@ -315,6 +313,40 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
   );
 });
 
+const computeCategoryStats = (customers, todayDateKey) => {
+  const stats = {
+    stockAvailable: 0,
+    shopClosed: 0,
+    otherVendor: 0,
+    totalShops: 0,
+  };
+
+  if (!Array.isArray(customers)) return stats;
+
+  customers.forEach((customer) => {
+    const category = customer.days?.[todayDateKey]?.category;
+
+    switch (category) {
+      case "stock_available":
+        stats.stockAvailable++;
+        break;
+      case "price_mismatch":
+      case "shop_closed":
+        stats.shopClosed++;
+        break;
+      case "other_vendor":
+        stats.otherVendor++;
+        break;
+      default:
+        break;
+    }
+  });
+
+  stats.totalShops = customers.length;
+
+  return stats;
+};
+
 const CustomerRetention = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -346,7 +378,8 @@ const CustomerRetention = () => {
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
       const cacheKey = `retention:v3:${date}:${category}:${agent}:${sort}:${page}`;
-      const cached = cacheRef.current[cacheKey];
+      const isToday = date === getTodayDate();
+      const cached = isToday ? null : cacheRef.current[cacheKey];
 
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
@@ -491,45 +524,27 @@ const CustomerRetention = () => {
       if (!agentName || agentName === "-") return;
 
       if (!statsMap[agentName]) {
-        statsMap[agentName] = {
-          name: agentName,
-          checked: 0,
-          delivered: 0,
-          total: 0,
-        };
+        statsMap[agentName] = [];
       }
-
-      const todayStatus = customer.days?.[todayDateKey];
-      if (todayStatus) {
-        if (todayStatus.key === "checked") {
-          statsMap[agentName].checked += 1;
-        } else if (todayStatus.key === "delivered") {
-          statsMap[agentName].delivered += 1;
-        }
-      }
+      statsMap[agentName].push(customer);
     });
 
-    return Object.values(statsMap)
-      .map((agent) => ({
-        ...agent,
-        total: agent.checked + agent.delivered,
+    return Object.keys(statsMap)
+      .map((agentName) => ({
+        name: agentName,
+        ...computeCategoryStats(statsMap[agentName], todayDateKey),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [allCustomersForStats, dates]);
 
   const computedOverallStats = useMemo(() => {
-    const overall = { checked: 0, delivered: 0, total: 0 };
-    computedAgentStats.forEach((agent) => {
-      overall.checked += agent.checked;
-      overall.delivered += agent.delivered;
-      overall.total += agent.total;
-    });
-    return overall;
-  }, [computedAgentStats]);
+    const todayDateKey = dates[dates.length - 1];
+    return computeCategoryStats(allCustomersForStats, todayDateKey);
+  }, [allCustomersForStats, dates]);
 
   const currentAgentStats = selectedAgent === "all"
     ? computedOverallStats
-    : (computedAgentStats.find((a) => a.name === selectedAgent) || { checked: 0, delivered: 0, total: 0 });
+    : (computedAgentStats.find((a) => a.name === selectedAgent) || { stockAvailable: 0, shopClosed: 0, otherVendor: 0, totalShops: 0 });
 
   // Load data whenever relevant state changes
   useEffect(() => {
@@ -733,7 +748,7 @@ const CustomerRetention = () => {
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
-            Customer Retention
+            Shop Availability & Vendor Retention Analytics
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             Shows 3 past dates plus the selected today date.
@@ -803,11 +818,11 @@ const CustomerRetention = () => {
               className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">
-                {`All Delivery Agents | Checked: ${computedOverallStats.checked} | Delivered: ${computedOverallStats.delivered} | Total: ${computedOverallStats.total}`}
+                {`All Delivery Agents | Stock Available: ${computedOverallStats.stockAvailable} | Shop Closed: ${computedOverallStats.shopClosed} | Other Vendor: ${computedOverallStats.otherVendor} | Total Shops: ${computedOverallStats.totalShops}`}
               </option>
               {computedAgentStats.map((agent) => (
                 <option key={agent.name} value={agent.name}>
-                  {`${agent.name} | Checked: ${agent.checked} | Delivered: ${agent.delivered} | Total: ${agent.total}`}
+                  {`${agent.name} | Stock Available: ${agent.stockAvailable} | Shop Closed: ${agent.shopClosed} | Other Vendor: ${agent.otherVendor} | Total Shops: ${agent.totalShops}`}
                 </option>
               ))}
             </select>
@@ -864,14 +879,17 @@ const CustomerRetention = () => {
           <span className="text-sm font-semibold uppercase tracking-wide text-slate-700 mr-2">
             {selectedAgent === "all" ? "All Delivery Agents" : selectedAgent}
           </span>
-          <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 border border-yellow-300 shadow-sm transition-all hover:scale-105">
-            Checked: {currentAgentStats.checked}
+          <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Stock Available: {currentAgentStats.stockAvailable}
           </span>
-          <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 border border-green-300 shadow-sm transition-all hover:scale-105">
-            Delivered: {currentAgentStats.delivered}
+          <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Shop Closed: {currentAgentStats.shopClosed}
           </span>
-          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800 border border-slate-300 shadow-sm transition-all hover:scale-105">
-            Total: {currentAgentStats.total}
+          <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Other Vendor: {currentAgentStats.otherVendor}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Total Shops: {currentAgentStats.totalShops}
           </span>
         </div>
       )}
@@ -888,14 +906,17 @@ const CustomerRetention = () => {
                   {agent.name}
                 </span>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 border border-yellow-300 shadow-sm transition-all hover:scale-105">
-                    Checked: {agent.checked}
+                  <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Stock Available: {agent.stockAvailable}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 border border-green-300 shadow-sm transition-all hover:scale-105">
-                    Delivered: {agent.delivered}
+                  <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Shop Closed: {agent.shopClosed}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800 border border-slate-300 shadow-sm transition-all hover:scale-105">
-                    Total: {agent.total}
+                  <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Other Vendor: {agent.otherVendor}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Total Shops: {agent.totalShops}
                   </span>
                 </div>
               </div>
