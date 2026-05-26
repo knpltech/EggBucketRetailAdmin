@@ -8,6 +8,7 @@ const AnalyticsView = () => {
   const [allCustomers, setAllCustomers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [latestRemarks, setLatestRemarks] = useState({});
   const [sortOption, setSortOption] = useState("name");
 
   useEffect(() => {
@@ -32,6 +33,13 @@ const AnalyticsView = () => {
 
       setAllCustomers(full);
       setCustomers(full);
+      // Fetch latest remarks separately and merge on the client
+      try {
+        const remarksRes = await axios.get(`${ADMIN_PATH}/customer/latest-remarks`);
+        setLatestRemarks(remarksRes.data || {});
+      } catch (remErr) {
+        console.log("Failed to load latest remarks:", remErr);
+      }
     } catch (err) {
       console.log("Analytics load error:", err);
     } finally {
@@ -231,6 +239,9 @@ const AnalyticsView = () => {
               <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
                 Zone
               </th>
+              <th className="px-1.5 py-2 text-left font-semibold w-[160px]">
+                Remarks
+              </th>
               {last7DaysHeader.map((d, i) => (
                 <th
                   key={i}
@@ -289,6 +300,9 @@ const AnalyticsView = () => {
                     </td>
                     <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                       {c.zone || "UNASSIGNED"}
+                    </td>
+                    <td className="px-1.5 py-2 text-sm text-gray-700 max-w-[220px] truncate">
+                      {c.remarks || latestRemarks[c.id] || "-"}
                     </td>
                     {c.last7.map((d, index) => (
                       <td key={index} className="px-1 py-2 text-center">
