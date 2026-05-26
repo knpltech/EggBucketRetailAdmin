@@ -1162,10 +1162,33 @@ const getAnalyticsLast8 = async (req, res) => {
 
       // Convert to deliveries array for frontend compatibility
       // Handle BOTH old format (string) and new format (object with status field)
-      const deliveries = Object.entries(last8Days).map(([date, entry]) => ({
-        id: date,
-        type: resolveLast8DaysDeliveryType(entry),
-      }));
+      const deliveries = Object.entries(last8Days).map(([date, entry]) => {
+        const entryObj =
+          typeof entry === "string" ? { status: entry } : entry || {};
+
+        const type = resolveLast8DaysDeliveryType(entryObj);
+        const reason = String(entryObj.reason || entryObj.checkReason || "")
+          .trim();
+
+        const traysDeliveredRaw =
+          entryObj.traysDelivered ??
+          entryObj.trays ??
+          entryObj.quantity ??
+          entryObj.trayCount ??
+          null;
+
+        const traysDelivered = Number.isFinite(Number(traysDeliveredRaw))
+          ? Number(traysDeliveredRaw)
+          : null;
+
+        return {
+          id: date,
+          type,
+          reason,
+          traysDelivered,
+          time: entryObj.time || entryObj.timestamp || null,
+        };
+      });
 
       return {
         id: customerId,
@@ -1174,6 +1197,9 @@ const getAnalyticsLast8 = async (req, res) => {
         imageUrl: c.imageUrl || "",
         createdAt: c.createdAt,
         zone: c.zone || "UNASSIGNED",
+        remarks: c.remarks || "",
+        latestRemark: c.latestRemark || "",
+        last8DaysUpdatedAt: c.last8DaysUpdatedAt || null,
         todayOverride: c.todayOverride || null,
         skipConfig: c.skipConfig || null,
         Peak_Frequency:

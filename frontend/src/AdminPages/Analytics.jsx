@@ -54,6 +54,11 @@ const Analytics = () => {
 
         // If today's delivery is missing, derive type from latestRemark
         let type = found ? found.type : null;
+        let reason = String(found?.reason || "").trim();
+        const traysDelivered = Number.isFinite(Number(found?.traysDelivered))
+          ? Number(found.traysDelivered)
+          : null;
+        let time = found?.time || null;
 
         if (!type && i === 0 && latestRemark) {
           // Today: check latestRemark to determine type
@@ -63,11 +68,15 @@ const Analytics = () => {
             type = "delivered";
           } else if (remark && remark !== "-") {
             type = "reached"; // Assume checked status for non-tray remarks
+            reason = remark;
           }
         }
 
         result.push({
           type,
+          reason,
+          traysDelivered,
+          time,
           date: d,
         });
       }
@@ -136,16 +145,6 @@ const Analytics = () => {
           return String(a.name || "").localeCompare(String(b.name || ""));
         });
       }
-      if (option === "skip") {
-        sorted.sort((a, b) => {
-          const skipA = getSkipSelectValue(a);
-          const skipB = getSkipSelectValue(b);
-          if (skipA === skipB) {
-            return String(a.name || "").localeCompare(String(b.name || ""));
-          }
-          return skipA.localeCompare(skipB);
-        });
-      }
       if (option === "peakFreq") {
         sorted.sort((a, b) => {
           const pA = getPeakFrequencyNumber(a);
@@ -183,8 +182,15 @@ const Analytics = () => {
     if (normalizedType === "delivered") {
       bg = "#0F9D58"; // green
       text = "DELIVERED";
-    } else if (normalizedType === "reached" || normalizedType === "checked") {
-      // Backend sends "reached"; "checked" kept for backward compatibility
+    } else if (
+      normalizedType === "reached" ||
+      normalizedType === "checked" ||
+      normalizedType === "price_mismatch" ||
+      normalizedType === "shop_closed" ||
+      normalizedType === "stock_available" ||
+      normalizedType === "other_vendor"
+    ) {
+      // All "checked" variants
       bg = "#FB8C00"; // orange-yellow
       text = "CHECKED";
     } else {
@@ -285,7 +291,16 @@ const Analytics = () => {
     const s = (type || "").toString().trim().toLowerCase();
 
     if (s === "delivered") return "DELIVERED ";
-    if (s === "reached" || s === "checked") return "CHECKED ";
+    if (
+      s === "reached" ||
+      s === "checked" ||
+      s === "price_mismatch" ||
+      s === "shop_closed" ||
+      s === "stock_available" ||
+      s === "other_vendor"
+    ) {
+      return "CHECKED ";
+    }
 
     return "PENDING ";
   };
@@ -401,7 +416,8 @@ const Analytics = () => {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
-  const detailColumnSpan = 4 + last7DaysHeader.length;
+  // non-day columns now: CustId, Name, Zone, Delivery Plan, Peak Freq => 5
+  const detailColumnSpan = 3 + last7DaysHeader.length;
 
   const getPageButtons = () => {
     if (totalPages <= 7) {
@@ -449,7 +465,7 @@ const Analytics = () => {
             <option value="createdAt">Created Date</option>
             <option value="zone">Zone </option>
             <option value="status">Delivery-Plan(ON first)</option>
-            <option value="skip">Skip Frequency</option>
+            {/* Skip option removed */}
             <option value="peakFreq">Peak Frequency</option>
           </select>
 
@@ -560,9 +576,6 @@ const Analytics = () => {
                   <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
                     Delivery Plan
                   </th>
-                  <th className="px-1.5 py-2 text-center font-semibold w-[80px]">
-                    Skip
-                  </th>
                   <th className="px-1.5 py-2 text-center font-semibold w-[100px]">
                     Peak Freq
                   </th>
@@ -597,10 +610,6 @@ const Analytics = () => {
                       {/* Delivery Plan */}
                       <td className="px-1.5 py-2">
                         <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
-                      </td>
-                      {/* Skip */}
-                      <td className="px-1.5 py-2">
-                        <div className="w-12 h-4 bg-gray-300 rounded mx-auto animate-pulse"></div>
                       </td>
                       {/* Peak Frequency */}
                       <td className="px-1.5 py-2">
@@ -656,9 +665,6 @@ const Analytics = () => {
                               );
                             })()}
                           </td>
-                          <td className="px-1.5 py-2 text-center font-medium text-xs text-gray-700">
-                            {getSkipDisplay(c)}
-                          </td>
                           <td className="px-1.5 py-2 text-center">
                             <span
                               className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
@@ -667,11 +673,20 @@ const Analytics = () => {
                               {getPeakFrequencyLabel(c)}
                             </span>
                           </td>
-                          {c.last7.map((d, index) => (
-                            <td key={index} className="px-1 py-2 text-center">
-                              {getStatusPill(d.type)}
-                            </td>
-                          ))}
+                          {c.last7.map((d, index) => {
+                            const remarkText = getDayRemarkText(d);
+
+                            return (
+                              <td key={index} className="px-1 py-2 text-center align-top">
+                                <div className="flex flex-col items-center gap-1">
+                                  {getStatusPill(d.type)}
+                                  <p className="text-[10px] leading-3 text-gray-700 max-w-[92px] min-h-[20px] text-center break-words">
+                                    {remarkText}
+                                  </p>
+                                </div>
+                              </td>
+                            );
+                          })}
                         </tr>
 
                         {isExpanded && (
@@ -690,17 +705,6 @@ const Analytics = () => {
                                       No Image
                                     </div>
                                   )}
-                                </div>
-
-                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                  <div className="rounded-lg bg-white p-3 shadow-sm">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                      Customer ID
-                                    </p>
-                                    <p className="mt-1 text-sm font-semibold text-gray-900">
-                                      {c.custid || "N/A"}
-                                    </p>
-                                  </div>
                                   <div className="rounded-lg bg-white p-3 shadow-sm">
                                     <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                                       Name
@@ -835,26 +839,49 @@ function getDateStringInTimeZone(date, timeZone) {
   return new Date().toISOString().slice(0, 10);
 }
 
-function clampDays0to6(value) {
-  let n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  n = Math.floor(n);
-  if (n < 0) return 0;
-  if (n > 6) return 6;
-  return n;
+// Skip column removed — related helper functions intentionally deleted
+
+function normalizeReasonLabel(value) {
+  const raw = String(value || "")
+    .trim()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (!raw) return "";
+
+  return raw
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
-function getSkipSelectValue(customer) {
-  const cfg = customer?.skipConfig;
-  if (!cfg || String(cfg.type || "").toUpperCase() !== "AUTO") return "MANUAL";
-  return `AUTO:${clampDays0to6(cfg.days)}`;
-}
+function getDayRemarkText(day = {}) {
+  const type = String(day.type || "")
+    .trim()
+    .toLowerCase();
 
-function getSkipDisplay(customer) {
-  const val = getSkipSelectValue(customer);
-  if (val === "MANUAL") return "Manual";
-  const num = val.split(":")[1];
-  return `${num} Days`;
+  if (type === "delivered") {
+    const qty = Number(day.traysDelivered);
+    if (Number.isFinite(qty) && qty > 0) {
+      return `${qty} ${qty === 1 ? "tray" : "trays"}`;
+    }
+    return "-";
+  }
+
+  if (
+    [
+      "checked",
+      "reached",
+      "price_mismatch",
+      "shop_closed",
+      "stock_available",
+      "other_vendor",
+    ].includes(type)
+  ) {
+    return normalizeReasonLabel(day.reason) || "Checked";
+  }
+
+  return "-";
 }
 
 function normalizePeakFrequency(value) {
