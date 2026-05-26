@@ -60,17 +60,8 @@ const Analytics = () => {
           : null;
         let time = found?.time || null;
 
-        if (!type && i === 0 && latestRemark) {
-          // Today: check latestRemark to determine type
-          const remark = (latestRemark || "").trim();
-          const isTrayFormat = /^\d+\s+trays?$|^10\+\s+trays$/i.test(remark);
-          if (isTrayFormat) {
-            type = "delivered";
-          } else if (remark && remark !== "-") {
-            type = "reached"; // Assume checked status for non-tray remarks
-            reason = remark;
-          }
-        }
+        // The previous heuristic for deriving today's type from latestRemark has been removed.
+        // It caused today's status to incorrectly show as delivered/checked based on yesterday's remark.
 
         result.push({
           type,
