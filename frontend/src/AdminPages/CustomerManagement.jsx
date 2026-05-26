@@ -234,6 +234,24 @@ export default function CustomerManagement() {
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
       );
       return [...withR, ...noR];
+    } else if (sortBy === "weeklySchedule") {
+      list.sort((a, b) => {
+        const getDaysCount = (c) => {
+          const schedule = c.weeklySchedule || {
+            mon: true,
+            tue: true,
+            wed: true,
+            thu: true,
+            fri: true,
+            sat: true,
+            sun: true,
+          };
+          return Object.values(schedule).filter(Boolean).length;
+        };
+        const diff = getDaysCount(b) - getDaysCount(a);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
@@ -466,6 +484,7 @@ export default function CustomerManagement() {
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
               <option value="remarks">Remarks </option>
+              <option value="weeklySchedule">Weekly Schedule</option>
             </select>
 
             {canDownloadExcel && (
