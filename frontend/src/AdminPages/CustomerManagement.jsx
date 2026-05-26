@@ -431,16 +431,23 @@ export default function CustomerManagement() {
   // ─── Excel ────────────────────────────────────────────────────────────────
   const downloadExcel = () => {
     if (!canDownloadExcel) return;
-    const data = filtered.map((c) => ({
-      "Customer ID": c.custid || c.id,
-      Name: getName(c),
-      Zone: c.zone || "",
-      Peak_Potential: normalizePotential(c.potential),
-      Peak_Frequency: getPeakFrequencyLabel(c),
-      Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
-      Status: getLatestStatus(c),
-      Remarks: getRemarkDisplay(c),
-    }));
+    const data = filtered.map((c) => {
+      const baseData = {
+        "Customer ID": c.custid || c.id,
+        Name: getName(c),
+        Zone: c.zone || "",
+        Peak_Potential: normalizePotential(c.potential),
+        Peak_Frequency: getPeakFrequencyLabel(c),
+        Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
+      };
+      // Add Current_Category for ALL and ONBOARDING tabs
+      if (activeTab === "ALL" || activeTab === "ONBOARDING") {
+        baseData.Current_Category = getCurrentCategory(c);
+      }
+      baseData.Status = getLatestStatus(c);
+      baseData.Remarks = getRemarkDisplay(c);
+      return baseData;
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, activeTab);
@@ -554,6 +561,9 @@ export default function CustomerManagement() {
               <th className="p-3">Peak_Potential</th>
               <th className="p-3">Peak_Frequency</th>
               <th className="p-3">Delivery_Gap</th>
+              {(activeTab === "ALL" || activeTab === "ONBOARDING") && (
+                <th className="p-3">Current Category</th>
+              )}
               <th className="p-3">Status</th>
             </tr>
           </thead>
@@ -727,6 +737,21 @@ export default function CustomerManagement() {
                     {normalizeDeliveryGap(c.deliveryGap)}
                   </span>
                 </td>
+
+                {(activeTab === "ALL" || activeTab === "ONBOARDING") && (
+                  <td className="p-3">
+                    <span
+                      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                      style={{
+                        backgroundColor: getCurrentCategoryColor(
+                          getCurrentCategory(c),
+                        ),
+                      }}
+                    >
+                      {getCurrentCategory(c)}
+                    </span>
+                  </td>
+                )}
 
                 <td className="p-3">
                   <div className="flex flex-col items-center gap-1">
@@ -1045,4 +1070,20 @@ function computePotential(last8Days) {
   });
 
   return maxTrays > 0 ? `T${maxTrays}` : "T1";
+}
+
+function getCurrentCategory(customer) {
+  return `D${getDeliveredCountForCustomer(customer)}`;
+}
+
+function getCurrentCategoryColor(category) {
+  const match = String(category || "").match(/^D(\d+)$/);
+  if (!match) return "#FF3B30";
+
+  const num = Number(match[1]);
+  if (!Number.isFinite(num)) return "#FF3B30";
+
+  if (num <= 2) return "#FF3B30"; // red: D0-D2
+  if (num <= 4) return "#FB8C00"; // orange: D3-D4
+  return "#0F9D58"; // green: D5-D7
 }
