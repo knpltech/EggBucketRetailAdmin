@@ -38,11 +38,11 @@ const Analytics = () => {
   }, []);
 
   // UI: compute last 8 days statuses (including today) for each customer
-  // If today's delivery is missing, derive status from latestRemark
+  // Only use actual delivery documents as source of truth
   const computeLast7Days = useCallback(
-    (deliveries, latestRemark) => {
+    (deliveries) => {
       const result = [];
-      const today = new Date();
+      const today = getIndiaTodayDate();
 
       for (let i = 7; i >= 0; i--) {
         const d = new Date(today);
@@ -52,16 +52,12 @@ const Analytics = () => {
 
         const found = deliveries.find((entry) => entry.id === dateStr);
 
-        // If today's delivery is missing, derive type from latestRemark
         let type = found ? found.type : null;
         let reason = String(found?.reason || "").trim();
         const traysDelivered = Number.isFinite(Number(found?.traysDelivered))
           ? Number(found.traysDelivered)
           : null;
         let time = found?.time || null;
-
-        // The previous heuristic for deriving today's type from latestRemark has been removed.
-        // It caused today's status to incorrectly show as delivered/checked based on yesterday's remark.
 
         result.push({
           type,
@@ -85,7 +81,7 @@ const Analytics = () => {
 
       const full = customers.map((c) => ({
         ...c,
-        last7: computeLast7Days(c.deliveries || [], c.latestRemark),
+        last7: computeLast7Days(c.deliveries || []),
       }));
 
       setAllCustomers(full);
@@ -171,7 +167,7 @@ const Analytics = () => {
       .toLowerCase();
 
     if (normalizedType === "delivered") {
-      bg = "#0F9D58"; // green
+      bg = "#16A34A"; // softer green
       text = "DELIVERED";
     } else if (
       normalizedType === "reached" ||
@@ -182,21 +178,21 @@ const Analytics = () => {
       normalizedType === "other_vendor"
     ) {
       // All "checked" variants
-      bg = "#FB8C00"; // orange-yellow
+      bg = "#F59E0B"; // softer orange
       text = "CHECKED";
     } else {
-      bg = "#FF3B30"; // bright red
+      bg = "#EF4444"; // softer red
       text = "PENDING";
     }
 
     return (
       <div
-        className="mx-auto my-0.5 rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5"
+        className="mx-auto rounded-full text-[10px] leading-none font-semibold flex items-center justify-center text-center px-2 py-1 whitespace-nowrap"
         style={{
           backgroundColor: bg,
           color: "white",
-          width: "70px",
-          minHeight: "24px",
+          minWidth: "72px",
+          height: "28px",
         }}
       >
         {text}
@@ -386,8 +382,7 @@ const Analytics = () => {
   // Small helpers for the UI
   const skeletonRows = Array.from({ length: 8 });
   const last7DaysHeader = Array.from({ length: 8 }).map((_, idx) => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
+    const d = getIndiaTodayDate();
     d.setDate(d.getDate() - (7 - idx));
     return {
       label: d.toLocaleDateString("en-US", { weekday: "short" }),
@@ -407,8 +402,8 @@ const Analytics = () => {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
-  // non-day columns now: CustId, Name, Zone, Delivery Plan, Peak Freq => 5
-  const detailColumnSpan = 3 + last7DaysHeader.length;
+  // non-day columns now: CustId, Name, Zone, Delivery Plan, Peak Freq, Current Category => 6
+  const detailColumnSpan = 4 + last7DaysHeader.length;
 
   const getPageButtons = () => {
     if (totalPages <= 7) {
@@ -551,24 +546,27 @@ const Analytics = () => {
           </div>
 
           {/* TABLE */}
-          <div className="-mx-1 md:-mx-2 w-[calc(100%+0.5rem)] md:w-[calc(100%+1rem)] overflow-x-auto rounded-xl bg-white shadow ring-1 ring-gray-100">
-            <table className="w-full table-fixed text-xs">
-              <thead className="bg-gray-100">
+          <div className="w-full overflow-hidden rounded-2xl bg-gray-50 p-2 shadow-inner ring-1 ring-gray-200">
+            <table className="w-full text-xs border-separate border-spacing-y-2 table-auto">
+              <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
-                  <th className="px-1.5 py-2 text-left font-semibold w-[76px]">
+                  <th className="px-1 py-2 text-left font-semibold w-[76px] align-middle">
                     Cust Id
                   </th>
-                  <th className="px-1.5 py-2 text-left font-semibold w-[148px]">
+                  <th className="px-1 py-2 text-left font-semibold w-[110px] align-middle">
                     Name
                   </th>
-                  <th className="px-1.5 py-2 text-left font-semibold w-[118px]">
+                  <th className="px-1 py-2 text-left font-semibold w-[90px] align-middle">
                     Zone
                   </th>
-                  <th className="px-1.5 py-2 text-center font-semibold w-[110px]">
+                  <th className="px-1 py-2 text-center font-semibold w-[85px] align-middle">
                     Delivery Plan
                   </th>
-                  <th className="px-1.5 py-2 text-center font-semibold w-[100px]">
+                  <th className="px-1 py-2 text-center font-semibold w-[80px] align-middle">
                     Peak Freq
+                  </th>
+                  <th className="px-1 py-2 text-center font-semibold w-[85px] align-middle">
+                    Current Category
                   </th>
                   {last7DaysHeader.map((d, i) => (
                     <th
@@ -588,22 +586,26 @@ const Analytics = () => {
                   ? skeletonRows.map((_, idx) => (
                     <tr key={idx} className="border-t border-gray-200">
 
-                      <td className="px-1.5 py-2">
+                      <td className="px-1 py-2">
                         <div className="w-14 h-3 bg-gray-300 rounded animate-pulse"></div>
                       </td>
-                      <td className="px-1.5 py-2 text-center align-middle">
+                      <td className="px-1 py-2 text-center align-middle">
                         <div className="mx-auto w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                       </td>
                       {/* Zone */}
-                      <td className="px-1.5 py-2">
+                      <td className="px-1 py-2">
                         <div className="w-16 h-3 bg-gray-300 rounded animate-pulse"></div>
                       </td>
                       {/* Delivery Plan */}
-                      <td className="px-1.5 py-2">
+                      <td className="px-1 py-2">
                         <div className="w-12 h-6 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                       </td>
                       {/* Peak Frequency */}
-                      <td className="px-1.5 py-2">
+                      <td className="px-1 py-2">
+                        <div className="w-8 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
+                      </td>
+                      {/* Current Category */}
+                      <td className="px-1 py-2">
                         <div className="w-8 h-5 bg-gray-300 rounded-full mx-auto animate-pulse"></div>
                       </td>
                       {[...Array(8)].map((_, i) => (
@@ -619,18 +621,18 @@ const Analytics = () => {
 
                     return (
                       <React.Fragment key={c.id}>
-                        <tr className="border-t border-gray-200 hover:bg-gray-50">
-                          <td className="px-1.5 py-2 font-medium truncate">
+                        <tr className="bg-white hover:bg-gray-50 transition-all duration-150 shadow-sm rounded-xl overflow-hidden">
+                          <td className="px-1 py-2 font-medium truncate">
                             {c.custid}
                           </td>
-                          <td className="px-1.5 py-2 font-bold text-[13px] leading-4 whitespace-normal break-words">
+                          <td className="px-1 py-2 font-bold text-[13px] leading-4 whitespace-normal break-words">
                             {c.name}
                           </td>
-                          <td className="px-1.5 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
+                          <td className="px-1 py-2 font-bold text-gray-700 text-[13px] leading-4 whitespace-normal break-words">
                             {c.zone || "UNASSIGNED"}
                           </td>
 
-                          <td className="px-1.5 py-2 text-center align-middle">
+                          <td className="px-1 py-2 text-center align-middle">
                             {(() => {
                               const isOn = effectiveStatus === "ON";
                               const isUpdating = updatingTodayId === c.id;
@@ -656,22 +658,34 @@ const Analytics = () => {
                               );
                             })()}
                           </td>
-                          <td className="px-1.5 py-2 text-center">
+                          <td className="px-1 py-2 text-center">
                             <span
-                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                              className="inline-flex items-center justify-center min-w-[42px] px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
                               style={{ backgroundColor: getPeakFrequencyColor(c) }}
                             >
                               {getPeakFrequencyLabel(c)}
+                            </span>
+                          </td>
+                          <td className="px-1 py-2 text-center">
+                            <span
+                              className="inline-flex items-center justify-center min-w-[42px] px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                              style={{
+                                backgroundColor: getCurrentCategoryColor(
+                                  getCurrentCategory(c),
+                                ),
+                              }}
+                            >
+                              {getCurrentCategory(c)}
                             </span>
                           </td>
                           {c.last7.map((d, index) => {
                             const remarkText = getDayRemarkText(d);
 
                             return (
-                              <td key={index} className="px-1 py-2 text-center align-top">
-                                <div className="flex flex-col items-center gap-1">
+                              <td key={index} className="px-1 py-3 text-center align-top w-[7%]">
+                                <div className="flex flex-col items-center gap-2">
                                   {getStatusPill(d.type)}
-                                  <p className="text-[10px] leading-3 text-gray-700 max-w-[92px] min-h-[20px] text-center break-words">
+                                  <p className="text-[11px] leading-4 text-gray-600 max-w-[75px] min-h-[24px] text-center break-words font-medium">
                                     {remarkText}
                                   </p>
                                 </div>
@@ -807,6 +821,20 @@ const Analytics = () => {
   );
 };
 
+function getIndiaTodayDate() {
+  const now = new Date();
+
+  const india = new Date(
+    now.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+    }),
+  );
+
+  india.setHours(0, 0, 0, 0);
+
+  return india;
+}
+
 function getDateStringInTimeZone(date, timeZone) {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -896,6 +924,33 @@ function getDeliveredCountForAnalytics(customer) {
     const type = String(d.type || "").trim().toLowerCase();
     return type === "delivered";
   }).length;
+}
+
+function getCurrentCategory(customer) {
+  if (!customer?.last7) return "D0";
+
+  const count = customer.last7
+    .slice(0, 7) // previous completed 7 days only
+    .filter((d) => {
+      const type = String(d.type || "").trim().toLowerCase();
+      return type === "delivered";
+    }).length;
+
+  return `D${count}`;
+}
+
+function getCurrentCategoryColor(category) {
+  const match = String(category || "").match(/^D(\d+)$/);
+
+  if (!match) return "#EF4444";
+
+  const num = Number(match[1]);
+
+  if (!Number.isFinite(num)) return "#EF4444";
+
+  if (num <= 2) return "#EF4444"; // softer red
+  if (num <= 4) return "#F59E0B"; // softer orange
+  return "#16A34A"; // softer green
 }
 
 function getPeakFrequencyLabel(customer) {
