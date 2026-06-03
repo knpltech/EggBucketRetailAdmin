@@ -1,5 +1,8 @@
 import React from "react";
-import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
+import {
+  computeCurrentCategory,
+  getTodayEffectiveStatus,
+} from "../utils/aiSuggestionEngine";
 
 const getSuggestionConfig = (suggestion, reason, score) => {
   const scoreReason = String(reason || "").includes("AI Score")
@@ -63,6 +66,15 @@ const getPeakFrequencyColor = (value) => {
   if (n <= 2) return "#FF3B30"; // red
   if (n <= 4) return "#FB8C00"; // orange
   return "#0F9D58"; // green
+};
+
+const getCurrentCategoryColor = (value) => {
+  const currentCategory = normalizePeakFrequency(value);
+  const n = Number(currentCategory.slice(1));
+
+  if (n <= 2) return "#FF3B30";
+  if (n <= 4) return "#FB8C00";
+  return "#0F9D58";
 };
 
 const getSuggestionStatus = (suggestion) => {
@@ -224,6 +236,7 @@ const AISuggestionRow = ({
   const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
   const peakFrequency = resolvePeakFrequency(customer);
+  const currentCategory = computeCurrentCategory(customer?.last8Days);
   const peakPotential = normalizePotential(customer?.potential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
@@ -263,6 +276,15 @@ const AISuggestionRow = ({
           style={{ backgroundColor: getDeliveryGapColor(deliveryGap) }}
         >
           {deliveryGap}
+        </span>
+      </td>
+
+      <td className="p-4 py-5 text-gray-700 font-medium">
+        <span
+          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          style={{ backgroundColor: getCurrentCategoryColor(currentCategory) }}
+        >
+          {currentCategory}
         </span>
       </td>
       

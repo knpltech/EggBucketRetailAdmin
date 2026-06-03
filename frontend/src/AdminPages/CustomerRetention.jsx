@@ -100,6 +100,15 @@ const getStatusClasses = (statusKey) => {
   return "bg-[#FF3B30] text-white";
 };
 
+const getCurrentCategoryClasses = (category) => {
+  const match = String(category || "").match(/^D(\d+)$/);
+  const num = match ? Number(match[1]) : 0;
+
+  if (!Number.isFinite(num) || num <= 2) return "bg-[#FF3B30] text-white";
+  if (num <= 4) return "bg-[#FB8C00] text-white";
+  return "bg-[#0F9D58] text-white";
+};
+
 const getDeliveredTrayCount = (status) => {
   const value =
     status?.traysDelivered ??
@@ -274,6 +283,11 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
       <td className="px-2 py-2 text-slate-700 text-xs">{customer.zone}</td>
       <td className="px-2 py-2 text-slate-700 text-xs whitespace-nowrap">{formatDeliveryTime(customer.deliveryTime)}</td>
       <td className="px-2 py-2 text-slate-700 text-xs truncate max-w-[80px]">{customer.deliveryAgent}</td>
+      <td className="px-2 py-2 text-center align-middle">
+        <span className={`inline-flex min-w-[42px] items-center justify-center rounded-full px-2 py-1 text-[10px] font-semibold ${getCurrentCategoryClasses(customer.currentCategory)}`}>
+          {customer.currentCategory || "-"}
+        </span>
+      </td>
 
       {dates.map((date) => {
         const status = customer.days?.[date] || { key: "pending", label: "PENDING" };
@@ -377,7 +391,7 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:v3:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v4:${date}:${category}:${agent}:${sort}:${page}`;
       const isToday = date === getTodayDate();
       const cached = isToday ? null : cacheRef.current[cacheKey];
 
@@ -412,6 +426,7 @@ const CustomerRetention = () => {
               phone: customer.phone || "",
               zone: customer.zone || "UNASSIGNED",
               todayCategory: customer.todayCategory || "",
+              currentCategory: customer.currentCategory || "-",
               todayCategoryLabel: customer.todayCategoryLabel || "-",
               todayReason: customer.todayReason || "",
               deliveryTime: customer.deliveryTime || customer.delivery_time || customer.time || null,
@@ -491,6 +506,7 @@ const CustomerRetention = () => {
                 phone: customer.phone || "",
                 zone: customer.zone || "UNASSIGNED",
                 todayCategory: customer.todayCategory || "",
+                currentCategory: customer.currentCategory || "-",
                 todayCategoryLabel: customer.todayCategoryLabel || "-",
                 todayReason: customer.todayReason || "",
                 deliveryTime: customer.deliveryTime || customer.delivery_time || customer.time || null,
@@ -705,6 +721,7 @@ const CustomerRetention = () => {
                 customer.deliveryTime || customer.delivery_time || customer.time,
               ),
               "Delivery Agent": customer.deliveryAgent || "-",
+              "Current Category": customer.currentCategory || "-",
             };
 
             payloadDates.forEach((dateKey) => {
@@ -934,6 +951,7 @@ const CustomerRetention = () => {
               <th className="px-2 py-2 text-left text-xs font-semibold">Zone</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Current Category</th>
               {dates.map((date, index) => {
                 const label = formatDayHeader(date);
                 const isTodayColumn = index === dates.length - 1;
@@ -953,7 +971,7 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={6 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -969,7 +987,7 @@ const CustomerRetention = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={5 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={6 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>

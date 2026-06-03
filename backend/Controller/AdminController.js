@@ -73,6 +73,26 @@ const getCurrentDeliveryFrequency = (last8Days = {}) => {
   return `D${count}`;
 };
 
+const getCurrentCategoryFromLast8Days = (last8Days = {}, baseDate = new Date()) => {
+  let count = 0;
+  const anchor = baseDate instanceof Date ? baseDate : new Date(baseDate);
+  const today = Number.isNaN(anchor.getTime()) ? new Date() : anchor;
+
+  for (let i = 1; i <= 7; i += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - i);
+    const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
+    const entry = last8Days?.[dateKey];
+    const status = typeof entry === "string" ? entry : entry?.status;
+
+    if (String(status || "").toLowerCase() === "delivered") {
+      count += 1;
+    }
+  }
+
+  return `D${Math.min(count, 7)}`;
+};
+
 const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(last8Days);
   const savedPeak = normalizePeakFrequency(
@@ -460,7 +480,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v16:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v17:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -825,6 +845,10 @@ const getRetentionCustomers = async (req, res) => {
           name: customer.name || "",
           phone: customer.phone || "",
           zone: customer.zone || "UNASSIGNED",
+          currentCategory: getCurrentCategoryFromLast8Days(
+            customer.last8Days,
+            new Date(`${todayKey}T00:00:00`),
+          ),
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
@@ -943,6 +967,7 @@ const resetRetentionCustomer = async (req, res) => {
           key.startsWith("customerRetention:v14") ||
           key.startsWith("customerRetention:v15") ||
           key.startsWith("customerRetention:v16") ||
+          key.startsWith("customerRetention:v17") ||
           key.startsWith("retention:") ||
           key.startsWith("analytics:last8"),
       );
