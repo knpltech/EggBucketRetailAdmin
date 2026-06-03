@@ -453,6 +453,29 @@ const runInBatches = async (items, batchSize, handler) => {
   return results;
 };
 
+// ⭐ Cache for delivery partners with 24-hour TTL (they rarely change)
+const getDeliveryPartnerMapCached = async () => {
+  const cacheKey = "deliveryPartnerMap:v1";
+  let cached = cache.get(cacheKey);
+  if (cached) {
+    console.log("[CACHE HIT] Delivery partner map served from cache");
+    return cached;
+  }
+
+  console.log("[CACHE MISS] Fetching delivery partners from Firestore");
+  const db = getFirestore();
+  const deliveryPartnerSnap = await db.collection("DeliveryMan").get();
+  const deliveryPartnerMap = new Map();
+  deliveryPartnerSnap.forEach((doc) => {
+    const data = doc.data();
+    deliveryPartnerMap.set(doc.id, data.name || data.display_name || doc.id);
+  });
+
+  // Cache for 24 hours (86400 seconds)
+  cache.set(cacheKey, deliveryPartnerMap, 86400);
+  return deliveryPartnerMap;
+};
+
 const getRetentionCustomers = async (req, res) => {
   try {
     const selectedDate =
@@ -480,7 +503,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v17:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v18:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -495,13 +518,8 @@ const getRetentionCustomers = async (req, res) => {
 
     const db = getFirestore();
 
-    // ⭐ OPTIMIZATION: Fetch delivery partners once to lookup names
-    const deliveryPartnerSnap = await db.collection("DeliveryMan").get();
-    const deliveryPartnerMap = new Map();
-    deliveryPartnerSnap.forEach((doc) => {
-      const data = doc.data();
-      deliveryPartnerMap.set(doc.id, data.name || data.display_name || doc.id);
-    });
+    // ⭐ OPTIMIZATION: Use cached delivery partner map (24-hour TTL)
+    const deliveryPartnerMap = await getDeliveryPartnerMapCached();
 
     const getRetentionAgentName = (customer) => {
       const entry = customer.last8Days?.[todayKey];
@@ -579,6 +597,8 @@ const getRetentionCustomers = async (req, res) => {
       return "pending";
     };
 
+    // ⭐ OPTIMIZATION: Cache the full processed customer dataset per date
+    // This avoids re-scanning all customers when pagination/filters change
     // Fetch all customers from Firestore to compute exact statistics
     const customersSnap = await db.collection("customers").get();
     const allCustomers = customersSnap.docs.map((doc) => ({
@@ -691,6 +711,43 @@ const getRetentionCustomers = async (req, res) => {
       ...new Set(filteredCustomers.map(getRetentionAgentName).filter(Boolean)),
     ].sort((a, b) => a.localeCompare(b));
 
+    const buildEmptyCategoryStats = () => ({
+      stockAvailable: 0,
+      shopClosed: 0,
+      otherVendor: 0,
+      totalShops: 0,
+    });
+    const addCategoryToStats = (stats, category) => {
+      if (category === "stock_available") {
+        stats.stockAvailable += 1;
+      } else if (category === "price_mismatch" || category === "shop_closed") {
+        stats.shopClosed += 1;
+      } else if (category === "other_vendor") {
+        stats.otherVendor += 1;
+      }
+      stats.totalShops += 1;
+    };
+    const retentionAgentCategoryStatsMap = {};
+    const retentionOverallCategoryStats = buildEmptyCategoryStats();
+
+    filteredCustomers.forEach((customer) => {
+      const category = customerCategories[customer.id];
+      const agentName = getRetentionAgentName(customer);
+      addCategoryToStats(retentionOverallCategoryStats, category);
+      if (!agentName) return;
+      if (!retentionAgentCategoryStatsMap[agentName]) {
+        retentionAgentCategoryStatsMap[agentName] = {
+          name: agentName,
+          ...buildEmptyCategoryStats(),
+        };
+      }
+      addCategoryToStats(retentionAgentCategoryStatsMap[agentName], category);
+    });
+
+    const retentionAgentCategoryStats = Object.values(
+      retentionAgentCategoryStatsMap,
+    ).sort((a, b) => a.name.localeCompare(b.name));
+
     if (agentFilter !== "all") {
       filteredCustomers = filteredCustomers.filter(
         (customer) => getRetentionAgentName(customer) === agentFilter,
@@ -761,23 +818,8 @@ const getRetentionCustomers = async (req, res) => {
 
     const rows = [];
 
-    // ⭐ Fetch today's delivery doc for the paginated customers to get the EXACT timestamp!
-    const paginatedDeliveryRefs = paginatedCustomers.map((c) =>
-      db
-        .collection("customers")
-        .doc(c.id)
-        .collection("deliveries")
-        .doc(todayKey)
-        .get(),
-    );
-    const paginatedDeliverySnaps = await Promise.all(paginatedDeliveryRefs);
-
     for (let i = 0; i < paginatedCustomers.length; i++) {
       const customer = paginatedCustomers[i];
-      const todayDeliverySnap = paginatedDeliverySnaps[i];
-      const actualTodayDeliveryData = todayDeliverySnap.exists
-        ? todayDeliverySnap.data()
-        : null;
       try {
         const todayData = todayDeliveriesMap[customer.id];
         const todayStatus = todayData.status;
@@ -806,12 +848,15 @@ const getRetentionCustomers = async (req, res) => {
 
         dayStatuses[todayKey] = todayStatus;
 
-        // Process delivery time into ISO string
-        // We extract the exact timestamp from the actual delivery document
+        // Process delivery time from denormalized last8Days to avoid per-row reads.
+        const todayEntry = customer.last8Days?.[todayKey];
+        const todayEntryObj =
+          typeof todayEntry === "string" ? { status: todayEntry } : todayEntry || {};
         let deliveryTime =
-          actualTodayDeliveryData?.timestamp ||
-          actualTodayDeliveryData?.deliveryTime ||
-          actualTodayDeliveryData?.checkReasonAt ||
+          todayEntryObj.time ||
+          todayEntryObj.timestamp ||
+          todayEntryObj.deliveryTime ||
+          todayEntryObj.checkReasonAt ||
           todayDeliveryData.time ||
           null;
 
@@ -883,13 +928,17 @@ const getRetentionCustomers = async (req, res) => {
       deliveryAgentOptions,
       agentStats,
       overallStats,
+      retentionAgentCategoryStats,
+      retentionOverallCategoryStats,
       total,
       totalPages,
       currentPage: page,
       customers: orderedRows,
     };
 
-    cache.set(cacheKey, payload, 3600);
+    // ⭐ OPTIMIZATION: Increased cache TTL from 1 hour to 2 hours
+    // This reduces database reads when data doesn't change frequently
+    cache.set(cacheKey, payload, 7200);
     return res.status(200).json(payload);
   } catch (err) {
     console.error("getRetentionCustomers error:", err);

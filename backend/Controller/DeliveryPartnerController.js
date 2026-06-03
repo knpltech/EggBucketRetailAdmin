@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
+import cache from "./cache.js";
 
 // Controller to add a new delivery partner
 const addDeliveryPartner = async (req, res) => {
@@ -39,6 +40,10 @@ const addDeliveryPartner = async (req, res) => {
       active: true,
     });
 
+    // ⭐ OPTIMIZATION: Invalidate delivery partners cache on add
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
     res.status(201).json({ message: "Delivery partner added successfully." });
   } catch (err) {
     console.error("Error adding delivery partner:", err);
@@ -51,6 +56,15 @@ const addDeliveryPartner = async (req, res) => {
 // Controller to fetch all delivery partners
 const getDeliveryPartners = async (req, res) => {
   try {
+    // ⭐ OPTIMIZATION: Cache delivery partners for 5 minutes (300 seconds)
+    const cacheKey = "allDeliveryPartners:v1";
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log("[CACHE HIT] Delivery partners served from cache");
+      return res.status(200).json(cached);
+    }
+
+    console.log("[CACHE MISS] Fetching delivery partners from Firestore");
     const db = getFirestore();
     const snapshot = await db.collection("DeliveryMan").get();
 
@@ -59,6 +73,8 @@ const getDeliveryPartners = async (req, res) => {
       ...doc.data(),
     }));
 
+    // Cache for 5 minutes
+    cache.set(cacheKey, deliveryPartners, 300);
     res.status(200).json(deliveryPartners);
   } catch (err) {
     console.error("Error fetching delivery partners:", err);
@@ -88,6 +104,10 @@ const updateDeliveryPartner = async (req, res) => {
       email: newEmail,
     });
 
+    // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
     res.status(200).json({ message: "Delivery partner updated successfully." });
   } catch (err) {
     console.error("Error updating delivery partner:", err);
@@ -116,6 +136,10 @@ const deleteDeliveryPartner = async (req, res) => {
       await admin.auth().deleteUser(uid);
     }
 
+    // ⭐ OPTIMIZATION: Invalidate delivery partners cache on delete
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
     res.status(200).json({ message: "Delivery partner deleted successfully." });
   } catch (err) {
     console.error("Error deleting delivery partner:", err);
@@ -140,6 +164,10 @@ const toggleDeliveryPerson = async (req, res) => {
 
     const currentStatus = docSnap.data().active;
     await deliveryRef.update({ active: !currentStatus });
+
+    // ⭐ OPTIMIZATION: Invalidate delivery partners cache on status change
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
 
     res.status(200).json({
       message: `Delivery person status updated to ${!currentStatus ? "active" : "inactive"}.`,

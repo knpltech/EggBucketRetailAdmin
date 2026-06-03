@@ -632,6 +632,29 @@ const getUserDeliveries = async (req, res) => {
   }
 };
 
+// ⭐ Cache for delivery partners with 24-hour TTL (they rarely change)
+const getDeliveryPartnerMapCached = async () => {
+  const cacheKey = "deliveryPartnerMap:v1";
+  let cached = cache.get(cacheKey);
+  if (cached) {
+    console.log("[CACHE HIT] Delivery partner map served from cache");
+    return cached;
+  }
+
+  console.log("[CACHE MISS] Fetching delivery partners from Firestore");
+  const db = getFirestore();
+  const deliveryManSnap = await db.collection("DeliveryMan").get();
+  const deliveryManMap = new Map();
+  deliveryManSnap.docs.forEach(doc => {
+    const d = doc.data();
+    deliveryManMap.set(doc.id, { name: d.name || d.display_name || "", phone: d.phone || "" });
+  });
+
+  // Cache for 24 hours (86400 seconds)
+  cache.set(cacheKey, deliveryManMap, 86400);
+  return deliveryManMap;
+};
+
 // Controller to get all customers along with their deliveries
 // Controller to get all customers along with their deliveries
 const getAllCustomerDeliveries = async (req, res) => {
@@ -653,13 +676,8 @@ const getAllCustomerDeliveries = async (req, res) => {
     // 1. Fetch all customers
     const customersSnap = await db.collection("customers").get();
 
-    // 2. Fetch Delivery Partners (pre-cache for lookup)
-    const deliveryManSnap = await db.collection("DeliveryMan").get();
-    const deliveryManMap = new Map();
-    deliveryManSnap.docs.forEach(doc => {
-      const d = doc.data();
-      deliveryManMap.set(doc.id, { name: d.name || d.display_name || "", phone: d.phone || "" });
-    });
+    // 2. ⭐ OPTIMIZATION: Use cached delivery partner map (24-hour TTL)
+    const deliveryManMap = await getDeliveryPartnerMapCached();
 
     const customersWithDeliveries = [];
     const autoFlipQueries = [];
