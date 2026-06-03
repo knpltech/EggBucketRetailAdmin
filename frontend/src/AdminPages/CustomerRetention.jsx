@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -327,46 +327,18 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
   );
 });
 
-const computeCategoryStats = (customers, todayDateKey) => {
-  const stats = {
-    stockAvailable: 0,
-    shopClosed: 0,
-    otherVendor: 0,
-    totalShops: 0,
-  };
-
-  if (!Array.isArray(customers)) return stats;
-
-  customers.forEach((customer) => {
-    const category = customer.days?.[todayDateKey]?.category;
-
-    switch (category) {
-      case "stock_available":
-        stats.stockAvailable++;
-        break;
-      case "price_mismatch":
-      case "shop_closed":
-        stats.shopClosed++;
-        break;
-      case "other_vendor":
-        stats.otherVendor++;
-        break;
-      default:
-        break;
-    }
-  });
-
-  stats.totalShops = customers.length;
-
-  return stats;
-};
-
 const CustomerRetention = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("name");
   const [selectedAgent, setSelectedAgent] = useState("all");
-  const [allCustomersForStats, setAllCustomersForStats] = useState([]);
+  const [computedAgentStats, setComputedAgentStats] = useState([]);
+  const [computedOverallStats, setComputedOverallStats] = useState({
+    stockAvailable: 0,
+    shopClosed: 0,
+    otherVendor: 0,
+    totalShops: 0,
+  });
   const [startRange, setStartRange] = useState("");
   const [endRange, setEndRange] = useState("");
   const [dates, setDates] = useState(() => getPastThreeDatesPlusToday(getTodayDate()));
@@ -399,6 +371,8 @@ const CustomerRetention = () => {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
         setCustomers(cached.customers || []);
         setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0 });
+        setComputedAgentStats(cached.agentStats || []);
+        setComputedOverallStats(cached.overallStats || { stockAvailable: 0, shopClosed: 0, otherVendor: 0, totalShops: 0 });
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
         setError("");
@@ -447,12 +421,23 @@ const CustomerRetention = () => {
           payload.counts?.shop_closed ?? payload.counts?.price_mismatch ?? newCounts.shop_closed;
         const newTotalPages = payload.totalPages || 1;
         const newTotal = payload.total || 0;
+        const nextAgentStats = Array.isArray(payload.retentionAgentCategoryStats)
+          ? payload.retentionAgentCategoryStats
+          : [];
+        const nextOverallStats = payload.retentionOverallCategoryStats || {
+          stockAvailable: 0,
+          shopClosed: 0,
+          otherVendor: 0,
+          totalShops: 0,
+        };
 
         cacheRef.current[cacheKey] = {
           savedAt: Date.now(),
           dates: nextDates,
           customers: nextCustomers,
           counts: newCounts,
+          agentStats: nextAgentStats,
+          overallStats: nextOverallStats,
           totalPages: newTotalPages,
           total: newTotal,
         };
@@ -460,6 +445,8 @@ const CustomerRetention = () => {
         setDates(nextDates);
         setCustomers(nextCustomers);
         setCounts(newCounts);
+        setComputedAgentStats(nextAgentStats);
+        setComputedOverallStats(nextOverallStats);
         setTotalPages(newTotalPages);
         setTotalCustomers(newTotal);
         setError("");
@@ -467,6 +454,8 @@ const CustomerRetention = () => {
         setError(err?.response?.data?.message || `Unable to load customer retention data for ${date}`);
         setCustomers([]);
         setCounts({ all: 0, stock_available: 0, shop_closed: 0, other_vendor: 0 });
+        setComputedAgentStats([]);
+        setComputedOverallStats({ stockAvailable: 0, shopClosed: 0, otherVendor: 0, totalShops: 0 });
         setTotalPages(1);
         setTotalCustomers(0);
         setDates(getPastThreeDatesPlusToday(date));
@@ -476,87 +465,6 @@ const CustomerRetention = () => {
     },
     [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent],
   );
-
-  // ⭐ Fetch ALL customer retention records for stats (ignores pagination and current agent filter)
-  useEffect(() => {
-    let active = true;
-    const fetchStatsData = async () => {
-      try {
-        const res = await axios.get(`${ADMIN_PATH}/customer-retention`, {
-          params: {
-            date: selectedDate,
-            page: 1,
-            limit: 5000,
-            category: selectedCategory,
-            sortBy: "name",
-            agent: "all",
-          },
-        });
-        if (active) {
-          const payload = res?.data || {};
-          const nextDates = payload.dates?.length ? payload.dates : getPastThreeDatesPlusToday(selectedDate);
-          const nextCustomers = Array.isArray(payload.customers)
-            ? payload.customers.map((customer) => {
-              const dayStatuses = {};
-              nextDates.forEach((dateKey) => {
-                dayStatuses[dateKey] = getStatusFromDelivery(customer?.days?.[dateKey] || null);
-              });
-              return {
-                ...customer,
-                phone: customer.phone || "",
-                zone: customer.zone || "UNASSIGNED",
-                todayCategory: customer.todayCategory || "",
-                currentCategory: customer.currentCategory || "-",
-                todayCategoryLabel: customer.todayCategoryLabel || "-",
-                todayReason: customer.todayReason || "",
-                deliveryTime: customer.deliveryTime || customer.delivery_time || customer.time || null,
-                deliveryAgent: customer.deliveryAgent || "-",
-                days: dayStatuses,
-              };
-            })
-            : [];
-          setAllCustomersForStats(nextCustomers);
-        }
-      } catch (err) {
-        console.error("Failed to load statistics data:", err);
-        if (active) {
-          setAllCustomersForStats([]);
-        }
-      }
-    };
-
-    fetchStatsData();
-    return () => {
-      active = false;
-    };
-  }, [selectedDate, selectedCategory]);
-
-  const computedAgentStats = useMemo(() => {
-    const statsMap = {};
-    const todayDateKey = dates[dates.length - 1];
-
-    allCustomersForStats.forEach((customer) => {
-      const agentName = customer.deliveryAgent;
-      if (!agentName || agentName === "-") return;
-
-      if (!statsMap[agentName]) {
-        statsMap[agentName] = [];
-      }
-      statsMap[agentName].push(customer);
-    });
-
-    return Object.keys(statsMap)
-      .map((agentName) => ({
-        name: agentName,
-        ...computeCategoryStats(statsMap[agentName], todayDateKey),
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allCustomersForStats, dates]);
-
-  const computedOverallStats = useMemo(() => {
-    const todayDateKey = dates[dates.length - 1];
-    return computeCategoryStats(allCustomersForStats, todayDateKey);
-  }, [allCustomersForStats, dates]);
 
   const currentAgentStats = selectedAgent === "all"
     ? computedOverallStats
