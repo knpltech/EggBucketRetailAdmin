@@ -43,6 +43,39 @@ export const getPeakFrequencyNumber = (value) => {
   return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
 };
 
+export const getCurrentCategoryNumber = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  const match = raw.match(/^D([0-7])$/);
+  if (!match) return 0;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
+};
+
+export const computeCurrentCategory = (last8Days) => {
+  if (!last8Days || typeof last8Days !== "object") return "D0";
+
+  let count = 0;
+  const today = new Date();
+
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+    const entry = last8Days[dateStr];
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (status === "delivered") count++;
+  }
+
+  return `D${Math.min(count, 7)}`;
+};
+
 export const computePeakFrequency = (last8Days) => {
   if (!last8Days || typeof last8Days !== "object") return "D0";
 
@@ -237,6 +270,25 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
       confidence: 100,
       score: logic1Score,
       reason: `AI Score: ${logic1Score} - Logic 2: D0 customer. Manual approach for retention/data understanding stage.`,
+    };
+  }
+
+  // LOGIC 3: Current category vs peak frequency
+  if (logicOption === "logic3") {
+    const currentCategory = computeCurrentCategory(customer?.last8Days);
+    const currentCategoryNumber = getCurrentCategoryNumber(currentCategory);
+    const peakFrequencyStr = resolvePeakFrequency(customer);
+    const peakFrequencyNumber = getPeakFrequencyNumber(peakFrequencyStr);
+    const score = peakFrequencyNumber - currentCategoryNumber;
+
+    return {
+      suggestion:
+        currentCategoryNumber < peakFrequencyNumber
+          ? "TURN_ON_TOMORROW"
+          : "TURN_OFF_TOMORROW",
+      confidence: currentCategoryNumber < peakFrequencyNumber ? 95 : 90,
+      score,
+      reason: `Logic 3: Current Category ${currentCategory}, Peak Frequency ${peakFrequencyStr}.`,
     };
   }
 
