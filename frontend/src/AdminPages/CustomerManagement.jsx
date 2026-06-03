@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers } from "react-icons/fi";
+import { FiUsers, FiCalendar } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
@@ -9,6 +9,7 @@ import {
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
 import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
+import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 
 // TABS
 const TABS = [
@@ -35,6 +36,7 @@ export default function CustomerManagement() {
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
   const [openScheduleId, setOpenScheduleId] = useState(null);
+  const [calendarCustomer, setCalendarCustomer] = useState(null);
 
   const canDownloadExcel = true;
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -81,6 +83,7 @@ export default function CustomerManagement() {
   useEffect(() => {
     const handleClickOutside = () => {
       setOpenScheduleId(null);
+      setCalendarCustomer(null);
     };
 
     document.addEventListener("click", handleClickOutside);
@@ -550,34 +553,35 @@ export default function CustomerManagement() {
 
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full text-sm text-center border-collapse">
+        <table className="w-full text-xs text-center border-collapse">
           <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="p-3">Customer ID</th>
-              <th className="p-3">Name</th>
-              <th className="p-3">Zone</th>
-              <th className="p-3">Delivery Plan</th>
-              <th className="p-3">Weekly Schedule</th>
-              <th className="p-3">Peak_Potential</th>
-              <th className="p-3">Peak_Frequency</th>
-              <th className="p-3">Delivery_Gap</th>
+              <th className="px-2 py-3">Customer ID</th>
+              <th className="px-2 py-3">Name</th>
+              <th className="px-2 py-3">Zone</th>
+              <th className="px-2 py-3">Delivery Plan</th>
+              <th className="px-2 py-3">Weekly Schedule</th>
+              <th className="px-2 py-3">Peak_Potential</th>
+              <th className="px-2 py-3">Peak_Frequency</th>
+              <th className="px-2 py-3">Delivery_Gap</th>
               {(activeTab === "ALL" || activeTab === "ONBOARDING") && (
-                <th className="p-3">Current Category</th>
+                <th className="px-2 py-3">Current Category</th>
               )}
-              <th className="p-3">Status</th>
+              <th className="px-2 py-3">Status</th>
+              <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
             </tr>
           </thead>
 
           <tbody>
             {paginatedCustomers.map((c) => (
               <tr key={c.id} className="border-t">
-                <td className="p-3 font-medium">{c.custid || c.id}</td>
-                <td className="p-3 font-medium">{getName(c)}</td>
-                <td className="p-3 font-medium text-gray-700">
+                <td className="px-2 py-3 font-medium">{c.custid || c.id}</td>
+                <td className="px-2 py-3 font-medium">{getName(c)}</td>
+                <td className="px-2 py-3 font-medium text-gray-700">
                   {c.zone || "UNASSIGNED"}
                 </td>
 
-                <td className="p-3">
+                <td className="px-2 py-3">
                   {(() => {
                     const effective = getTodayEffectiveStatus(c);
                     const isOn = effective === "ON";
@@ -631,7 +635,7 @@ export default function CustomerManagement() {
                   })()}
                 </td>
 
-                <td className="p-3">
+                <td className="px-2 py-3">
                   {(() => {
                     const isOpen = openScheduleId === c.id;
                     const isUpdating = updatingScheduleId === c.id;
@@ -671,7 +675,7 @@ export default function CustomerManagement() {
                             e.stopPropagation();
                             setOpenScheduleId(isOpen ? null : c.id);
                           }}
-                          className="px-3 py-1 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 transition"
+                          className="px-3 py-1 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 transition whitespace-nowrap"
                           disabled={isUpdating}
                         >
                           {activeDaysCount} Days {isOpen ? "▲" : "▼"}
@@ -709,7 +713,7 @@ export default function CustomerManagement() {
                   })()}
                 </td>
 
-                <td className="p-3">
+                <td className="px-2 py-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{ backgroundColor: getPotentialColor(c.potential) }}
@@ -718,7 +722,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                <td className="p-3">
+                <td className="px-2 py-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{ backgroundColor: getPeakFrequencyColor(c) }}
@@ -727,7 +731,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                <td className="p-3">
+                <td className="px-2 py-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{
@@ -739,7 +743,7 @@ export default function CustomerManagement() {
                 </td>
 
                 {(activeTab === "ALL" || activeTab === "ONBOARDING") && (
-                  <td className="p-3">
+                  <td className="px-2 py-3">
                     <span
                       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                       style={{
@@ -753,7 +757,7 @@ export default function CustomerManagement() {
                   </td>
                 )}
 
-                <td className="p-3">
+                <td className="px-2 py-3">
                   <div className="flex flex-col items-center gap-1">
                     <span
                       className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
@@ -763,6 +767,26 @@ export default function CustomerManagement() {
                     <span className="text-[10px] text-gray-500 font-medium">
                       {getRemarkDisplay(c)}
                     </span>
+                  </div>
+                </td>
+                <td className="px-2 py-3">
+                  <div className="relative inline-block">
+                    <div 
+                      className="flex justify-center items-center cursor-pointer hover:bg-gray-100 p-2 rounded-full transition-colors w-min mx-auto"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCalendarCustomer(calendarCustomer?.id === c.id ? null : c);
+                      }}
+                      title="Click to view full calendar"
+                    >
+                      <FiCalendar className="w-5 h-5 text-blue-600" />
+                    </div>
+                    {calendarCustomer?.id === c.id && (
+                      <ExecutionCalendarModal 
+                        customer={c} 
+                        onClose={() => setCalendarCustomer(null)} 
+                      />
+                    )}
                   </div>
                 </td>
               </tr>
