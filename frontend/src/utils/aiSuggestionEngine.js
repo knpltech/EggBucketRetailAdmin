@@ -300,3 +300,46 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
     reason: "Unknown AI Logic selected",
   };
 };
+
+/**
+ * Get today's delivery status from customer's last8Days
+ * Returns: "pending" | "checked" | "delivered"
+ */
+export const getTodayDeliveryStatus = (
+  customer,
+  todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata"),
+) => {
+  const last8Days = customer?.last8Days || {};
+  const todayEntry = last8Days[todayDate];
+
+  if (!todayEntry) {
+    return "pending";
+  }
+
+  const apiStatus = String(
+    typeof todayEntry === "string" ? todayEntry : todayEntry?.status || todayEntry?.type || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  // Check if delivered
+  if (apiStatus === "delivered") {
+    return "delivered";
+  }
+
+  // Check if checked (includes: reached, price_mismatch, shop_closed, stock_available, other_vendor)
+  const checkedStatuses = [
+    "checked",
+    "reached",
+    "price_mismatch",
+    "shop_closed",
+    "stock_available",
+    "other_vendor",
+  ];
+
+  if (checkedStatuses.includes(apiStatus)) {
+    return "checked";
+  }
+
+  return "pending";
+};
