@@ -18,6 +18,7 @@ import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
+import { exportToExcel } from "../utils/excelExport";
 import AISuggestionTable from "../components/AISuggestionTable";
 
 const normalizePotential = (value) => {
@@ -253,22 +254,26 @@ const AISuggestions = () => {
     }
   };
 
+  const handleDownloadExcel = () => {
+    exportToExcel(sortedData, logicOption);
+  };
+
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-center items-center justify-center">AI Suggestions</h1>
-        <div className="flex gap-3">
+    <div className="p-4 bg-gray-100 min-h-screen">
+      <div className="flex justify-between items-center mb-4 gap-4">
+        <h1 className="text-xl font-bold whitespace-nowrap">AI Suggestions</h1>
+        <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Search by ID, Name or Business..."
+            placeholder="Search by ID, Name or Busine..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
           />
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value)}
-            className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="DEFAULT">Sort: Default (AI Confidence)</option>
             <option value="NAME_ASC">Name (A-Z)</option>
@@ -282,7 +287,7 @@ const AISuggestions = () => {
           <select
             value={logicOption}
             onChange={(e) => setLogicOption(e.target.value)}
-            className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="logic1">Logic 1</option>
             <option value="logic2">Logic 2</option>
@@ -291,7 +296,7 @@ const AISuggestions = () => {
           <select
             value={filterOption}
             onChange={(e) => setFilterOption(e.target.value)}
-            className="border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="ALL">All Suggestions</option>
             <option value="TURN_ON_TOMORROW">Turn ON Tomorrow</option>
@@ -299,6 +304,13 @@ const AISuggestions = () => {
             <option value="KEEP_ON_TOMORROW">Keep ON Tomorrow</option>
             <option value="KEEP_OFF_TOMORROW">Keep OFF Tomorrow</option>
           </select>
+          <button
+            onClick={handleDownloadExcel}
+            disabled={loading || sortedData.length === 0}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-4 py-1 rounded-lg text-sm transition duration-200 whitespace-nowrap"
+          >
+            Download Excel
+          </button>
         </div>
       </div>
 
