@@ -190,9 +190,13 @@ const updateLast8Days = async (
         customerData.peak_frequency,
     );
 
+    // ⭐ COMPUTE CURRENT CATEGORY FROM last8Days
+    const currentCategory = getCurrentCategoryFromLast8Days(last8Days);
+
     const updateData = {
       last8Days,
       last8DaysUpdatedAt: Date.now(),
+      category: currentCategory,
     };
 
     if (
@@ -2031,5 +2035,4 @@ export {
   getLatestRemarks,
   getCollectionSummary,
   recalculateCollectionData,
-  updateCustomerPayment,
-};
+  updateCustomerPayment,};
