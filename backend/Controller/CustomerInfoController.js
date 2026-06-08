@@ -56,6 +56,67 @@ const normalizeCustomerPotential = (value) => {
   return "T1";
 };
 
+// ─── Prime Customer Helpers ────────────────────────────────────────────────
+// These helpers calculate and sync Prime Customer status based on Peak_Potential
+const computePeakPotentialNumber = (last8Days = {}) => {
+  if (!last8Days || typeof last8Days !== "object") return 0;
+
+  let maxTrays = 0;
+  Object.values(last8Days).forEach((entry) => {
+    if (!entry) return;
+
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (status !== "delivered") return;
+
+    const trays =
+      entry.traysDelivered ??
+      entry.trays ??
+      entry.quantity ??
+      entry?.deliveredTrays ??
+      0;
+    const numTrays = Number(trays);
+
+    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
+      maxTrays = numTrays;
+    }
+  });
+
+  return maxTrays;
+};
+
+const getPrimeCustomerType = (peakPotentialNumber = 0) => {
+  const num = Number(peakPotentialNumber);
+  if (!Number.isFinite(num)) return "REGULAR";
+  return num >= 10 ? "PRIME" : "REGULAR";
+};
+
+const syncPrimeCustomerStatus = (customerData = {}, customerTypeUpdates = [], docRef = null) => {
+  const peakPotential = computePeakPotentialNumber(customerData.last8Days);
+  const calculatedType = getPrimeCustomerType(peakPotential);
+
+  const storedType = String(customerData.customerType || "")
+    .trim()
+    .toUpperCase();
+  const normalizedStoredType =
+    storedType === "PRIME" || storedType === "REGULAR" ? storedType : null;
+
+  // If customerType needs update, add to batch
+  if (normalizedStoredType !== calculatedType && docRef) {
+    customerTypeUpdates.push({
+      ref: docRef,
+      customerType: calculatedType,
+    });
+  }
+
+  return calculatedType;
+};
+
+
 const normalizePeakFrequency = (value) => {
   const raw = String(value ?? "")
     .trim()
@@ -105,33 +166,63 @@ const resolvePeakFrequency = (customerData = {}) => {
     : currentPeak;
 };
 
-const buildCustomerInfoPayload = (doc, peakUpdates = []) => {
+const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = []) => {
   const customerData = doc.data();
   const peakFrequency = resolvePeakFrequency(customerData);
-  const savedPeak = normalizePeakFrequency(
+  const savedPeakFreq = normalizePeakFrequency(
     customerData?.Peak_Frequency ||
     customerData?.peakFrequency ||
     customerData?.peak_frequency,
   );
 
-  if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)) {
-    peakUpdates.push({ ref: doc.ref, Peak_Frequency: peakFrequency });
+  // Compute Peak_Potential from last8Days (max trays delivered)
+  const peakPotentialNum = computePeakPotentialNumber(customerData.last8Days);
+  const peakPotential = peakPotentialNum > 0 ? `T${peakPotentialNum}` : "T1";
+  const savedPeakPotential = String(customerData.Peak_Potential || "").trim();
+
+  // Build update object — only include fields that need saving
+  const updateFields = {};
+  if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeakFreq)) {
+    updateFields.Peak_Frequency = peakFrequency;
   }
+  if (peakPotential !== savedPeakPotential) {
+    updateFields.Peak_Potential = peakPotential;
+  }
+  if (Object.keys(updateFields).length > 0) {
+    peakUpdates.push({ ref: doc.ref, ...updateFields });
+  }
+
+  // Sync Prime Customer status
+  const customerType = syncPrimeCustomerStatus(customerData, customerTypeUpdates, doc.ref);
 
   return {
     id: doc.id,
     ...customerData,
     Peak_Frequency: peakFrequency,
+    Peak_Potential: peakPotential,
+    customerType, // Include synced customerType in response
   };
 };
 
-const commitPeakFrequencyUpdates = async (db, peakUpdates = []) => {
+const commitPeakUpdates = async (db, peakUpdates = []) => {
   if (!peakUpdates.length) return;
 
   for (let i = 0; i < peakUpdates.length; i += 500) {
     const batch = db.batch();
-    peakUpdates.slice(i, i + 500).forEach(({ ref, Peak_Frequency }) => {
-      batch.update(ref, { Peak_Frequency });
+    peakUpdates.slice(i, i + 500).forEach(({ ref, ...fields }) => {
+      batch.update(ref, fields);
+    });
+    await batch.commit();
+  }
+};
+
+const commitCustomerTypeUpdates = async (db, customerTypeUpdates = []) => {
+  if (!customerTypeUpdates.length) return;
+
+  for (let i = 0; i < customerTypeUpdates.length; i += 500) {
+    const batch = db.batch();
+    customerTypeUpdates.slice(i, i + 500).forEach(({ ref, customerType }) => {
+      batch.update(ref, { customerType });
     });
     await batch.commit();
   }
@@ -420,10 +511,12 @@ const userInfo = async (req, res) => {
         const snapshot = await query.offset(offset).limit(limit).get();
 
         const peakUpdates = [];
+        const customerTypeUpdates = [];
         const customers = snapshot.docs.map((doc) =>
-          buildCustomerInfoPayload(doc, peakUpdates),
+          buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates),
         );
-        await commitPeakFrequencyUpdates(db, peakUpdates);
+        await commitPeakUpdates(db, peakUpdates);
+        await commitCustomerTypeUpdates(db, customerTypeUpdates);
 
         const payload = {
           customers,
@@ -472,10 +565,12 @@ const userInfo = async (req, res) => {
       const pageDocs = hasNextPage ? docs.slice(0, limit) : docs;
 
       const peakUpdates = [];
+      const customerTypeUpdates = [];
       const customers = pageDocs.map((doc) =>
-        buildCustomerInfoPayload(doc, peakUpdates),
+        buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates),
       );
-      await commitPeakFrequencyUpdates(db, peakUpdates);
+      await commitPeakUpdates(db, peakUpdates);
+      await commitCustomerTypeUpdates(db, customerTypeUpdates);
 
       let nextCursor = null;
       if (hasNextPage && pageDocs.length > 0) {
@@ -513,10 +608,12 @@ const userInfo = async (req, res) => {
 
     const customersSnapshot = await db.collection("customers").get();
     const peakUpdates = [];
+    const customerTypeUpdates = [];
     const customers = customersSnapshot.docs.map((doc) =>
-      buildCustomerInfoPayload(doc, peakUpdates),
+      buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates),
     );
-    await commitPeakFrequencyUpdates(db, peakUpdates);
+    await commitPeakUpdates(db, peakUpdates);
+    await commitCustomerTypeUpdates(db, customerTypeUpdates);
 
     const sortedCustomers = sortCustomers(customers, sortBy);
 
