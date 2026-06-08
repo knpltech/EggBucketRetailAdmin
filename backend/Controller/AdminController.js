@@ -1108,7 +1108,7 @@ const getCustomerMapStatus = async (req, res) => {
 
 const updateCustomerMeta = async (req, res) => {
   try {
-    const { id, remarks, zone } = req.body;
+    const { id, remarks, zone, customerType } = req.body;
 
     if (!id) {
       return res.status(400).json({ message: "Customer ID is required" });
@@ -1131,6 +1131,17 @@ const updateCustomerMeta = async (req, res) => {
 
     // ✅ REMARKS
     if (remarks !== undefined) updateData.remarks = remarks;
+
+    // ✅ CUSTOMER TYPE — "PRIME" | "REGULAR"
+    // Automatically synced based on Peak_Potential, but can also be manually updated
+    if (customerType !== undefined) {
+      const normalizedType = String(customerType || "")
+        .trim()
+        .toUpperCase();
+      if (normalizedType === "PRIME" || normalizedType === "REGULAR") {
+        updateData.customerType = normalizedType;
+      }
+    }
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ message: "Nothing to update" });

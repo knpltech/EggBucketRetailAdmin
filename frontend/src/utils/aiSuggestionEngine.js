@@ -10,7 +10,7 @@ export function getDateStringInTimeZone(date, timeZone) {
     const month = parts.find((p) => p.type === "month")?.value;
     const day = parts.find((p) => p.type === "day")?.value;
     if (year && month && day) return `${year}-${month}-${day}`;
-  // eslint-disable-next-line no-unused-vars
+    // eslint-disable-next-line no-unused-vars
   } catch (error) { /* empty */ }
   return new Date().toISOString().slice(0, 10);
 }
@@ -102,8 +102,8 @@ export const computePeakFrequency = (last8Days) => {
 export const resolvePeakFrequency = (customer) => {
   const savedPeak = normalizePeakFrequency(
     customer?.Peak_Frequency ||
-      customer?.peakFrequency ||
-      customer?.peak_frequency,
+    customer?.peakFrequency ||
+    customer?.peak_frequency,
   );
   const currentPeak = computePeakFrequency(customer?.last8Days);
 
