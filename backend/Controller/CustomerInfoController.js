@@ -1188,6 +1188,40 @@ const getUserInfoStats = async (req, res) => {
   }
 };
 
+// ── GET /category-peak-potentials ──────────────────────────────────────────
+const getCategoryPeakPotentials = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const INDIA_TZ = "Asia/Kolkata";
+    
+    // Get today's weekday name in IST
+    const now = new Date();
+    const dayIndex = new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      timeZone: INDIA_TZ,
+    }).format(now);
+    
+    const WEEKDAY_NAMES = [
+      "Sunday", "Monday", "Tuesday", "Wednesday",
+      "Thursday", "Friday", "Saturday",
+    ];
+    const shortToIndex = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const weekdayName = WEEKDAY_NAMES[shortToIndex[dayIndex] ?? now.getDay()];
+
+    const docRef = db.collection("categoryPeakPotentials").doc(weekdayName);
+    const docSnap = await docRef.get();
+    
+    if (!docSnap.exists) {
+      return res.status(200).json({});
+    }
+
+    return res.status(200).json(docSnap.data());
+  } catch (error) {
+    console.error("getCategoryPeakPotentials error:", error);
+    return res.status(500).json({ error: "Failed to fetch category peak potentials" });
+  }
+};
+
 export {
   userInfo,
   specificUser,
@@ -1195,6 +1229,7 @@ export {
   getAllCustomerDeliveries,
   addCustomer,
   getUserInfoStats,
+  getCategoryPeakPotentials,
   adjustActiveCount,
   invalidateActiveCountCache,
 };

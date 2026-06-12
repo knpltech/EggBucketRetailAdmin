@@ -16,6 +16,7 @@ import {
   getAllCustomerDeliveries,
   addCustomer,
   getUserInfoStats,
+  getCategoryPeakPotentials,
 } from "../Controller/CustomerInfoController.js";
 
 // import customer functions from CustomerController
@@ -67,6 +68,7 @@ router.route("/login").post(login);
 router.use(authenticateToken);
 
 router.get("/user-info/stats", getUserInfoStats);
+router.get("/category-peak-potentials", getCategoryPeakPotentials);
 router.route("/user-info").get(userInfo);
 router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);

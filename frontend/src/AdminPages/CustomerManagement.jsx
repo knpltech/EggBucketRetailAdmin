@@ -102,12 +102,13 @@ function syncPrimeCustomer(customer = {}) {
 
 export default function CustomerManagement() {
   const [customers, setCustomers] = useState([]);
+  const [categoryPeaks, setCategoryPeaks] = useState({});
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
   const [activeTab, setActiveTab] = useState("ALL");
-  const [sortBy, setSortBy] = useState("deliveryGap");
+  const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
   const [openScheduleId, setOpenScheduleId] = useState(null);
@@ -192,6 +193,14 @@ export default function CustomerManagement() {
         // Sync Prime Customer status for all customers
         // This ensures Firestore is kept in sync with Peak_Potential
         await syncAllPrimeCustomers(normalizedRows);
+
+        // Fetch category peak potentials for today's weekday
+        try {
+          const peakRes = await axios.get(`${ADMIN_PATH}/category-peak-potentials`);
+          setCategoryPeaks(peakRes.data || {});
+        } catch (err) {
+          console.error("Error fetching category peak potentials:", err);
+        }
       } catch (err) {
         console.error("CustomerManagement init error:", err);
       } finally {
@@ -397,13 +406,24 @@ export default function CustomerManagement() {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
   }, [filtered, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Total Peak Potential: sum of all T-numbers in current tab ────────────
+  // ─── Weekday name for display ──────────────────────────────────────────────
+  const weekdayName = [
+    "Sunday", "Monday", "Tuesday", "Wednesday",
+    "Thursday", "Friday", "Saturday",
+  ][new Date().getDay()];
+
+  // ─── Total Peak Potential: persistent best for the current tab ─────────
   const totalPeakPotential = useMemo(() => {
-    return filtered.reduce(
-      (sum, c) => sum + getPotentialNumber(c.potential),
-      0,
-    );
-  }, [filtered]);
+    let key = "ALL";
+    if (activeTab === "PRIME CUSTOMER") {
+      key = "PRIME";
+    } else if (activeTab === "ONBOARDING") {
+      key = "ONBOARDING";
+    } else if (activeTab !== "ALL") {
+      key = activeTab; // "D0", "D1", etc.
+    }
+    return Number(categoryPeaks[key]) || 0;
+  }, [categoryPeaks, activeTab]);
 
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
   const potentialAchieved = useMemo(() => {
@@ -425,6 +445,12 @@ export default function CustomerManagement() {
       return sum + (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
     }, 0);
   }, [filtered, todayDate]);
+
+  // ─── Achievement %: today's trays vs best same-weekday total ──────────────
+  const achievementPercentage = useMemo(() => {
+    if (totalPeakPotential <= 0) return 0;
+    return Math.round((potentialAchieved / totalPeakPotential) * 100);
+  }, [potentialAchieved, totalPeakPotential]);
 
   // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
@@ -653,7 +679,7 @@ export default function CustomerManagement() {
       <div className="flex gap-4 mb-4">
         <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500">
           <p className="text-xs text-gray-500 whitespace-nowrap">
-            Total Peak Potential
+            Best {weekdayName} Potential
           </p>
           <p className="text-xl font-bold text-orange-600">
             {loading ? "…" : `T(${totalPeakPotential})`}
@@ -667,6 +693,21 @@ export default function CustomerManagement() {
           <p className="text-xl font-bold text-purple-600">
             {loading ? "…" : potentialAchieved}
           </p>
+          {!loading && totalPeakPotential > 0 && (
+            <p
+              className="text-xs font-semibold mt-1"
+              style={{
+                color:
+                  achievementPercentage >= 100
+                    ? "#0F9D58"
+                    : achievementPercentage >= 70
+                      ? "#FB8C00"
+                      : "#FF3B30",
+              }}
+            >
+              {achievementPercentage}% achieved
+            </p>
+          )}
         </div>
       </div>
 
