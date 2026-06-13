@@ -62,6 +62,8 @@ import {
   getCollectionSummary,
   recalculateCollectionData,
   updateCustomerPayment,
+  addBusinessType,
+  getBusinessTypes,
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -84,6 +86,8 @@ router.post("/customer/weekly-schedule", saveWeeklySchedule);
 router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
+router.post("/business-types/add", addBusinessType);
+router.get("/business-types", getBusinessTypes);
 
 router.get("/analytics/last8", getAnalyticsLast8);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);

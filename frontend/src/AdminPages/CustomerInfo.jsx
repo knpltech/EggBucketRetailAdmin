@@ -10,6 +10,7 @@ const PAGE_SIZE = 25;
 const CustomerInfo = () => {
   const [customers, setCustomers] = useState([]);
   const [zones, setZones] = useState([]);
+  const [businessTypes, setBusinessTypes] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -19,6 +20,9 @@ const CustomerInfo = () => {
 
   const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [editingZoneId, setEditingZoneId] = useState(null);
+
+  const [assigningTypeId, setAssigningTypeId] = useState(null);
+  const [editingTypeId, setEditingTypeId] = useState(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -48,6 +52,7 @@ const CustomerInfo = () => {
       await Promise.all([
         fetchCustomers({ page: 1, sortBy: sortOption, cursor: "" }),
         fetchZones(),
+        fetchBusinessTypes(),
       ]);
     } finally {
       setLoading(false);
@@ -184,6 +189,45 @@ const CustomerInfo = () => {
     }
   };
 
+  const fetchBusinessTypes = async () => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/business-types`);
+      setBusinessTypes(res.data || []);
+    } catch (err) {
+      console.warn("Business Types API unavailable:", err);
+      setBusinessTypes([]);
+    }
+  };
+
+  const addBusinessTypePrompt = async () => {
+    const name = prompt("Enter new Business Type name:");
+
+    if (!name) return;
+
+    await axios.post(`${ADMIN_PATH}/business-types/add`, { name });
+
+    setBusinessTypes((prev) => (prev.includes(name) ? prev : [...prev, name]));
+
+    alert("Business Type Added");
+  };
+
+  const assignBusinessType = async (id, businessType) => {
+    if (!businessType || assigningTypeId === id) return;
+
+    try {
+      setAssigningTypeId(id);
+
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        businessType,
+      });
+
+      await fetchCustomers({ page: currentPage });
+    } finally {
+      setAssigningTypeId(null);
+    }
+  };
+
   // DELETE
 
   const handleDelete = async (id) => {
@@ -316,6 +360,13 @@ const CustomerInfo = () => {
             Add Zone
           </button>
 
+          <button
+            onClick={addBusinessTypePrompt}
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Add Business Type
+          </button>
+
         </div>
       </div>
 
@@ -334,6 +385,7 @@ const CustomerInfo = () => {
               <th className="p-3 text-left">Business</th>
               <th className="p-3 text-left">Phone</th>
               <th className="p-3 text-left">Zone</th>
+              <th className="p-3 text-left">Business Type</th>
               <th className="p-3 text-left">Created</th>
               <th className="p-3 text-left">Action</th>
             </tr>
@@ -383,7 +435,7 @@ const CustomerInfo = () => {
                       onChange={(e) =>
                         assignZone(c.id, e.target.value)
                       }
-                      className="border rounded px-2 py-1"
+                      className="border rounded px-2 py-1 w-40"
                     >
                       <option value="">Assign</option>
 
@@ -405,7 +457,7 @@ const CustomerInfo = () => {
                         await assignZone(c.id, e.target.value);
                         setEditingZoneId(null);
                       }}
-                      className="border rounded px-2 py-1"
+                      className="border rounded px-2 py-1 w-40"
                     >
 
                       {zones.map((z) => (
@@ -425,6 +477,72 @@ const CustomerInfo = () => {
                       <button
                         onClick={() =>
                           setEditingZoneId(c.id)
+                        }
+                        className="text-gray-500"
+                      >
+                        <FiEdit2 />
+                      </button>
+
+                    </div>
+                  )}
+                </td>
+
+                {/* BUSINESS TYPE */}
+
+                <td
+                  className="p-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+
+                  {!c.businessType || c.businessType === "UNASSIGNED" ? (
+
+                    <select
+                      disabled={assigningTypeId === c.id}
+                      onChange={(e) =>
+                        assignBusinessType(c.id, e.target.value)
+                      }
+                      className="border rounded px-2 py-1 w-40"
+                    >
+                      <option value="">Assign</option>
+
+                      {businessTypes.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+
+                    </select>
+
+                  ) : editingTypeId === c.id ? (
+
+                    <select
+                      autoFocus
+                      defaultValue={c.businessType}
+                      onBlur={() => setEditingTypeId(null)}
+                      onChange={async (e) => {
+                        await assignBusinessType(c.id, e.target.value);
+                        setEditingTypeId(null);
+                      }}
+                      className="border rounded px-2 py-1 w-40"
+                    >
+
+                      {businessTypes.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+
+                    </select>
+
+                  ) : (
+
+                    <div className="flex items-center gap-2">
+
+                      <span>{c.businessType}</span>
+
+                      <button
+                        onClick={() =>
+                          setEditingTypeId(c.id)
                         }
                         className="text-gray-500"
                       >
