@@ -91,14 +91,14 @@ const AISuggestions = () => {
         allCustomers = userInfoData.customers;
       }
 
-      // 1. Filter out customers with missing todayOverride and D0 customers.
+      // 1. Filter out customers with missing todayOverride and non-D1-D3 customers.
       // 2. Filter to show only PENDING status for today (exclude Delivered/Checked)
       const validCustomers = allCustomers.filter((c) => {
         if (!c || !c.todayOverride) return false;
         const currentCategoryNumber = getCurrentCategoryNumber(
           computeCurrentCategory(c.last8Days),
         );
-        if (currentCategoryNumber < 1 || currentCategoryNumber > 7) return false;
+        if (currentCategoryNumber < 1 || currentCategoryNumber > 3) return false;
 
         // ⭐ OPTIMIZATION: Filter only PENDING customers (no additional reads)
         const todayStatus = getTodayDeliveryStatus(c);
