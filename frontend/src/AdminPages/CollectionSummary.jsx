@@ -518,6 +518,7 @@ const CollectionSummary = () => {
       "Cash",
       "UPI",
       "Amount",
+      "Sales Point",
     ];
     const rows = filtered.map((c) => [
       c.customerId,
@@ -529,6 +530,9 @@ const CollectionSummary = () => {
       c.cash,
       c.upi,
       c.amount,
+      typeof c.amount === "number" && typeof c.quantity === "number" && c.quantity > 0
+        ? (c.amount / c.quantity).toFixed(2)
+        : "-",
     ]);
 
     const csvContent = [
@@ -814,6 +818,9 @@ const CollectionSummary = () => {
                 Amount
               </th>
               <th className="p-3 text-right font-semibold text-gray-900">
+                Sales Point
+              </th>
+              <th className="p-3 text-right font-semibold text-gray-900">
                 Minus Amount
               </th>
             </tr>
@@ -1010,6 +1017,17 @@ const CollectionSummary = () => {
                     : item.amount}
                 </td>
 
+                <td className="p-3 text-right text-gray-900 font-semibold">
+                  {typeof item.amount === "number" &&
+                  typeof item.quantity === "number" &&
+                  item.quantity > 0
+                    ? `₹${(item.amount / item.quantity).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`
+                    : "-"}
+                </td>
+
                 <td className="p-3 text-right font-semibold">
                   {minusAmounts[item.customerId] !== undefined ? (
                     <span
@@ -1043,6 +1061,16 @@ const CollectionSummary = () => {
               </td>
               <td className="p-3 text-right text-gray-900">
                 ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
+              </td>
+              <td className="p-3 text-right text-gray-900">
+                {filteredTotals.totalTrays > 0
+                  ? `₹${(
+                      filteredTotals.totalAmount / filteredTotals.totalTrays
+                    ).toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`
+                  : "-"}
               </td>
               <td className="p-3 text-right text-gray-900">
                 {Object.keys(minusAmounts).length > 0
