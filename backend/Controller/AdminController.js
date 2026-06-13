@@ -214,6 +214,7 @@ const updateLast8Days = async (
       const staleKeys = keys.filter(
         (k) =>
           k.startsWith("analytics:last8") ||
+          k.startsWith("customerInfo:aiSuggestions") ||
           k.startsWith("customerInfo:userInfo") ||
           k === `customer:${customerId}`,
       );
@@ -480,6 +481,25 @@ const getDeliveryPartnerMapCached = async () => {
   return deliveryPartnerMap;
 };
 
+const getRetentionCustomerDocsCached = async (db) => {
+  const cacheKey = "customerRetention:customers:v1";
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    console.log("[CACHE HIT] Retention customer docs served from cache");
+    return cached;
+  }
+
+  console.log("[CACHE MISS] Fetching retention customer docs from Firestore");
+  const customersSnap = await db.collection("customers").get();
+  const allCustomers = customersSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+
+  cache.set(cacheKey, allCustomers, 300);
+  return allCustomers;
+};
+
 const getRetentionCustomers = async (req, res) => {
   try {
     const selectedDate =
@@ -604,11 +624,7 @@ const getRetentionCustomers = async (req, res) => {
     // ⭐ OPTIMIZATION: Cache the full processed customer dataset per date
     // This avoids re-scanning all customers when pagination/filters change
     // Fetch all customers from Firestore to compute exact statistics
-    const customersSnap = await db.collection("customers").get();
-    const allCustomers = customersSnap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const allCustomers = await getRetentionCustomerDocsCached(db);
 
     const agentStatsMap = {};
     // Pre-populate with all delivery partners from collection
@@ -1011,7 +1027,7 @@ const resetRetentionCustomer = async (req, res) => {
       const staleKeys = keys.filter(
         (key) =>
           key.startsWith("allCustomerDeliveries") ||
-          key.startsWith("customerInfo:userInfo") ||
+          key.startsWith("customerInfo:aiSuggestions") ||
           key.startsWith("customer-retention:") ||
           key.startsWith("customerRetention:") ||
           key.startsWith("retention:") ||

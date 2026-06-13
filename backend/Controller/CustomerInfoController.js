@@ -426,6 +426,13 @@ const invalidateCustomerInfoCache = async (customerId) => {
       await cache.delAsync(cacheKeys);
     }
 
+    const aiSuggestionCacheKeys = await cache.keysAsync(
+      "customerInfo:aiSuggestions*",
+    );
+    if (aiSuggestionCacheKeys.length > 0) {
+      await cache.delAsync(aiSuggestionCacheKeys);
+    }
+
     if (customerId) {
       await cache.delAsync(`customer:${customerId}`);
     }
@@ -622,6 +629,35 @@ const userInfo = async (req, res) => {
   } catch (error) {
     console.error("Error fetching customers:", error);
     return res.status(500).json({ error: "Failed to fetch customer data" });
+  }
+};
+
+const getAISuggestionCandidates = async (req, res) => {
+  try {
+    const cacheKey = "customerInfo:aiSuggestions:d1d3:v1";
+    const cachedCustomers = await cache.getAsync(cacheKey);
+    if (cachedCustomers) {
+      return res.status(200).json(cachedCustomers);
+    }
+
+    const db = getFirestore();
+    const customersSnapshot = await db
+      .collection("customers")
+      .where("category", "in", ["D1", "D2", "D3"])
+      .get();
+
+    const customers = customersSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    await cache.setAsync(cacheKey, customers, 300);
+    return res.status(200).json(customers);
+  } catch (error) {
+    console.error("Error fetching AI suggestion candidates:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch AI suggestion candidates" });
   }
 };
 
@@ -1224,6 +1260,7 @@ const getCategoryPeakPotentials = async (req, res) => {
 
 export {
   userInfo,
+  getAISuggestionCandidates,
   specificUser,
   getUserDeliveries,
   getAllCustomerDeliveries,

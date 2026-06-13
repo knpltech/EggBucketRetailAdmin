@@ -2,6 +2,7 @@ import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 
 const CACHE_KEY = "eggbucket:admin:user-info:all:v1";
+const AI_SUGGESTIONS_CACHE_KEY = "eggbucket:admin:ai-suggestions:d1d3:v1";
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
 let memoryPayload = null;
@@ -65,23 +66,78 @@ export const getCachedUserInfo = async () => {
   return inFlightRequest;
 };
 
+export const getCachedAISuggestionCandidates = async () => {
+  const readAISessionPayload = () => {
+    try {
+      const raw = sessionStorage.getItem(AI_SUGGESTIONS_CACHE_KEY);
+      if (!raw) return null;
+
+      const cached = JSON.parse(raw);
+      if (!cached || !isFresh(cached.expiresAt)) return null;
+
+      return cached.payload;
+    } catch {
+      return null;
+    }
+  };
+
+  const sessionPayload = readAISessionPayload();
+  if (sessionPayload) return sessionPayload;
+
+  const response = await axios.get(`${ADMIN_PATH}/ai-suggestions/candidates`);
+  const payload = response.data;
+  const expiresAt = Date.now() + CACHE_TTL_MS;
+
+  try {
+    sessionStorage.setItem(
+      AI_SUGGESTIONS_CACHE_KEY,
+      JSON.stringify({
+        payload,
+        expiresAt,
+      }),
+    );
+  } catch {
+    // Ignore storage errors; the backend cache still reduces reads.
+  }
+
+  return payload;
+};
+
 export const patchCachedUserInfoCustomer = (customerId, updater) => {
   if (!customerId || typeof updater !== "function") return;
-
-  const payload = memoryPayload || readSessionPayload();
-  if (!payload) return;
 
   const patchRows = (rows) => {
     if (!Array.isArray(rows)) return rows;
     return rows.map((row) => (row.id === customerId ? updater(row) : row));
   };
 
-  const nextPayload = Array.isArray(payload)
-    ? patchRows(payload)
-    : {
-        ...payload,
-        customers: patchRows(payload.customers),
-      };
+  const payload = memoryPayload || readSessionPayload();
+  if (payload) {
+    const nextPayload = Array.isArray(payload)
+      ? patchRows(payload)
+      : {
+          ...payload,
+          customers: patchRows(payload.customers),
+        };
 
-  writePayload(nextPayload);
+    writePayload(nextPayload);
+  }
+
+  try {
+    const raw = sessionStorage.getItem(AI_SUGGESTIONS_CACHE_KEY);
+    if (!raw) return;
+
+    const cached = JSON.parse(raw);
+    if (!cached || !isFresh(cached.expiresAt)) return;
+
+    sessionStorage.setItem(
+      AI_SUGGESTIONS_CACHE_KEY,
+      JSON.stringify({
+        ...cached,
+        payload: patchRows(cached.payload),
+      }),
+    );
+  } catch {
+    // Ignore storage errors; local React state is already updated.
+  }
 };
