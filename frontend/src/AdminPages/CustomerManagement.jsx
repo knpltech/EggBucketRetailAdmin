@@ -27,6 +27,22 @@ const TABS = [
   "D7",
 ];
 
+const BUSINESS_CATEGORIES = [
+  "ALL",
+  "Kirana Store",
+  "Hotel",
+  "Restaurant & Cafe",
+  "Canteen & Catering",
+  "Vegetables Shop",
+  "Meat Shop",
+  "Condiments",
+  "Bakery & Cake Shop",
+  "Hostel & PG",
+  "Street Cart",
+  "Wholesaler",
+  "SuperMarket",
+];
+
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
 /**
  * Compute Peak_Potential numeric value from last8Days
@@ -109,6 +125,7 @@ export default function CustomerManagement() {
   const PAGE_SIZE = 25;
 
   const [activeTab, setActiveTab] = useState("ALL");
+  const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -213,7 +230,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, sortBy]);
+  }, [activeTab, activeBusinessTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -319,6 +336,13 @@ export default function CustomerManagement() {
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
+
+    if (activeBusinessTab !== "ALL") {
+      list = list.filter(
+        (c) => String(c.businessType || "").trim().toLowerCase() === activeBusinessTab.toLowerCase()
+      );
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -403,7 +427,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -717,12 +741,25 @@ export default function CustomerManagement() {
       </div>
 
       {/* TABS */}
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
             className={`px-4 py-2 rounded-xl border ${activeTab === t ? "bg-black text-white" : "bg-white"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* BUSINESS CATEGORIES TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {BUSINESS_CATEGORIES.map((t) => (
+          <button
+            key={t}
+            onClick={() => setActiveBusinessTab(t)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === t ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             {t}
           </button>
