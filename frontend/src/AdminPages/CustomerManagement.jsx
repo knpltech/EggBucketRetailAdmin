@@ -441,6 +441,10 @@ export default function CustomerManagement() {
 
   // ─── Total Peak Potential: persistent best for the current tab ─────────
   const totalPeakPotential = useMemo(() => {
+    if (activeBusinessTab !== "ALL") {
+      return Number(categoryPeaks[activeBusinessTab.toUpperCase()]) || 0;
+    }
+
     let key = "ALL";
     if (activeTab === "PRIME CUSTOMER") {
       key = "PRIME";
@@ -452,7 +456,7 @@ export default function CustomerManagement() {
       key = activeTab; // "D0", "D1", etc.
     }
     return Number(categoryPeaks[key]) || 0;
-  }, [categoryPeaks, activeTab]);
+  }, [categoryPeaks, activeTab, activeBusinessTab]);
 
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
   const potentialAchieved = useMemo(() => {

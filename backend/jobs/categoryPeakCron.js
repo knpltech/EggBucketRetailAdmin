@@ -151,8 +151,9 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
     const isPrime = peakPotential >= 10;
 
     // Check if ONBOARDING (no zone)
-    const zone = data.zone;
-    const isOnboarding = !zone || zone === "" || zone === "UNASSIGNED";
+    const zone = String(data.zone || "").trim().toUpperCase();
+    const isOnboarding = !zone || zone === "UNASSIGNED";
+    const isCallingCustomer = zone === "CALLING CUSTOMER";
 
     // Add to ALL
     categoryTotals.ALL += targetTrays;
@@ -170,6 +171,25 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
     // Add to ONBOARDING if applicable
     if (isOnboarding) {
       categoryTotals.ONBOARDING += targetTrays;
+    }
+    
+    // Add to CALLING CUSTOMER if applicable
+    if (isCallingCustomer) {
+      if (categoryTotals["CALLING CUSTOMER"] === undefined) {
+        categoryTotals["CALLING CUSTOMER"] = 0;
+      }
+      categoryTotals["CALLING CUSTOMER"] += targetTrays;
+    }
+
+    // Add to Business Type if applicable
+    if (data.businessType) {
+      const bType = String(data.businessType).trim().toUpperCase();
+      if (bType) {
+        if (categoryTotals[bType] === undefined) {
+          categoryTotals[bType] = 0;
+        }
+        categoryTotals[bType] += targetTrays;
+      }
     }
   });
 
