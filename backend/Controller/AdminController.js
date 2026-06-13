@@ -1151,7 +1151,7 @@ const getCustomerMapStatus = async (req, res) => {
 
 const updateCustomerMeta = async (req, res) => {
   try {
-    const { id, remarks, zone, customerType } = req.body;
+    const { id, remarks, zone, customerType, businessType } = req.body;
 
     if (!id) {
       return res.status(400).json({ message: "Customer ID is required" });
@@ -1172,19 +1172,24 @@ const updateCustomerMeta = async (req, res) => {
       updateData.zone = zone;
     }
 
-    // ✅ REMARKS
-    if (remarks !== undefined) updateData.remarks = remarks;
-
     // ✅ CUSTOMER TYPE — "PRIME" | "REGULAR"
     // Automatically synced based on Peak_Potential, but can also be manually updated
-    if (customerType !== undefined) {
-      const normalizedType = String(customerType || "")
+    if (req.body.customerType !== undefined) {
+      const normalizedType = String(req.body.customerType || "")
         .trim()
         .toUpperCase();
       if (normalizedType === "PRIME" || normalizedType === "REGULAR") {
         updateData.customerType = normalizedType;
       }
     }
+
+    // ✅ BUSINESS TYPE
+    if (req.body.businessType !== undefined) {
+      updateData.businessType = req.body.businessType;
+    }
+
+    // ✅ REMARKS
+    if (remarks !== undefined) updateData.remarks = remarks;
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ message: "Nothing to update" });
@@ -1259,6 +1264,50 @@ const getZones = async (req, res) => {
 
     cache.set(cacheKey, zones, 3600); // Cache for 1 hour
     res.json(zones);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const addBusinessType = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "Business Type name required" });
+
+    const db = getFirestore();
+
+    // Check duplicate
+    const snap = await db.collection("businessTypes").where("name", "==", name).get();
+    if (!snap.empty) {
+      return res.status(400).json({ message: "Business Type already exists" });
+    }
+
+    await db.collection("businessTypes").add({ name });
+    cache.del("businessTypes:list");
+
+    res.json({ message: "Business Type added" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getBusinessTypes = async (req, res) => {
+  try {
+    const cacheKey = "businessTypes:list";
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const db = getFirestore();
+    const snap = await db.collection("businessTypes").get();
+    const types = snap.docs.map((doc) => doc.data().name).filter(Boolean);
+
+    // Sort alphabetically
+    types.sort((a, b) => a.localeCompare(b));
+
+    cache.set(cacheKey, types, 3600); // Cache for 1 hour
+    res.json(types);
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: "Server error" });
@@ -2081,6 +2130,8 @@ export {
   toggleTodayDelivery,
   addZone,
   getZones,
+  addBusinessType,
+  getBusinessTypes,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getCustomersByDeliveryCount,
@@ -2089,4 +2140,5 @@ export {
   getLatestRemarks,
   getCollectionSummary,
   recalculateCollectionData,
-  updateCustomerPayment,};
+  updateCustomerPayment,
+};
