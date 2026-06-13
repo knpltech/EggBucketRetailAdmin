@@ -15,6 +15,7 @@ import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 const TABS = [
   "ALL",
   "PRIME CUSTOMER",
+  "CALLING CUSTOMER",
   "ONBOARDING",
   "D0",
   "D1",
@@ -304,6 +305,8 @@ export default function CustomerManagement() {
         const peakPotential = computePeakPotentialNumber(c.last8Days);
         return peakPotential >= 10;
       });
+    } else if (activeTab === "CALLING CUSTOMER") {
+      list = list.filter((c) => String(c.zone || "").trim().toUpperCase() === "CALLING CUSTOMER");
     } else if (activeTab === "ONBOARDING") {
       list = list.filter(
         (c) =>
@@ -417,6 +420,8 @@ export default function CustomerManagement() {
     let key = "ALL";
     if (activeTab === "PRIME CUSTOMER") {
       key = "PRIME";
+    } else if (activeTab === "CALLING CUSTOMER") {
+      key = "CALLING CUSTOMER";
     } else if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
     } else if (activeTab !== "ALL") {
@@ -601,8 +606,8 @@ export default function CustomerManagement() {
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER and ONBOARDING tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") {
+      // Add Current_Category for ALL, PRIME CUSTOMER, CALLING CUSTOMER and ONBOARDING tabs
+      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData.Status = getLatestStatus(c);
@@ -737,7 +742,7 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Peak_Potential</th>
               <th className="px-2 py-3">Peak_Frequency</th>
               <th className="px-2 py-3">Delivery_Gap</th>
-              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") && (
+              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") && (
                 <th className="px-2 py-3">Current Category</th>
               )}
               <th className="px-2 py-3">Status</th>
@@ -915,7 +920,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") && (
+                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") && (
                   <td className="px-2 py-3">
                     <span
                       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
