@@ -351,56 +351,96 @@ const Report = () => {
       return;
     }
 
-    const sheetData = [
-      [
-        "Date",
-        "Customer ID",
-        "Customer Name",
-        "Zone",
-        "Delivery Agent Name",
-        "Status",
-        "Remarks",
-      ],
-    ];
+    const summaryByDateAndAgent = {};
 
-    // Filter customers by date range from last8Days
     allCustomers.forEach((customer) => {
       const last8Days = customer.last8Days || {};
 
       Object.entries(last8Days).forEach(([date, entry]) => {
-        // Check if date is within range
         if (date < startRange || date > endRange) return;
 
-        const entryObj = typeof entry === "string" ? { status: entry } : entry;
-        const status = entryObj.status || "pending";
+        const entryObj = typeof entry === "string" ? { status: entry } : entry || {};
+        const status = String(entryObj.status || "pending").toLowerCase();
 
-        if (status === "pending") return; // Skip pending
+        if (status === "pending") return;
 
-        const resolvedZone = customer.zone || "UNASSIGNED";
+        const agentName =
+          String(entryObj.agentName || "").trim() || "Not Assigned";
 
-        const remarks =
-          status === "delivered"
-            ? entryObj.trays || entryObj.quantity
-              ? formatTrayLabel(entryObj.trays || entryObj.quantity)
-              : ""
-            : entryObj.reason || "";
+        if (selectedAgent !== "all" && agentName !== selectedAgent) return;
 
-        sheetData.push([
-          date,
-          customer.custid,
-          customer.name,
-          resolvedZone,
-          entryObj.agentName || "Not Assigned",
-          getStatusLabel(status === "delivered" ? "delivered" : "checked"),
-          remarks || "-",
-        ]);
+        const key = `${date}__${agentName}`;
+
+        if (!summaryByDateAndAgent[key]) {
+          summaryByDateAndAgent[key] = {
+            date,
+            agentName,
+            checked: 0,
+            delivered: 0,
+            total: 0,
+          };
+        }
+
+        if (status === "delivered") {
+          summaryByDateAndAgent[key].delivered += 1;
+        } else {
+          summaryByDateAndAgent[key].checked += 1;
+        }
+
+        summaryByDateAndAgent[key].total += 1;
       });
     });
 
+    const rows = Object.values(summaryByDateAndAgent).sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return a.agentName.localeCompare(b.agentName);
+    });
+
+    if (!rows.length) {
+      alert("No checked or delivered records found for this date range");
+      return;
+    }
+
+    const grandTotal = rows.reduce(
+      (total, row) => ({
+        checked: total.checked + row.checked,
+        delivered: total.delivered + row.delivered,
+        total: total.total + row.total,
+      }),
+      { checked: 0, delivered: 0, total: 0 },
+    );
+
+    const sheetData = [
+      ["Date", "Delivery Agent Name", "Checked", "Delivered", "Total"],
+      ...rows.map((row) => [
+        row.date,
+        row.agentName,
+        row.checked,
+        row.delivered,
+        row.total,
+      ]),
+      [
+        "Grand Total",
+        "",
+        grandTotal.checked,
+        grandTotal.delivered,
+        grandTotal.total,
+      ],
+    ];
+
     try {
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      ws["!cols"] = [
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 12 },
+      ];
+
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Detailed Report");
+      XLSX.utils.book_append_sheet(wb, ws, "Date Wise Summary");
 
       const buffer = XLSX.write(wb, {
         type: "array",

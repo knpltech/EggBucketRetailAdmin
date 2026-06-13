@@ -990,10 +990,16 @@ const resetRetentionCustomer = async (req, res) => {
         console.log(`Deleted delivery record for ${customerId} on ${date}`);
       }
 
-      // Update customer to remove from last8Days
+      const customerData = customerSnap.data() || {};
+      const nextLast8Days = { ...(customerData.last8Days || {}) };
+      delete nextLast8Days[date];
+      const currentCategory = getCurrentCategoryFromLast8Days(nextLast8Days);
+
+      // Update customer to remove from last8Days and refresh denormalized category
       transaction.update(customerRef, {
         [`last8Days.${date}`]: admin.firestore.FieldValue.delete(),
         last8DaysUpdatedAt: Date.now(),
+        category: currentCategory,
       });
 
       console.log(`Updated customer ${customerId} last8Days for ${date}`);
@@ -1005,31 +1011,19 @@ const resetRetentionCustomer = async (req, res) => {
       const staleKeys = keys.filter(
         (key) =>
           key.startsWith("allCustomerDeliveries") ||
-          key.startsWith("customer-retention:v2") ||
-          key.startsWith("customerRetention:v3") ||
-          key.startsWith("customerRetention:v4") ||
-          key.startsWith("customerRetention:v5") ||
-          key.startsWith("customerRetention:v6") ||
-          key.startsWith("customerRetention:v7") ||
-          key.startsWith("customerRetention:v8") ||
-          key.startsWith("customerRetention:v9") ||
-          key.startsWith("customerRetention:v10") ||
-          key.startsWith("customerRetention:v11") ||
-          key.startsWith("customerRetention:v12") ||
-          key.startsWith("customerRetention:v13") ||
-          key.startsWith("customerRetention:v14") ||
-          key.startsWith("customerRetention:v15") ||
-          key.startsWith("customerRetention:v16") ||
-          key.startsWith("customerRetention:v17") ||
+          key.startsWith("customerInfo:userInfo") ||
+          key.startsWith("customer-retention:") ||
+          key.startsWith("customerRetention:") ||
           key.startsWith("retention:") ||
-          key.startsWith("analytics:last8"),
+          key.startsWith("analytics:last8") ||
+          key.startsWith("customerMapStatus:today"),
       );
       if (staleKeys.length > 0) {
         cache.del(staleKeys);
         console.log(`Invalidated ${staleKeys.length} cache keys`);
       }
+      cache.del(`customer:${customerId}`);
       cache.del(`userDeliveries:${customerId}`);
-      cache.del("customerMapStatus:today");
       cache.del("latestRemarks");
       await invalidateActiveCountCache();
     } catch (cacheErr) {
