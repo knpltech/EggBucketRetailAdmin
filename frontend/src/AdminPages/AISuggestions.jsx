@@ -15,7 +15,7 @@ import {
   resolvePeakFrequency,
 } from "../utils/aiSuggestionEngine";
 import {
-  getCachedUserInfo,
+  getCachedAISuggestionCandidates,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
 import { exportToExcel } from "../utils/excelExport";
@@ -80,8 +80,8 @@ const AISuggestions = () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetching all customers through a short-lived client cache.
-      const userInfoData = await getCachedUserInfo();
+      // Fetch only D1-D3 candidates through a short-lived client/backend cache.
+      const userInfoData = await getCachedAISuggestionCandidates();
       let allCustomers = [];
 
       // Backend returns an array if no pagination is requested, or { customers: [...] } 

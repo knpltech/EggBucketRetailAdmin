@@ -11,6 +11,7 @@ import { login } from "../Controller/AuthController.js";
 // import customer info functions from CustomerInfoController
 import {
   userInfo,
+  getAISuggestionCandidates,
   specificUser,
   getUserDeliveries,
   getAllCustomerDeliveries,
@@ -70,6 +71,7 @@ router.use(authenticateToken);
 router.get("/user-info/stats", getUserInfoStats);
 router.get("/category-peak-potentials", getCategoryPeakPotentials);
 router.route("/user-info").get(userInfo);
+router.get("/ai-suggestions/candidates", getAISuggestionCandidates);
 router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);
 router.put("/customer/update", updateCustomer);
