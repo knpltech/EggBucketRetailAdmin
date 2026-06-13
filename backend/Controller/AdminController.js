@@ -481,23 +481,53 @@ const getDeliveryPartnerMapCached = async () => {
   return deliveryPartnerMap;
 };
 
-const getRetentionCustomerDocsCached = async (db) => {
-  const cacheKey = "customerRetention:customers:v1";
+const RETENTION_CHECKED_STATUSES = [
+  "checked",
+  "reached",
+  "price_mismatch",
+  "shop_closed",
+  "stock_available",
+  "other_vendor",
+];
+
+const getRetentionCheckedCustomerDocsCached = async (db, todayKey) => {
+  const cacheKey = `customerRetention:checkedCustomers:v1:${todayKey}`;
   const cached = cache.get(cacheKey);
   if (cached) {
-    console.log("[CACHE HIT] Retention customer docs served from cache");
+    console.log("[CACHE HIT] Retention checked customer docs served from cache");
     return cached;
   }
 
-  console.log("[CACHE MISS] Fetching retention customer docs from Firestore");
-  const customersSnap = await db.collection("customers").get();
-  const allCustomers = customersSnap.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  console.log("[CACHE MISS] Fetching retention checked customer docs from Firestore");
 
-  cache.set(cacheKey, allCustomers, 300);
-  return allCustomers;
+  const statusField = `last8Days.${todayKey}.status`;
+  const objectStatusSnap = await db
+    .collection("customers")
+    .where(statusField, "in", RETENTION_CHECKED_STATUSES)
+    .get();
+
+  const legacyStringSnap = await db
+    .collection("customers")
+    .where(`last8Days.${todayKey}`, "in", RETENTION_CHECKED_STATUSES)
+    .get();
+
+  const customersById = new Map();
+  objectStatusSnap.forEach((doc) => {
+    customersById.set(doc.id, {
+      id: doc.id,
+      ...doc.data(),
+    });
+  });
+  legacyStringSnap.forEach((doc) => {
+    customersById.set(doc.id, {
+      id: doc.id,
+      ...doc.data(),
+    });
+  });
+
+  const customers = Array.from(customersById.values());
+  cache.set(cacheKey, customers, 300);
+  return customers;
 };
 
 const getRetentionCustomers = async (req, res) => {
@@ -527,7 +557,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v18:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v19:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -624,7 +654,10 @@ const getRetentionCustomers = async (req, res) => {
     // ⭐ OPTIMIZATION: Cache the full processed customer dataset per date
     // This avoids re-scanning all customers when pagination/filters change
     // Fetch all customers from Firestore to compute exact statistics
-    const allCustomers = await getRetentionCustomerDocsCached(db);
+    const allCustomers = await getRetentionCheckedCustomerDocsCached(
+      db,
+      todayKey,
+    );
 
     const agentStatsMap = {};
     // Pre-populate with all delivery partners from collection
