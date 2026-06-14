@@ -12,7 +12,7 @@ import {
 /**
  * Export AI Suggestions to Excel
  * @param {Array} sortedData - The sorted and filtered data to export
- * @param {String} logicOption - The current logic option (logic1, logic2, logic3)
+ * @param {String} logicOption - The current logic option (logic1, logic2, logic3, logic4, logic5, logic6)
  */
 export const exportToExcel = (sortedData, logicOption) => {
   if (!sortedData || sortedData.length === 0) {
@@ -84,7 +84,7 @@ export const exportToExcel = (sortedData, logicOption) => {
     })
     .replace(/[/:]/g, '-');
 
-  const logicLabel = logicOption.charAt(0).toUpperCase() + logicOption.slice(1); // Logic1, Logic2, Logic3
+  const logicLabel = logicOption.charAt(0).toUpperCase() + logicOption.slice(1); // Logic1, Logic2, Logic3, Logic4, Logic5, Logic6
   const filename = `AI-Suggestions-${logicLabel}-${timestamp}.xlsx`;
 
   // Save file
