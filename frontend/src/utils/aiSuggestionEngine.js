@@ -292,6 +292,91 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
     };
   }
 
+  // LOGIC 4: Delivery gap / peak frequency ratio
+  if (logicOption === "logic4") {
+    const peakFrequencyStr = resolvePeakFrequency(customer);
+    const peakFrequencyNumber = getPeakFrequencyNumber(peakFrequencyStr);
+
+    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+    const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+    const deliveryGapStr = normalizeDeliveryGap(
+      customer?.deliveryGap || rawDeliveryGap,
+    );
+    const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
+    const ratio =
+      peakFrequencyNumber > 0 ? deliveryGapNumber / peakFrequencyNumber : 0;
+    const shouldTurnOn = ratio >= 1;
+
+    return {
+      suggestion: shouldTurnOn ? "TURN_ON_TOMORROW" : "TURN_OFF_TOMORROW",
+      confidence: shouldTurnOn ? 90 : 80,
+      score: ratio,
+      reason: `Logic 4: Delivery Gap ${deliveryGapStr} / Peak Frequency ${peakFrequencyStr} = ${ratio.toFixed(2)}. ${ratio < 1 ? "Turn OFF" : "Turn ON"}.`,
+    };
+  }
+
+  // LOGIC 5: Delivery gap / current category ratio
+  if (logicOption === "logic5") {
+    const currentCategory = computeCurrentCategory(customer?.last8Days);
+    const currentCategoryNumber = getCurrentCategoryNumber(currentCategory);
+
+    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+    const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+    const deliveryGapStr = normalizeDeliveryGap(
+      customer?.deliveryGap || rawDeliveryGap,
+    );
+    const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
+    const ratio =
+      currentCategoryNumber > 0 ? deliveryGapNumber / currentCategoryNumber : 0;
+    const shouldTurnOn = ratio >= 1;
+
+    return {
+      suggestion: shouldTurnOn ? "TURN_ON_TOMORROW" : "TURN_OFF_TOMORROW",
+      confidence: shouldTurnOn ? 90 : 80,
+      score: ratio,
+      reason: `Logic 5: Delivery Gap ${deliveryGapStr} / Current Category ${currentCategory} = ${ratio.toFixed(2)}. ${ratio < 1 ? "Turn OFF" : "Turn ON"}.`,
+    };
+  }
+
+  // LOGIC 6: Yesterday delivery status
+  if (logicOption === "logic6") {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayDate = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
+    const yesterdayEntry = customer?.last8Days?.[yesterdayDate];
+    const yesterdayStatus = String(
+      typeof yesterdayEntry === "string"
+        ? yesterdayEntry
+        : yesterdayEntry?.status || yesterdayEntry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+    const checkedStatuses = [
+      "checked",
+      "reached",
+      "price_mismatch",
+      "shop_closed",
+      "stock_available",
+      "other_vendor",
+    ];
+    const didDeliverYesterday = yesterdayStatus === "delivered";
+    const shouldTurnOn =
+      yesterdayStatus === "pending" ||
+      !yesterdayStatus ||
+      checkedStatuses.includes(yesterdayStatus);
+
+    return {
+      suggestion: didDeliverYesterday
+        ? "TURN_OFF_TOMORROW"
+        : shouldTurnOn
+          ? "TURN_ON_TOMORROW"
+          : "TURN_OFF_TOMORROW",
+      confidence: 90,
+      score: didDeliverYesterday ? -1 : 1,
+      reason: `Logic 6: Yesterday (${yesterdayDate}) status is ${yesterdayStatus || "pending"}. ${didDeliverYesterday ? "Delivery happened yesterday, turn OFF" : "Yesterday was checked/pending, turn ON"}.`,
+    };
+  }
+
   // Fallback if an unknown logic is selected
   return {
     suggestion: "TURN_OFF_TOMORROW",

@@ -292,6 +292,9 @@ const AISuggestions = () => {
             <option value="logic1">Logic 1</option>
             <option value="logic2">Logic 2</option>
             <option value="logic3">Logic 3</option>
+            <option value="logic4">Logic 4</option>
+            <option value="logic5">Logic 5</option>
+            <option value="logic6">Logic 6</option>
           </select>
           <select
             value={filterOption}
