@@ -31,16 +31,16 @@ const BUSINESS_CATEGORIES = [
   "ALL",
   "Kirana Store",
   "Hotel",
-  "Restaurant & Cafe",
+  "Restuarant & Cafe",
   "Canteen & Catering",
   "Vegetables Shop",
   "Meat Shop",
   "Condiments",
   "Bakery & Cake Shop",
   "Hostel & PG",
-  "Street Cart",
+  "Street Food Cart",
   "Wholesaler",
-  "SuperMarket",
+  "Supermart",
 ];
 
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
