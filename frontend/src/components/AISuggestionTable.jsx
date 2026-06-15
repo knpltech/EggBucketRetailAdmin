@@ -17,6 +17,7 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Apply AI Suggestion</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Execution Calendar</th>
             </tr>
           </thead>
           <tbody>
@@ -47,7 +48,7 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
                   <div className="h-4 bg-gray-200 rounded w-16"></div>
                 </td>
                 <td className="p-4 py-6">
-                  <div className="h-4 bg-gray-200 rounded w-16"></div>
+                  <div className="h-4 bg-gray-200 rounded w-8"></div>
                 </td>
               </tr>
             ))}
@@ -66,20 +67,20 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
   }
 
   return (
-    <div className="overflow-x-auto bg-white shadow rounded mt-6">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[800px]">
+    <div className="bg-white shadow rounded mt-6">
+      <table className="w-full text-xs table-fixed">
           <thead className="bg-gray-200">
             <tr>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Customer ID</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Customer Name</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Peak_Potential</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Peak_Frequency</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Delivery_Gap</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Current Category</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Current Toggle</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">AI Suggestion</th>
-              <th className="p-3 text-left font-semibold text-gray-800 whitespace-nowrap">Apply AI Suggestion</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Customer ID</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Customer Name</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Peak_Potential</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Peak_Frequency</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Delivery_Gap</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Current Category</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Current Toggle</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">AI Suggestion</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Apply AI Suggestion</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Execution Calendar</th>
             </tr>
           </thead>
           <tbody>
@@ -94,7 +95,6 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
             ))}
           </tbody>
         </table>
-      </div>
     </div>
   );
 };

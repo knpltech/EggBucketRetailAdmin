@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
+import { FiCalendar } from "react-icons/fi";
 import {
   computeCurrentCategory,
   getTodayEffectiveStatus,
 } from "../utils/aiSuggestionEngine";
+import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
 const getSuggestionConfig = (suggestion, reason, score) => {
   const scoreReason = String(reason || "").includes("AI Score")
@@ -232,6 +234,7 @@ const AISuggestionRow = ({
   onApplySuggestion,
   isUpdating = false,
 }) => {
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
   const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
@@ -248,40 +251,40 @@ const AISuggestionRow = ({
   );
 
   return (
-    <tr className="border-t hover:bg-gray-50 bg-white">
-      <td className="p-4 py-5 text-gray-700">{customer.custid}</td>
-      <td className="p-4 py-5 text-gray-900 font-bold">{customer.name}</td>
+    <tr className="border-t hover:bg-gray-50 bg-white text-center">
+      <td className="px-2 py-3 text-gray-700">{customer.custid}</td>
+      <td className="px-2 py-3 text-gray-900 font-bold">{customer.name}</td>
 
-      <td className="p-4 py-5 text-gray-700 font-medium">
+      <td className="px-2 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
           style={{ backgroundColor: getPotentialColor(peakPotential) }}
         >
           {peakPotential}
         </span>
       </td>
 
-      <td className="p-4 py-5 text-gray-700 font-medium">
+      <td className="px-2 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
           style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
           {peakFrequency}
         </span>
       </td>
 
-      <td className="p-4 py-5 text-gray-700 font-medium">
+      <td className="px-2 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
           style={{ backgroundColor: getDeliveryGapColor(deliveryGap) }}
         >
           {deliveryGap}
         </span>
       </td>
 
-      <td className="p-4 py-5 text-gray-700 font-medium">
+      <td className="px-2 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
           style={{ backgroundColor: getCurrentCategoryColor(currentCategory) }}
         >
           {currentCategory}
@@ -289,21 +292,21 @@ const AISuggestionRow = ({
       </td>
       
       {/* Current Toggle Column */}
-      <td className="p-4 py-5">
-        <div className="flex items-center space-x-2">
-          <div className={`w-3 h-3 rounded-full ${isTodayOn ? "bg-green-500" : "bg-red-500"} shadow-sm`}></div>
-          <span className={`text-sm ${isTodayOn ? "text-gray-700" : "text-gray-700"}`}>
+      <td className="px-2 py-3">
+        <div className="flex items-center justify-center space-x-1">
+          <div className={`w-2.5 h-2.5 rounded-full ${isTodayOn ? "bg-green-500" : "bg-red-500"} shadow-sm`}></div>
+          <span className="text-xs text-gray-700">
             {isTodayOn ? "ON" : "OFF"}
           </span>
         </div>
       </td>
 
       {/* AI Suggestion Column */}
-      <td className="p-4 py-5">
-        <div className="flex items-center space-x-2">
-          <div className={`w-3 h-3 rounded-full ${dotClass} shadow-sm mt-0.5`}></div>
+      <td className="px-2 py-3">
+        <div className="flex items-center justify-center space-x-1">
+          <div className={`w-2.5 h-2.5 rounded-full ${dotClass} shadow-sm mt-0.5`}></div>
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-gray-800">
+            <span className="text-xs font-medium text-gray-800">
               {text} {subText && <span className="text-gray-500 font-normal ml-1">{subText}</span>}
             </span>
           </div>
@@ -311,8 +314,8 @@ const AISuggestionRow = ({
       </td>
 
       {/* Apply AI Suggestion Column */}
-      <td className="p-4 py-5">
-        <div className="flex items-center gap-2">
+      <td className="px-2 py-3">
+        <div className="flex items-center justify-center gap-1">
           <label
             className={`relative inline-flex items-center ${
               isUpdating || !suggestedStatus || alreadyApplied
@@ -328,12 +331,34 @@ const AISuggestionRow = ({
               onChange={() => onApplySuggestion?.(customer, suggestedStatus)}
               aria-label={`Apply AI suggestion: ${suggestedStatus || "Unknown"}`}
             />
-            <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
-            <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
+            <div className="w-10 h-5 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+            <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
           </label>
           <span className="text-xs font-medium text-gray-600">
             {suggestedStatus || "--"}
           </span>
+        </div>
+      </td>
+
+      {/* Execution Calendar Column */}
+      <td className="px-2 py-3">
+        <div className="relative inline-block">
+          <div
+            className="flex justify-center items-center cursor-pointer hover:bg-gray-100 p-1.5 rounded-full transition-colors w-min mx-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCalendarOpen((prev) => !prev);
+            }}
+            title="Click to view full calendar"
+          >
+            <FiCalendar className="w-4 h-4 text-blue-600" />
+          </div>
+          {calendarOpen && (
+            <ExecutionCalendarModal
+              customer={customer}
+              onClose={() => setCalendarOpen(false)}
+            />
+          )}
         </div>
       </td>
     </tr>
