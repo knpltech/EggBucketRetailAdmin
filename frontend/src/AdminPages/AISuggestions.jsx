@@ -330,8 +330,6 @@ const AISuggestions = () => {
             <option value="ALL">All Suggestions</option>
             <option value="TURN_ON_TOMORROW">Turn ON Tomorrow</option>
             <option value="TURN_OFF_TOMORROW">Turn OFF Tomorrow</option>
-            <option value="KEEP_ON_TOMORROW">Keep ON Tomorrow</option>
-            <option value="KEEP_OFF_TOMORROW">Keep OFF Tomorrow</option>
           </select>
           <button
             onClick={handleDownloadExcel}
