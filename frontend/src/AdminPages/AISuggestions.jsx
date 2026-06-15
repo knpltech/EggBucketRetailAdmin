@@ -62,8 +62,9 @@ const AISuggestions = () => {
   const [searchQuery] = useState("");
   const [filterOption, setFilterOption] = useState("ALL");
 
+  // Default sorting: TOGGLE (ON FIRST) as soon as page opens
+  const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
-  const [sortOption, setSortOption] = useState("DELIVERY_GAP");
   const [logicOption, setLogicOption] = useState("logic1");
 
   const [currentPage, setCurrentPage] = useState(1);
