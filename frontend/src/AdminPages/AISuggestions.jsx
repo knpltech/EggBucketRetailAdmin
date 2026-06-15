@@ -59,8 +59,10 @@ const AISuggestions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery] = useState("");
   const [filterOption, setFilterOption] = useState("ALL");
+
+
   const [sortOption, setSortOption] = useState("DELIVERY_GAP");
   const [logicOption, setLogicOption] = useState("logic1");
 
@@ -70,7 +72,7 @@ const AISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterOption, sortOption]);
+  }, [filterOption, sortOption]);
 
   useEffect(() => {
     fetchData();
@@ -135,7 +137,7 @@ const AISuggestions = () => {
 
   const filteredData = useMemo(() => {
     return processedData.filter((item) => {
-      // Search
+      // Search (left intact; dropdown selection now controls customer type)
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch =
         !searchQuery ||
@@ -143,11 +145,23 @@ const AISuggestions = () => {
         (item.customer.custid && item.customer.custid.toLowerCase().includes(searchLower)) ||
         (item.customer.business && item.customer.business.toLowerCase().includes(searchLower));
 
-      // Filter
-      const matchesFilter =
-        filterOption === "ALL" || item.suggestion.suggestion === filterOption;
+      // Customer-type dropdown filter
+      // AI candidates from backend (`/ai-suggestions/candidates`) may not always include businessType.
+      // Try multiple fields used across the app: businessType, business, and zone.businessType (if present).
+      const customerBusinessType = String(item.customer?.businessType || "").trim();
+      const customerBusiness = String(item.customer?.business || "").trim();
+      const customerFromZone = String(item.customer?.zone?.businessType || "").trim();
 
-      return matchesSearch && matchesFilter;
+      const normalizedCustomerType = customerBusinessType || customerBusiness || customerFromZone;
+
+      // Strict match (case-sensitive values in dropdown). Normalize both to be safe.
+      const matchesCustomerType =
+        filterOption === "ALL" ||
+        String(normalizedCustomerType).trim().toLowerCase() ===
+          String(filterOption).trim().toLowerCase();
+
+
+      return matchesSearch && matchesCustomerType;
     });
   }, [processedData, searchQuery, filterOption]);
 
@@ -263,13 +277,25 @@ const AISuggestions = () => {
       <div className="flex justify-between items-center mb-4 gap-4">
         <h1 className="text-xl font-bold whitespace-nowrap">AI Suggestions</h1>
         <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Search by ID, Name or Busine..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
-          />
+          <select
+            value={filterOption}
+            onChange={(e) => setFilterOption(e.target.value)}
+            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="ALL">All Customer Types</option>
+            <option value="Kirana Store">Kirana Store</option>
+            <option value="Hotel">Hotel</option>
+            <option value="Meat Shop">Meat Shop</option>
+            <option value="Restuarant & Cafe">Restuarant & Cafe</option>
+            <option value="Canteen & Catering">Canteen & Catering</option>
+            <option value="Vegetables Shop">Vegetables Shop</option>
+            <option value="Condiments">Condiments</option>
+            <option value="Bakery & Cake Shop">Bakery & Cake Shop</option>
+            <option value="Hostel & PG">Hostel & PG</option>
+            <option value="Street Food Cart">Street Food Cart</option>
+            <option value="Wholesaler">Wholesaler</option>
+            <option value="Supermart">Supermart</option>
+          </select>
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value)}
