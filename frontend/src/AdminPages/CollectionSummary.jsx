@@ -756,6 +756,55 @@ const CollectionSummary = () => {
 
       {/* Summary Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Added Sales/Load/Return/Damage cards (dynamic values from frontend only) */}
+        {(() => {
+          const sales = filteredTotals.totalAmount;
+          const load = filteredTotals.totalTrays;
+          const ret = 0;
+          const dmg = 0;
+
+          const cards = [
+            {
+              label: "NETT Sales",
+              value: sales,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-blue-500",
+            },
+            {
+              label: "Total Load",
+              value: load,
+              format: (v) => v.toLocaleString("en-IN"),
+              color: "border-t-green-500",
+            },
+            {
+              label: "Total Return",
+              value: ret,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-purple-500",
+            },
+            {
+              label: "Total Damage",
+              value: dmg,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-orange-500",
+            },
+          ];
+
+          return cards.map((card) => (
+            <div
+              key={card.label}
+              className={`bg-white rounded-lg p-6 shadow border-t-4 ${card.color}`}
+            >
+              <p className="text-sm text-gray-600 mb-2">{card.label}</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {card.format(card.value)}
+              </p>
+            </div>
+          ));
+        })()}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500">
           <p className="text-sm text-gray-600 mb-2">Total Trays</p>
           <p className="text-3xl font-bold text-gray-900">
