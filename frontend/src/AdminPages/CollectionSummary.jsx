@@ -767,7 +767,7 @@ const CollectionSummary = () => {
             {
               label: "NETT Sales",
               value: sales,
-              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-blue-500",
             },
             {
@@ -779,13 +779,13 @@ const CollectionSummary = () => {
             {
               label: "Total Return",
               value: ret,
-              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-purple-500",
             },
             {
               label: "Total Damage",
               value: dmg,
-              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-orange-500",
             },
           ];
