@@ -5,11 +5,21 @@ import cache from "./cache.js";
 // Controller to add a new delivery partner
 const addDeliveryPartner = async (req, res) => {
   try {
-    const { name, phone, outlet, password } = req.body;
+    const name = req.body.name?.trim();
+    const phone = req.body.phone?.trim();
+    const outlet = req.body.outlet?.trim();
+    const password = req.body.password;
+
     if (!name || !phone || !outlet || !password) {
       return res
         .status(400)
         .json({ message: "Name, phone number, outlet, and password are required." });
+    }
+
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "Password must be at least six characters." });
     }
 
     const db = getFirestore();

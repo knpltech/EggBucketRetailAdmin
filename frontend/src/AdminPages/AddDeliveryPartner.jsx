@@ -5,17 +5,20 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 // Component to add a new delivery partner
 const AddDeliveryPartner = () => {
-  // States for form data, UI toggles, messages and loading
-  const [formData, setFormData] = useState({
+  const getInitialFormData = () => ({
     name: '',
     phone: '',
     outlet: '',
     password: '',
     confirmPassword: '',
   });
+
+  // States for form data, UI toggles, messages and loading
+  const [formData, setFormData] = useState(getInitialFormData);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Handle input changes
@@ -27,35 +30,48 @@ const AddDeliveryPartner = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
+    setMessageType('');
     setIsProcessing(true);
+
+    const payload = {
+      name: formData.name.trim(),
+      phone: formData.phone.trim(),
+      outlet: formData.outlet.trim(),
+      password: formData.password,
+    };
 
     // Validate password match
     if (formData.password !== formData.confirmPassword) {
       setMessage('Passwords do not match.');
+      setMessageType('error');
+      setIsProcessing(false);
+      return;
+    }
+
+    if (payload.password.length < 6) {
+      setMessage('Password must be at least six characters.');
+      setMessageType('error');
+      setIsProcessing(false);
+      return;
+    }
+
+    if (!payload.name || !payload.phone || !payload.outlet || !payload.password) {
+      setMessage('Name, phone number, outlet, and password are required.');
+      setMessageType('error');
       setIsProcessing(false);
       return;
     }
 
     try {
-      const { name, phone, outlet, password } = formData;
       // API call to backend to add delivery partner
-      const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, {
-        name,
-        phone,
-        outlet,
-        password,
-      });
+      const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, payload);
       setMessage(res.data.message);
-      setFormData({
-        name: '',
-        phone: '',
-        outlet: '',
-        password: '',
-        confirmPassword: '',
-      });
+      setMessageType('success');
+      setFormData(getInitialFormData());
     } catch (err) {
       console.error(err);
-      setMessage('Failed to add delivery partner.');
+      setMessage(err.response?.data?.message || 'Failed to add delivery partner.');
+      setMessageType('error');
     } finally {
       setIsProcessing(false);
     }
@@ -168,7 +184,7 @@ const AddDeliveryPartner = () => {
             </button>
 
             {message && (
-              <div className={`mt-4 p-3 rounded-lg text-center text-sm font-medium ${message === 'Passwords do not match.' || message === 'Failed to add delivery partner.'
+              <div className={`mt-4 p-3 rounded-lg text-center text-sm font-medium ${messageType === 'error'
                 ? 'bg-red-100 text-red-700'
                 : 'bg-green-100 text-green-700'
                 }`}

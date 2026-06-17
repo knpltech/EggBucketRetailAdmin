@@ -81,31 +81,41 @@ const SupPersonnelList = () => {
   const handleUpdate = async () => {
     try {
       const endpoint = editType === 'delivery' ? 'delivery/update' : 'sales/update';
+      const name = formData.name.trim();
+      const phone = formData.phone.trim();
+      const outlet = formData.outlet.trim();
+
+      if (!name || !phone) {
+        showMessage('Name and phone number are required.', 'error');
+        return;
+      }
+
       const payload = {
         uid: editingPartner.uid,
-        name: formData.name,
-        phone: formData.phone,
+        name,
+        phone,
       };
 
       if (editType === 'delivery') {
-        payload.outlet = formData.outlet;
+        payload.outlet = outlet;
       }
 
       await axios.put(`${ADMIN_PATH}/${endpoint}`, payload);
+      const updatedFormData = { ...formData, name, phone, outlet };
       if (editType === 'delivery') {
         setDeliveryPartners((prev) =>
-          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...formData } : p))
+          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...updatedFormData } : p))
         );
       } else {
         setSalesPartners((prev) =>
-          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...formData } : p))
+          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...updatedFormData } : p))
         );
       }
       setEditingPartner(null);
       showMessage(`${editType} partner updated successfully.`, 'success');
     } catch (err) {
       console.error('Error updating partner:', err);
-      showMessage('Failed to update partner.', 'error');
+      showMessage(err.response?.data?.message || 'Failed to update partner.', 'error');
     }
   };
 
