@@ -795,8 +795,11 @@ const CollectionSummary = () => {
               key={card.label}
               className={`bg-white rounded-lg p-6 shadow border-t-4 ${card.color}`}
             >
-              <p className="text-sm text-gray-600 mb-2">{card.label}</p>
-              <p className="text-3xl font-bold text-gray-900">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-gray-600">{card.label}</p>
+                <span className="text-xs font-semibold text-gray-500">Qty</span>
+              </div>
+              <p className="text-3xl font-bold text-gray-900 mt-2">
                 {card.format(card.value)}
               </p>
             </div>
