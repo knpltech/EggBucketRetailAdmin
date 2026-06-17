@@ -6,7 +6,13 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 // Component to add a new delivery partner
 const AddDeliveryPartner = () => {
   // States for form data, UI toggles, messages and loading
-  const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '' });
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    outlet: '',
+    password: '',
+    confirmPassword: '',
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
@@ -31,11 +37,22 @@ const AddDeliveryPartner = () => {
     }
 
     try {
-      const { name, phone, password } = formData;
+      const { name, phone, outlet, password } = formData;
       // API call to backend to add delivery partner
-      const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, { name, phone, password });
+      const res = await axios.post(`${ADMIN_PATH}/add-del-partner`, {
+        name,
+        phone,
+        outlet,
+        password,
+      });
       setMessage(res.data.message);
-      setFormData({ name: '', phone: '', password: '', confirmPassword: '' });
+      setFormData({
+        name: '',
+        phone: '',
+        outlet: '',
+        password: '',
+        confirmPassword: '',
+      });
     } catch (err) {
       console.error(err);
       setMessage('Failed to add delivery partner.');
@@ -74,6 +91,18 @@ const AddDeliveryPartner = () => {
                 type="text"
                 name="phone"
                 value={formData.phone}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Outlet</label>
+              <input
+                type="text"
+                name="outlet"
+                value={formData.outlet}
                 onChange={handleChange}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 required

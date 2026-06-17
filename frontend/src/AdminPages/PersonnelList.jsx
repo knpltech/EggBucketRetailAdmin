@@ -13,7 +13,7 @@ const PersonnelList = () => {
 
   const [editingPartner, setEditingPartner] = useState(null);
   const [editType, setEditType] = useState('');
-  const [formData, setFormData] = useState({ name: '', phone: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', outlet: '' });
 
   const [deletingPartner, setDeletingPartner] = useState(null);
   const [deleteType, setDeleteType] = useState('');
@@ -61,7 +61,11 @@ const PersonnelList = () => {
   const handleEditClick = (partner, type) => {
     setEditingPartner(partner);
     setEditType(type);
-    setFormData({ name: partner.name, phone: partner.phone });
+    setFormData({
+      name: partner.name,
+      phone: partner.phone,
+      outlet: type === 'delivery' ? partner.outlet || '' : '',
+    });
   };
 
   const handleDeleteClick = (partner, type) => {
@@ -77,10 +81,17 @@ const PersonnelList = () => {
   const handleUpdate = async () => {
     try {
       const endpoint = editType === 'delivery' ? 'delivery/update' : 'sales/update';
-      await axios.put(`${ADMIN_PATH}/${endpoint}`, {
+      const payload = {
         uid: editingPartner.uid,
-        ...formData,
-      });
+        name: formData.name,
+        phone: formData.phone,
+      };
+
+      if (editType === 'delivery') {
+        payload.outlet = formData.outlet;
+      }
+
+      await axios.put(`${ADMIN_PATH}/${endpoint}`, payload);
       if (editType === 'delivery') {
         setDeliveryPartners((prev) =>
           prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...formData } : p))
@@ -163,7 +174,8 @@ const PersonnelList = () => {
         return (
           !q ||
           partner.name.toLowerCase().includes(q) ||
-          partner.phone.includes(q)
+          partner.phone.includes(q) ||
+          (partner.outlet && partner.outlet.toLowerCase().includes(q))
         );
       })
       .map((partner) => (
@@ -184,6 +196,10 @@ const PersonnelList = () => {
               <div className="flex items-center">
                 <span className="w-20 text-gray-500">Phone:</span>
                 <span>{partner.phone}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Outlet:</span>
+                <span>{partner.outlet || '-'}</span>
               </div>
               <div className="flex items-center">
                 <span className="w-20 text-gray-500">Password:</span>
@@ -356,6 +372,16 @@ const PersonnelList = () => {
                 className="text-sm border border-purple-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder="Phone Number"
               />
+              {editType === 'delivery' && (
+                <input
+                  type="text"
+                  name="outlet"
+                  value={formData.outlet}
+                  onChange={handleInputChange}
+                  className="text-sm border border-purple-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  placeholder="Outlet"
+                />
+              )}
               <div className="flex justify-between mt-6">
                 <button
                   onClick={handleUpdate}

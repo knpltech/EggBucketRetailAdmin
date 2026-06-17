@@ -254,7 +254,8 @@ const PersonnelView = () => {
         const q = deliverySearch.trim().toLowerCase();
         return (
           partner.name.toLowerCase().includes(q) ||
-          partner.phone.includes(q)
+          partner.phone.includes(q) ||
+          (partner.outlet && partner.outlet.toLowerCase().includes(q))
         );
       })
       .map((partner) => (
@@ -279,6 +280,7 @@ const PersonnelView = () => {
 
             <div className="text-sm text-gray-700 space-y-1">
               <p><span className="font-medium text-gray-600">Phone:</span> {partner.phone}</p>
+              <p><span className="font-medium text-gray-600">Outlet:</span> {partner.outlet || '-'}</p>
               <p><span className="font-medium text-gray-600">Password:</span> {partner.password}</p>
             </div>
           </div>
