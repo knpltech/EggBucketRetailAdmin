@@ -769,24 +769,28 @@ const CollectionSummary = () => {
               value: sales,
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-blue-500",
+              unit: "Trays",
             },
             {
               label: "Total Load",
               value: load,
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-green-500",
+              unit: "Trays",
             },
             {
               label: "Total Return",
               value: ret,
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-purple-500",
+              unit: "Trays",
             },
             {
               label: "Total Damage",
               value: dmg,
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-orange-500",
+              unit: "Pcs",
             },
           ];
 
@@ -799,9 +803,12 @@ const CollectionSummary = () => {
                 <p className="text-sm text-gray-600">{card.label}</p>
                 <span className="text-xs font-semibold text-gray-500">Qty</span>
               </div>
-              <p className="text-3xl font-bold text-gray-900 mt-2">
-                {card.format(card.value)}
-              </p>
+              <div className="flex items-baseline gap-2 mt-2">
+                <p className="text-3xl font-bold text-gray-900">
+                  {card.format(card.value)}
+                </p>
+                <span className="text-2xl font-semibold text-gray-500">{card.unit}</span>
+              </div>
             </div>
           ));
         })()}
