@@ -41,6 +41,8 @@ const BUSINESS_CATEGORIES = [
   "Street Food Cart",
   "Wholesaler",
   "Supermart",
+  "Cloud Kitchens",
+  "Dummy Customers",
 ];
 
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
@@ -833,11 +835,10 @@ export default function CustomerManagement() {
 
                     return (
                       <label
-                        className={`relative inline-flex items-center ${
-                          isUpdating || isLocked
+                        className={`relative inline-flex items-center ${isUpdating || isLocked
                             ? "opacity-50 cursor-not-allowed"
                             : "cursor-pointer"
-                        }`}
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -912,15 +913,13 @@ export default function CustomerManagement() {
                                   updateWeeklySchedule(c, day);
                                 }}
                                 disabled={isUpdating}
-                                className={`block w-full text-left px-3 py-1 rounded mb-1 last:mb-0 font-medium text-sm transition ${
-                                  schedule[day]
+                                className={`block w-full text-left px-3 py-1 rounded mb-1 last:mb-0 font-medium text-sm transition ${schedule[day]
                                     ? "bg-green-500 text-white border border-green-600"
                                     : "bg-red-500 text-white border border-red-600"
-                                } ${
-                                  isUpdating
+                                  } ${isUpdating
                                     ? "opacity-50 cursor-not-allowed"
                                     : "cursor-pointer hover:opacity-90"
-                                }`}
+                                  }`}
                               >
                                 {labels[day]}
                               </button>
@@ -990,7 +989,7 @@ export default function CustomerManagement() {
                 </td>
                 <td className="px-2 py-3">
                   <div className="relative inline-block">
-                    <div 
+                    <div
                       className="flex justify-center items-center cursor-pointer hover:bg-gray-100 p-2 rounded-full transition-colors w-min mx-auto"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1001,9 +1000,9 @@ export default function CustomerManagement() {
                       <FiCalendar className="w-5 h-5 text-blue-600" />
                     </div>
                     {calendarCustomer?.id === c.id && (
-                      <ExecutionCalendarModal 
-                        customer={c} 
-                        onClose={() => setCalendarCustomer(null)} 
+                      <ExecutionCalendarModal
+                        customer={c}
+                        onClose={() => setCalendarCustomer(null)}
                       />
                     )}
                   </div>
@@ -1104,8 +1103,8 @@ function resolvePeakFrequency(customer) {
   const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
     customer?.Peak_Frequency ||
-      customer?.peakFrequency ||
-      customer?.peak_frequency,
+    customer?.peakFrequency ||
+    customer?.peak_frequency,
   );
 
   if (!savedPeak) return currentPeak;
