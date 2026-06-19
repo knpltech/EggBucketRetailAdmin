@@ -158,7 +158,7 @@ const AISuggestions = () => {
       const matchesCustomerType =
         filterOption === "ALL" ||
         String(normalizedCustomerType).trim().toLowerCase() ===
-          String(filterOption).trim().toLowerCase();
+        String(filterOption).trim().toLowerCase();
 
 
       return matchesSearch && matchesCustomerType;
@@ -167,7 +167,7 @@ const AISuggestions = () => {
 
   const sortedData = useMemo(() => {
     const dataToSort = [...filteredData];
-    
+
     switch (sortOption) {
       case "NAME_ASC":
         return dataToSort.sort((a, b) => (a.customer.name || "").localeCompare(b.customer.name || ""));
@@ -295,6 +295,8 @@ const AISuggestions = () => {
             <option value="Street Food Cart">Street Food Cart</option>
             <option value="Wholesaler">Wholesaler</option>
             <option value="Supermart">Supermart</option>
+            <option value="Dummy Customers">Dummy Customer</option>
+            <option value="Cloud Kitchens">Cloud Kitchen</option>
           </select>
           <select
             value={sortOption}
@@ -366,7 +368,7 @@ const AISuggestions = () => {
           >
             Previous
           </button>
-          
+
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700">
               Page {currentPage} of {totalPages}
