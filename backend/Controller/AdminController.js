@@ -1074,6 +1074,24 @@ const resetRetentionCustomer = async (req, res) => {
       cache.del(`customer:${customerId}`);
       cache.del(`userDeliveries:${customerId}`);
       cache.del("latestRemarks");
+
+      // Critical: Customer Management page uses customerInfo:userInfo* cache.
+      // Retention reset must invalidate those so the new last8Days state is reflected.
+      const customerInfoKeys = keys.filter((key) =>
+        key.startsWith("customerInfo:userInfo"),
+      );
+      if (customerInfoKeys.length > 0) {
+        cache.del(customerInfoKeys);
+      }
+
+      // Also invalidate any cached all deliveries that CustomerManagement derives from.
+      const allDeliveriesKeys = keys.filter((key) =>
+        key.startsWith("allCustomerDeliveries"),
+      );
+      if (allDeliveriesKeys.length > 0) {
+        cache.del(allDeliveriesKeys);
+      }
+
       await invalidateActiveCountCache();
     } catch (cacheErr) {
       console.warn("retention reset cache invalidation error:", cacheErr);
