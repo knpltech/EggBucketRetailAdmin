@@ -295,6 +295,8 @@ const AISuggestions = () => {
             <option value="Street Food Cart">Street Food Cart</option>
             <option value="Wholesaler">Wholesaler</option>
             <option value="Supermart">Supermart</option>
+            <option value="Cloud Kitchens">Cloud Kitchens</option>
+            <option value="Dummy Customers">Dummy Customers</option>
           </select>
           <select
             value={sortOption}
