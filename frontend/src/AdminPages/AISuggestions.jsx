@@ -60,8 +60,7 @@ const AISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const [suggestionFilter, setSuggestionFilter] = useState("ALL");
+  const [filterOption, setFilterOption] = useState("ALL");
 
 
   const [sortOption, setSortOption] = useState("DELIVERY_GAP");
@@ -73,7 +72,7 @@ const AISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [categoryFilter, suggestionFilter, sortOption]);
+  }, [filterOption, sortOption]);
 
   useEffect(() => {
     fetchData();
@@ -157,28 +156,14 @@ const AISuggestions = () => {
 
       // Strict match (case-sensitive values in dropdown). Normalize both to be safe.
       const matchesCustomerType =
-        categoryFilter === "ALL" ||
+        filterOption === "ALL" ||
         String(normalizedCustomerType).trim().toLowerCase() ===
-        String(categoryFilter).trim().toLowerCase();
-
-      // Suggestion dropdown filter (Turn ON/OFF Tomorrow)
-      const suggestion = item?.suggestion?.suggestion;
-      const isTurnOnTomorrow = suggestionFilter === "TURN_ON_TOMORROW";
-      const isTurnOffTomorrow = suggestionFilter === "TURN_OFF_TOMORROW";
-      const isKeepOnTomorrow = suggestionFilter === "KEEP_ON_TOMORROW";
-      const isKeepOffTomorrow = suggestionFilter === "KEEP_OFF_TOMORROW";
-
-      const matchesSuggestionOption =
-        suggestionFilter === "ALL" ||
-        (isTurnOnTomorrow && suggestion === "TURN_ON_TOMORROW") ||
-        (isTurnOffTomorrow && suggestion === "TURN_OFF_TOMORROW") ||
-        (isKeepOnTomorrow && suggestion === "KEEP_ON_TOMORROW") ||
-        (isKeepOffTomorrow && suggestion === "KEEP_OFF_TOMORROW");
+        String(filterOption).trim().toLowerCase();
 
 
-      return matchesSearch && matchesCustomerType && matchesSuggestionOption;
+      return matchesSearch && matchesCustomerType;
     });
-  }, [processedData, searchQuery, categoryFilter, suggestionFilter]);
+  }, [processedData, searchQuery, filterOption]);
 
   const sortedData = useMemo(() => {
     const dataToSort = [...filteredData];
@@ -293,8 +278,8 @@ const AISuggestions = () => {
         <h1 className="text-xl font-bold whitespace-nowrap">AI Suggestions</h1>
         <div className="flex gap-2">
           <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={filterOption}
+            onChange={(e) => setFilterOption(e.target.value)}
             className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="ALL">All Customer Types</option>
@@ -338,8 +323,8 @@ const AISuggestions = () => {
             <option value="logic6">Logic 6</option>
           </select>
           <select
-            value={suggestionFilter}
-            onChange={(e) => setSuggestionFilter(e.target.value)}
+            value={filterOption}
+            onChange={(e) => setFilterOption(e.target.value)}
             className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="ALL">All Suggestions</option>

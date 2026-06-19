@@ -41,8 +41,8 @@ const BUSINESS_CATEGORIES = [
   "Street Food Cart",
   "Wholesaler",
   "Supermart",
-  "Dummy Customers",
   "Cloud Kitchens",
+  "Dummy Customers",
 ];
 
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
@@ -836,8 +836,8 @@ export default function CustomerManagement() {
                     return (
                       <label
                         className={`relative inline-flex items-center ${isUpdating || isLocked
-                          ? "opacity-50 cursor-not-allowed"
-                          : "cursor-pointer"
+                            ? "opacity-50 cursor-not-allowed"
+                            : "cursor-pointer"
                           }`}
                       >
                         <input
@@ -914,8 +914,8 @@ export default function CustomerManagement() {
                                 }}
                                 disabled={isUpdating}
                                 className={`block w-full text-left px-3 py-1 rounded mb-1 last:mb-0 font-medium text-sm transition ${schedule[day]
-                                  ? "bg-green-500 text-white border border-green-600"
-                                  : "bg-red-500 text-white border border-red-600"
+                                    ? "bg-green-500 text-white border border-green-600"
+                                    : "bg-red-500 text-white border border-red-600"
                                   } ${isUpdating
                                     ? "opacity-50 cursor-not-allowed"
                                     : "cursor-pointer hover:opacity-90"
