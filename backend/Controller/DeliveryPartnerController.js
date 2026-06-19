@@ -5,11 +5,21 @@ import cache from "./cache.js";
 // Controller to add a new delivery partner
 const addDeliveryPartner = async (req, res) => {
   try {
-    const { name, phone, password } = req.body;
-    if (!name || !phone || !password) {
+    const name = req.body.name?.trim();
+    const phone = req.body.phone?.trim();
+    const outlet = req.body.outlet?.trim();
+    const password = req.body.password;
+
+    if (!name || !phone || !outlet || !password) {
       return res
         .status(400)
-        .json({ message: "Name, phone number, and password are required." });
+        .json({ message: "Name, phone number, outlet, and password are required." });
+    }
+
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "Password must be at least six characters." });
     }
 
     const db = getFirestore();
@@ -35,6 +45,7 @@ const addDeliveryPartner = async (req, res) => {
       uid: userRecord.uid,
       name,
       phone,
+      outlet,
       email,
       password,
       active: true,
@@ -85,7 +96,7 @@ const getDeliveryPartners = async (req, res) => {
 // Controller to update a delivery partner's details
 const updateDeliveryPartner = async (req, res) => {
   try {
-    const { uid, name, phone } = req.body;
+    const { uid, name, phone, outlet } = req.body;
     if (!uid || !name || !phone) {
       return res
         .status(400)
@@ -98,11 +109,17 @@ const updateDeliveryPartner = async (req, res) => {
     });
 
     const db = getFirestore();
-    await db.collection("DeliveryMan").doc(uid).update({
+    const updateData = {
       name,
       phone,
       email: newEmail,
-    });
+    };
+
+    if (outlet !== undefined) {
+      updateData.outlet = outlet;
+    }
+
+    await db.collection("DeliveryMan").doc(uid).update(updateData);
 
     // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
     cache.del("allDeliveryPartners:v1");

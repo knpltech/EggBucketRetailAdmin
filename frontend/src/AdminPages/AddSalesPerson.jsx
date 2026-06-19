@@ -8,6 +8,7 @@ const AddSalesPerson = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('');
   const [isProcessing, setIsProcessing] = useState(false); // Added processing state
 
   const handleChange = (e) => {
@@ -17,22 +18,43 @@ const AddSalesPerson = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
+    setMessageType('');
     setIsProcessing(true); // Start processing
 
     if (formData.password !== formData.confirmPassword) {
       setMessage('Passwords do not match.');
+      setMessageType('error');
+      setIsProcessing(false);
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setMessage('Password must be at least six characters.');
+      setMessageType('error');
       setIsProcessing(false);
       return;
     }
 
     try {
-      const { name, phone, password } = formData;
+      const name = formData.name.trim();
+      const phone = formData.phone.trim();
+      const password = formData.password;
+
+      if (!name || !phone || !password) {
+        setMessage('Name, phone number, and password are required.');
+        setMessageType('error');
+        setIsProcessing(false);
+        return;
+      }
+
       const res = await axios.post(`${ADMIN_PATH}/add-sales-partner`, { name, phone, password });
       setMessage(res.data.message);
+      setMessageType('success');
       setFormData({ name: '', phone: '', password: '', confirmPassword: '' });
     } catch (err) {
       console.error(err);
-      setMessage('Failed to add sales partner.');
+      setMessage(err.response?.data?.message || 'Failed to add sales partner.');
+      setMessageType('error');
     } finally {
       setIsProcessing(false); // Stop processing regardless of success/failure
     }
@@ -133,7 +155,7 @@ const AddSalesPerson = () => {
             </button>
 
             {message && (
-              <div className={`mt-4 p-3 rounded-lg text-center text-sm font-medium ${message === 'Passwords do not match.' || message === 'Failed to add sales partner.'
+              <div className={`mt-4 p-3 rounded-lg text-center text-sm font-medium ${messageType === 'error'
                 ? 'bg-red-100 text-red-700'
                 : 'bg-green-100 text-green-700'
                 }`}
