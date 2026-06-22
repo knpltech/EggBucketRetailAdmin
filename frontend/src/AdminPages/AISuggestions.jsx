@@ -60,9 +60,13 @@ const AISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
-  const [filterOption, setFilterOption] = useState("ALL");
+  const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
+  const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
+
 
   // Default sorting: TOGGLE (ON FIRST) as soon as page opens
+  const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
+
   const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
   const [logicOption, setLogicOption] = useState("logic1");
@@ -73,11 +77,12 @@ const AISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterOption, sortOption]);
+  }, [businessTypeFilter, suggestionFilterOption, sortOption]);
 
   useEffect(() => {
     fetchData();
   }, []);
+
 
   const fetchData = async () => {
     setLoading(true);
@@ -167,21 +172,20 @@ const AISuggestions = () => {
       const customerBusinessType = String(item.customer?.businessType || "").trim();
       const customerBusiness = String(item.customer?.business || "").trim();
       const customerFromZone = String(item.customer?.zone?.businessType || "").trim();
+      const normalizedCustomerType =
+        customerBusinessType || customerBusiness || customerFromZone;
 
-      const normalizedCustomerType = customerBusinessType || customerBusiness || customerFromZone;
-
-      // Only apply customer-type filtering when dropdown isn't a Turn ON/OFF suggestion option.
-      // Also: customer-type should be applied when filterOption is one of the customer-type values.
+      // Strict match (case-sensitive values in dropdown). Normalize both to be safe.
       const matchesCustomerType =
-        !isTurnOnTomorrow && !isTurnOffTomorrow
-          ? filterOption === "ALL" ||
-            String(normalizedCustomerType).trim().toLowerCase() ===
-              String(filterOption).trim().toLowerCase()
-          : true;
+        filterOption === "ALL" ||
+        String(normalizedCustomerType).trim().toLowerCase() ===
+        String(filterOption).trim().toLowerCase();
 
-      return matchesSearch && matchesCustomerType;
+
+      return matchesSearch && matchesCustomerType && matchesSuggestionFilter;
     });
-  }, [processedData, searchQuery, filterOption]);
+  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption]);
+
 
   const sortedData = useMemo(() => {
     const dataToSort = [...filteredData];
@@ -296,8 +300,9 @@ const AISuggestions = () => {
         <h1 className="text-xl font-bold whitespace-nowrap">AI Suggestions</h1>
         <div className="flex gap-2">
           <select
-            value={filterOption}
-            onChange={(e) => setFilterOption(e.target.value)}
+            value={businessTypeFilter}
+            onChange={(e) => setBusinessTypeFilter(e.target.value)}
+
             className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="ALL">All Customer Types</option>
@@ -341,8 +346,9 @@ const AISuggestions = () => {
             <option value="logic6">Logic 6</option>
           </select>
           <select
-            value={filterOption}
-            onChange={(e) => setFilterOption(e.target.value)}
+            value={suggestionFilterOption}
+            onChange={(e) => setSuggestionFilterOption(e.target.value)}
+
             className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="ALL">All Suggestions</option>
