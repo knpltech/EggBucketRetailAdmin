@@ -64,7 +64,7 @@ const AISuggestions = () => {
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
 
 
-
+  // Default sorting: TOGGLE (ON FIRST) as soon as page opens
   const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
   const [logicOption, setLogicOption] = useState("logic1");
@@ -149,23 +149,39 @@ const AISuggestions = () => {
         (item.customer.custid && item.customer.custid.toLowerCase().includes(searchLower)) ||
         (item.customer.business && item.customer.business.toLowerCase().includes(searchLower));
 
-      // Customer-type dropdown filter
+      // Suggestion dropdown filter (Turn ON/OFF Tomorrow)
+      const suggestion = item?.suggestion?.suggestion;
+      const filterOption = suggestionFilterOption;
+      const isTurnOnTomorrow = filterOption === "TURN_ON_TOMORROW";
+      const isTurnOffTomorrow = filterOption === "TURN_OFF_TOMORROW";
+
+      // Suggestion dropdown should match against the generated suggestion.
+      const matchesSuggestionOption =
+        filterOption === "ALL" ||
+        (isTurnOnTomorrow && suggestion === "TURN_ON_TOMORROW") ||
+        (isTurnOffTomorrow && suggestion === "TURN_OFF_TOMORROW") ||
+        (filterOption === "KEEP_ON_TOMORROW" && suggestion === "KEEP_ON_TOMORROW") ||
+        (filterOption === "KEEP_OFF_TOMORROW" && suggestion === "KEEP_OFF_TOMORROW");
+
+
+      // If user selected a Turn ON/OFF option and the row does not match, drop it.
+      if (!matchesSuggestionOption) return false;
+
+      // Customer-type dropdown filter (Kirana/Hotel/etc)
       // AI candidates from backend (`/ai-suggestions/candidates`) may not always include businessType.
       // Try multiple fields used across the app: businessType, business, and zone.businessType (if present).
       const customerBusinessType = String(item.customer?.businessType || "").trim();
       const customerBusiness = String(item.customer?.business || "").trim();
       const customerFromZone = String(item.customer?.zone?.businessType || "").trim();
-      const normalizedCustomerType =
-        customerBusinessType || customerBusiness || customerFromZone;
+      const normalizedCustomerType = customerBusinessType || customerBusiness || customerFromZone;
 
-      // Strict match (case-sensitive values in dropdown). Normalize both to be safe.
+      // Strict match (normalize to be safe)
       const matchesCustomerType =
-        filterOption === "ALL" ||
+        businessTypeFilter === "ALL" ||
         String(normalizedCustomerType).trim().toLowerCase() ===
-        String(filterOption).trim().toLowerCase();
+          String(businessTypeFilter).trim().toLowerCase();
 
-
-      return matchesSearch && matchesCustomerType && matchesSuggestionFilter;
+      return matchesSearch && matchesCustomerType;
     });
   }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption]);
 
