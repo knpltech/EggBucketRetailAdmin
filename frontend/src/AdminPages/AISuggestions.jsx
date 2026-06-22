@@ -64,8 +64,6 @@ const AISuggestions = () => {
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
 
 
-  // Default sorting: TOGGLE (ON FIRST) as soon as page opens
-  const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
   const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
@@ -143,7 +141,7 @@ const AISuggestions = () => {
 
   const filteredData = useMemo(() => {
     return processedData.filter((item) => {
-      // Search
+      // Search (left intact; dropdown selection now controls customer type)
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch =
         !searchQuery ||
@@ -151,22 +149,7 @@ const AISuggestions = () => {
         (item.customer.custid && item.customer.custid.toLowerCase().includes(searchLower)) ||
         (item.customer.business && item.customer.business.toLowerCase().includes(searchLower));
 
-      // Suggestion dropdown filter (Turn ON/OFF Tomorrow)
-      const suggestion = item?.suggestion?.suggestion;
-      const isTurnOnTomorrow = filterOption === "TURN_ON_TOMORROW";
-      const isTurnOffTomorrow = filterOption === "TURN_OFF_TOMORROW";
-
-      // Suggestion dropdown should match against the generated suggestion.
-      // Note: UI shows two options that map to these AI suggestion constants.
-      const matchesSuggestionOption =
-        filterOption === "ALL" ||
-        (isTurnOnTomorrow && suggestion === "TURN_ON_TOMORROW") ||
-        (isTurnOffTomorrow && suggestion === "TURN_OFF_TOMORROW");
-
-      // If user selected a Turn ON/OFF option and the row does not match, drop it.
-      if (!matchesSuggestionOption) return false;
-
-      // Customer-type dropdown filter (Kirana/Hotel/etc)
+      // Customer-type dropdown filter
       // AI candidates from backend (`/ai-suggestions/candidates`) may not always include businessType.
       // Try multiple fields used across the app: businessType, business, and zone.businessType (if present).
       const customerBusinessType = String(item.customer?.businessType || "").trim();
@@ -189,7 +172,7 @@ const AISuggestions = () => {
 
   const sortedData = useMemo(() => {
     const dataToSort = [...filteredData];
-    
+
     switch (sortOption) {
       case "NAME_ASC":
         return dataToSort.sort((a, b) => (a.customer.name || "").localeCompare(b.customer.name || ""));
@@ -318,6 +301,8 @@ const AISuggestions = () => {
             <option value="Street Food Cart">Street Food Cart</option>
             <option value="Wholesaler">Wholesaler</option>
             <option value="Supermart">Supermart</option>
+            <option value="Cloud Kitchens">Cloud Kitchens</option>
+            <option value="Dummy Customers">Dummy Customers</option>
           </select>
           <select
             value={sortOption}
@@ -354,6 +339,8 @@ const AISuggestions = () => {
             <option value="ALL">All Suggestions</option>
             <option value="TURN_ON_TOMORROW">Turn ON Tomorrow</option>
             <option value="TURN_OFF_TOMORROW">Turn OFF Tomorrow</option>
+            <option value="KEEP_ON_TOMORROW">Keep ON Tomorrow</option>
+            <option value="KEEP_OFF_TOMORROW">Keep OFF Tomorrow</option>
           </select>
           <button
             onClick={handleDownloadExcel}
@@ -388,7 +375,7 @@ const AISuggestions = () => {
           >
             Previous
           </button>
-          
+
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700">
               Page {currentPage} of {totalPages}
