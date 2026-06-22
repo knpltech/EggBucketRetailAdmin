@@ -159,12 +159,10 @@ const AISuggestions = () => {
       const matchesSuggestionOption =
         filterOption === "ALL" ||
         (isTurnOnTomorrow && suggestion === "TURN_ON_TOMORROW") ||
-        (isTurnOffTomorrow && suggestion === "TURN_OFF_TOMORROW") ||
-        (filterOption === "KEEP_ON_TOMORROW" && suggestion === "KEEP_ON_TOMORROW") ||
-        (filterOption === "KEEP_OFF_TOMORROW" && suggestion === "KEEP_OFF_TOMORROW");
-
+        (isTurnOffTomorrow && suggestion === "TURN_OFF_TOMORROW");
 
       // If user selected a Turn ON/OFF option and the row does not match, drop it.
+
       if (!matchesSuggestionOption) return false;
 
       // Customer-type dropdown filter (Kirana/Hotel/etc)
@@ -355,8 +353,6 @@ const AISuggestions = () => {
             <option value="ALL">All Suggestions</option>
             <option value="TURN_ON_TOMORROW">Turn ON Tomorrow</option>
             <option value="TURN_OFF_TOMORROW">Turn OFF Tomorrow</option>
-            <option value="KEEP_ON_TOMORROW">Keep ON Tomorrow</option>
-            <option value="KEEP_OFF_TOMORROW">Keep OFF Tomorrow</option>
           </select>
           <button
             onClick={handleDownloadExcel}
