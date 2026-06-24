@@ -27,24 +27,6 @@ const TABS = [
   "D7",
 ];
 
-const BUSINESS_CATEGORIES = [
-  "ALL",
-  "Kirana Store",
-  "Hotel",
-  "Restuarant & Cafe",
-  "Canteen & Catering",
-  "Vegetables Shop",
-  "Meat Shop",
-  "Condiments",
-  "Bakery & Cake Shop",
-  "Hostel & PG",
-  "Street Food Cart",
-  "Wholesaler",
-  "Supermart",
-  "Cloud Kitchens",
-  "Dummy Customers",
-];
-
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
 /**
  * Compute Peak_Potential numeric value from last8Days
@@ -128,6 +110,9 @@ export default function CustomerManagement() {
 
   const [activeTab, setActiveTab] = useState("ALL");
   const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
+  const [activeZoneTab, setActiveZoneTab] = useState("ALL");
+  const [zones, setZones] = useState([]);
+  const [businessTypes, setBusinessTypes] = useState([]);
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -221,6 +206,22 @@ export default function CustomerManagement() {
         } catch (err) {
           console.error("Error fetching category peak potentials:", err);
         }
+
+        // Fetch zones dynamically
+        try {
+          const zonesRes = await axios.get(`${ADMIN_PATH}/zones`);
+          setZones(zonesRes.data || []);
+        } catch (err) {
+          console.error("Error fetching zones:", err);
+        }
+
+        // Fetch business types dynamically
+        try {
+          const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
+          setBusinessTypes(btRes.data || []);
+        } catch (err) {
+          console.error("Error fetching business types:", err);
+        }
       } catch (err) {
         console.error("CustomerManagement init error:", err);
       } finally {
@@ -232,7 +233,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -345,6 +346,12 @@ export default function CustomerManagement() {
       );
     }
 
+    if (activeZoneTab !== "ALL") {
+      list = list.filter(
+        (c) => String(c.zone || "").trim().toLowerCase() === activeZoneTab.toLowerCase()
+      );
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -429,7 +436,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -443,6 +450,10 @@ export default function CustomerManagement() {
 
   // ─── Total Peak Potential: persistent best for the current tab ─────────
   const totalPeakPotential = useMemo(() => {
+    if (activeZoneTab !== "ALL") {
+      return Number(categoryPeaks[`ZONE_${activeZoneTab.toUpperCase()}`]) || 0;
+    }
+
     if (activeBusinessTab !== "ALL") {
       return Number(categoryPeaks[activeBusinessTab.toUpperCase()]) || 0;
     }
@@ -458,7 +469,7 @@ export default function CustomerManagement() {
       key = activeTab; // "D0", "D1", etc.
     }
     return Number(categoryPeaks[key]) || 0;
-  }, [categoryPeaks, activeTab, activeBusinessTab]);
+  }, [categoryPeaks, activeTab, activeBusinessTab, activeZoneTab]);
 
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
   const potentialAchieved = useMemo(() => {
@@ -760,17 +771,46 @@ export default function CustomerManagement() {
       </div>
 
       {/* BUSINESS CATEGORIES TABS */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {BUSINESS_CATEGORIES.map((t) => (
+      {businessTypes && businessTypes.length > 0 && (
+        <div className="flex gap-2 mb-4 flex-wrap">
           <button
-            key={t}
-            onClick={() => setActiveBusinessTab(t)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === t ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+            onClick={() => setActiveBusinessTab("ALL")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "ALL" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
-            {t}
+            ALL CATEGORIES
           </button>
-        ))}
-      </div>
+          {businessTypes.map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveBusinessTab(t)}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === t ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ZONE FILTERS TABS */}
+      {zones && zones.length > 0 && (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button
+            onClick={() => setActiveZoneTab("ALL")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === "ALL" ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            ALL ZONES
+          </button>
+          {zones.map((z) => (
+            <button
+              key={z}
+              onClick={() => setActiveZoneTab(z)}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === z ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">

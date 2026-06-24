@@ -191,6 +191,19 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
         categoryTotals[bType] += targetTrays;
       }
     }
+
+    // Add to Zone if applicable
+    if (data.zone) {
+      const zType = String(data.zone).trim().toUpperCase();
+      // Skip onboarding and calling customer as they are handled by main tabs
+      if (zType && zType !== "UNASSIGNED" && zType !== "CALLING CUSTOMER") {
+        const zoneKey = `ZONE_${zType}`;
+        if (categoryTotals[zoneKey] === undefined) {
+          categoryTotals[zoneKey] = 0;
+        }
+        categoryTotals[zoneKey] += targetTrays;
+      }
+    }
   });
 
   console.log(`[categoryPeakCron] Today's totals:`, categoryTotals);
