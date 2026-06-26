@@ -46,9 +46,27 @@ const CollectionSummary = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [activeTab, setActiveTab] = useState("ALL");
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  // Helper to get today's date in local India timezone (Asia/Kolkata)
+  const getTodayDateString = () => {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+
+      const year = parts.find((p) => p.type === "year")?.value;
+      const month = parts.find((p) => p.type === "month")?.value;
+      const day = parts.find((p) => p.type === "day")?.value;
+      if (year && month && day) return `${year}-${month}-${day}`;
+    } catch (e) {
+      // fallback
+    }
+    return new Date().toISOString().split("T")[0];
+  };
+
+  const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [selectedAgent, setSelectedAgent] = useState("all");
   const [sortBy] = useState("delivery-time");
   const [todaysPrice, setTodaysPrice] = useState("");
@@ -58,14 +76,42 @@ const CollectionSummary = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
 
-  // Get date string in Kolkata timezone
+  const [inventoryMetrics, setInventoryMetrics] = useState({
+    totalLoad: 0,
+    totalReturn: 0,
+    totalDamage: 0,
+    nettSales: 0,
+  });
 
-  // Fetch collection summary
+  const fetchInventoryMetrics = useCallback(async (date) => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/inventory-metrics`, {
+        params: { date },
+      });
+      if (res.data && res.data.success) {
+        setInventoryMetrics({
+          totalLoad: res.data.totalLoad || 0,
+          totalReturn: res.data.totalReturn || 0,
+          totalDamage: res.data.totalDamage || 0,
+          nettSales: res.data.nettSales || 0,
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching inventory metrics:", err);
+    }
+  }, []);
+
+  // Fetch collection summary on mount
   useEffect(() => {
     fetchCollectionSummary();
   }, []);
 
-  // Handle edit cell click
+  // Fetch inventory metrics when selectedDate changes
+  useEffect(() => {
+    if (selectedDate) {
+      fetchInventoryMetrics(selectedDate);
+    }
+  }, [selectedDate, fetchInventoryMetrics]);  // Handle edit cell click
   const handleEditCell = (item, field) => {
     let currentValue = 0;
     if (field === "quantity") {
@@ -403,6 +449,9 @@ const CollectionSummary = () => {
       } else {
         setError("Failed to fetch collection summary");
       }
+      
+      // Also fetch inventory metrics for the selected date
+      await fetchInventoryMetrics(selectedDate);
     } catch (err) {
       console.error("Fetch error:", err);
       setError("Error fetching data. Please try again.");
@@ -758,10 +807,10 @@ const CollectionSummary = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {/* Added Sales/Load/Return/Damage cards (dynamic values from frontend only) */}
         {(() => {
-          const sales = filteredTotals.totalAmount;
-          const load = filteredTotals.totalTrays;
-          const ret = 0;
-          const dmg = 0;
+          const sales = inventoryMetrics.nettSales;
+          const load = inventoryMetrics.totalLoad;
+          const ret = inventoryMetrics.totalReturn;
+          const dmg = inventoryMetrics.totalDamage;
 
           const cards = [
             {

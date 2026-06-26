@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
+import { getInventoryApp } from "../config/firebaseAdmin.js";
 import axios from "axios";
 import { getStorage } from "firebase-admin/storage";
 import { v4 as uuidv4 } from "uuid";
@@ -2140,6 +2141,79 @@ const updateCustomerPayment = async (req, res) => {
     });
   }
 };
+const getInventoryMetrics = async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "Date is required (format: YYYY-MM-DD)",
+      });
+    }
+
+    const inventoryApp = getInventoryApp();
+    const db = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+
+    const [loadingSnap, returnSnap, damageSnap] = await Promise.all([
+      db.collection("loading_entries").where("dateKey", "==", date).get(),
+      db.collection("return_load_entries").where("dateKey", "==", date).get(),
+      db.collection("damage_reports").where("dateKey", "==", date).get(),
+    ]);
+
+    let totalLoad = 0;
+    let totalReturn = 0;
+    let totalDamage = 0;
+
+    loadingSnap.forEach((doc) => {
+      const q = doc.data().quantity;
+      if (typeof q === "number" && !isNaN(q)) {
+        totalLoad += q;
+      } else if (typeof q === "string") {
+        const parsed = parseInt(q, 10);
+        if (!isNaN(parsed)) totalLoad += parsed;
+      }
+    });
+
+    returnSnap.forEach((doc) => {
+      const q = doc.data().quantity;
+      if (typeof q === "number" && !isNaN(q)) {
+        totalReturn += q;
+      } else if (typeof q === "string") {
+        const parsed = parseInt(q, 10);
+        if (!isNaN(parsed)) totalReturn += parsed;
+      }
+    });
+
+    damageSnap.forEach((doc) => {
+      const q = doc.data().quantity;
+      if (typeof q === "number" && !isNaN(q)) {
+        totalDamage += q;
+      } else if (typeof q === "string") {
+        const parsed = parseInt(q, 10);
+        if (!isNaN(parsed)) totalDamage += parsed;
+      }
+    });
+
+    const nettSales = totalLoad - totalReturn;
+
+    return res.status(200).json({
+      success: true,
+      date,
+      totalLoad,
+      totalReturn,
+      totalDamage,
+      nettSales,
+    });
+  } catch (err) {
+    console.error("getInventoryMetrics error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching inventory metrics",
+      error: err.message,
+    });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -2159,4 +2233,6 @@ export {
   getCollectionSummary,
   recalculateCollectionData,
   updateCustomerPayment,
+  getInventoryMetrics,
 };
+
