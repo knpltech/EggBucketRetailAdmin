@@ -64,6 +64,7 @@ import {
   updateCustomerPayment,
   addBusinessType,
   getBusinessTypes,
+  getInventoryMetrics,
 } from "../Controller/AdminController.js";
 
 // Customer routes
@@ -100,6 +101,8 @@ router.get("/customer-retention", getRetentionCustomers);
 router.post("/customer-retention/reset", resetRetentionCustomer);
 router.get("/customer/retention", getRetentionCustomers);
 router.post("/customer/retention/reset", resetRetentionCustomer);
+router.get("/inventory-metrics", getInventoryMetrics);
+
 
 // Delivery partner related routes
 router.post("/add-del-partner", addDeliveryPartner);
