@@ -2154,10 +2154,11 @@ const getInventoryMetrics = async (req, res) => {
     const inventoryApp = getInventoryApp();
     const db = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
 
-    const [loadingSnap, returnSnap, damageSnap] = await Promise.all([
+    const [loadingSnap, returnSnap, damageSnap, cashHandoverSnap] = await Promise.all([
       db.collection("loading_entries").where("dateKey", "==", date).get(),
       db.collection("return_load_entries").where("dateKey", "==", date).get(),
       db.collection("damage_reports").where("dateKey", "==", date).get(),
+      db.collection("cash_handover_entries").where("dateKey", "==", date).get(),
     ]);
 
     let totalLoad = 0;
@@ -2194,6 +2195,22 @@ const getInventoryMetrics = async (req, res) => {
       }
     });
 
+    const cashHandoverEntries = [];
+    cashHandoverSnap.forEach((doc) => {
+      const data = doc.data();
+      const val = data.Cash !== undefined ? data.Cash : data.cash;
+      let cashVal = 0;
+      if (typeof val === "number" && !isNaN(val)) {
+        cashVal = val;
+      } else if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed)) cashVal = parsed;
+      }
+      cashHandoverEntries.push({
+        cash: cashVal,
+        agentName: data.agentName || "",
+      });
+    });
     const nettSales = totalLoad - totalReturn;
 
     return res.status(200).json({
@@ -2203,6 +2220,7 @@ const getInventoryMetrics = async (req, res) => {
       totalReturn,
       totalDamage,
       nettSales,
+      cashHandoverEntries,
     });
   } catch (err) {
     console.error("getInventoryMetrics error:", err);

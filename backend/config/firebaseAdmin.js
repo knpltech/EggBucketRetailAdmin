@@ -32,9 +32,19 @@ export const initializeFirebaseAdmin = () => {
 
   // Initialize secondary (Inventory Management) app
   try {
+    let serviceAccount;
     const serviceAccountPath = path.join(__dirname, "inventory-service-account.json");
-    if (fs.existsSync(serviceAccountPath)) {
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+    
+    // Check if the service account is provided via an environment variable (for deployment)
+    if (process.env.INVENTORY_SERVICE_ACCOUNT_JSON) {
+      serviceAccount = JSON.parse(process.env.INVENTORY_SERVICE_ACCOUNT_JSON);
+    } 
+    // Fallback to local file for development
+    else if (fs.existsSync(serviceAccountPath)) {
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+    }
+
+    if (serviceAccount) {
       inventoryAppInstance = admin.initializeApp(
         {
           credential: admin.credential.cert(serviceAccount),
@@ -43,7 +53,7 @@ export const initializeFirebaseAdmin = () => {
       );
       console.log("Successfully initialized Inventory Management Firebase App.");
     } else {
-      console.warn("Inventory Management service account JSON not found at", serviceAccountPath);
+      console.warn("Inventory Management service account not found. Please provide INVENTORY_SERVICE_ACCOUNT_JSON env variable or the local JSON file.");
     }
   } catch (error) {
     console.error("Failed to initialize Inventory Management Firebase App:", error);
