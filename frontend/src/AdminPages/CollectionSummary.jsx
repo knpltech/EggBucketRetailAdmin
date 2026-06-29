@@ -46,9 +46,27 @@ const CollectionSummary = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [activeTab, setActiveTab] = useState("ALL");
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  // Helper to get today's date in local India timezone (Asia/Kolkata)
+  const getTodayDateString = () => {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+
+      const year = parts.find((p) => p.type === "year")?.value;
+      const month = parts.find((p) => p.type === "month")?.value;
+      const day = parts.find((p) => p.type === "day")?.value;
+      if (year && month && day) return `${year}-${month}-${day}`;
+    } catch (e) {
+      // fallback
+    }
+    return new Date().toISOString().split("T")[0];
+  };
+
+  const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [selectedAgent, setSelectedAgent] = useState("all");
   const [sortBy] = useState("delivery-time");
   const [todaysPrice, setTodaysPrice] = useState("");
@@ -58,14 +76,44 @@ const CollectionSummary = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
 
-  // Get date string in Kolkata timezone
+  const [inventoryMetrics, setInventoryMetrics] = useState({
+    totalLoad: 0,
+    totalReturn: 0,
+    totalDamage: 0,
+    nettSales: 0,
+    cashHandoverEntries: [],
+  });
 
-  // Fetch collection summary
+  const fetchInventoryMetrics = useCallback(async (date) => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/inventory-metrics`, {
+        params: { date },
+      });
+      if (res.data && res.data.success) {
+        setInventoryMetrics({
+          totalLoad: res.data.totalLoad || 0,
+          totalReturn: res.data.totalReturn || 0,
+          totalDamage: res.data.totalDamage || 0,
+          nettSales: res.data.nettSales || 0,
+          cashHandoverEntries: res.data.cashHandoverEntries || [],
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching inventory metrics:", err);
+    }
+  }, []);
+
+  // Fetch collection summary on mount
   useEffect(() => {
     fetchCollectionSummary();
   }, []);
 
-  // Handle edit cell click
+  // Fetch inventory metrics when selectedDate changes
+  useEffect(() => {
+    if (selectedDate) {
+      fetchInventoryMetrics(selectedDate);
+    }
+  }, [selectedDate, fetchInventoryMetrics]);  // Handle edit cell click
   const handleEditCell = (item, field) => {
     let currentValue = 0;
     if (field === "quantity") {
@@ -198,6 +246,21 @@ const CollectionSummary = () => {
       setSavingEdit(false);
     }
   };
+
+  // Calculate cash handed over based on selected agent filter
+  const displayedCashHandover = useMemo(() => {
+    const entries = inventoryMetrics.cashHandoverEntries || [];
+    if (selectedAgent === "all") {
+      return entries.reduce((sum, item) => sum + item.cash, 0);
+    }
+    return entries
+      .filter(
+        (item) =>
+          item.agentName?.toLowerCase().trim() ===
+          selectedAgent?.toLowerCase().trim(),
+      )
+      .reduce((sum, item) => sum + item.cash, 0);
+  }, [inventoryMetrics.cashHandoverEntries, selectedAgent]);
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -403,6 +466,9 @@ const CollectionSummary = () => {
       } else {
         setError("Failed to fetch collection summary");
       }
+      
+      // Also fetch inventory metrics for the selected date
+      await fetchInventoryMetrics(selectedDate);
     } catch (err) {
       console.error("Fetch error:", err);
       setError("Error fetching data. Please try again.");
@@ -755,13 +821,13 @@ const CollectionSummary = () => {
       </div>
 
       {/* Summary Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {/* Added Sales/Load/Return/Damage cards (dynamic values from frontend only) */}
         {(() => {
-          const sales = filteredTotals.totalAmount;
-          const load = filteredTotals.totalTrays;
-          const ret = 0;
-          const dmg = 0;
+          const sales = inventoryMetrics.nettSales;
+          const load = inventoryMetrics.totalLoad;
+          const ret = inventoryMetrics.totalReturn;
+          const dmg = inventoryMetrics.totalDamage;
 
           const cards = [
             {
@@ -770,6 +836,7 @@ const CollectionSummary = () => {
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-blue-500",
               unit: "Trays",
+              topRight: "Qty",
             },
             {
               label: "Total Load",
@@ -777,6 +844,7 @@ const CollectionSummary = () => {
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-green-500",
               unit: "Trays",
+              topRight: "Qty",
             },
             {
               label: "Total Return",
@@ -784,6 +852,7 @@ const CollectionSummary = () => {
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-purple-500",
               unit: "Trays",
+              topRight: "Qty",
             },
             {
               label: "Total Damage",
@@ -791,6 +860,15 @@ const CollectionSummary = () => {
               format: (v) => v.toLocaleString("en-IN"),
               color: "border-t-orange-500",
               unit: "Pcs",
+              topRight: "Qty",
+            },
+            {
+              label: "Cash Handed Over",
+              value: displayedCashHandover,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-red-500",
+              unit: "",
+              topRight: "Amt",
             },
           ];
 
@@ -801,13 +879,15 @@ const CollectionSummary = () => {
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-gray-600">{card.label}</p>
-                <span className="text-xs font-semibold text-gray-500">Qty</span>
+                <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
               </div>
               <div className="flex items-baseline gap-2 mt-2">
                 <p className="text-3xl font-bold text-gray-900">
                   {card.format(card.value)}
                 </p>
-                <span className="text-2xl font-semibold text-gray-500">{card.unit}</span>
+                {card.unit && (
+                  <span className="text-2xl font-semibold text-gray-500">{card.unit}</span>
+                )}
               </div>
             </div>
           ));
