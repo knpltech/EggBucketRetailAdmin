@@ -68,6 +68,8 @@ const CollectionSummary = () => {
 
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [selectedAgent, setSelectedAgent] = useState("all");
+  const [selectedOutlet, setSelectedOutlet] = useState("all");
+  const [deliveryPartners, setDeliveryPartners] = useState([]);
   const [sortBy] = useState("delivery-time");
   const [todaysPrice, setTodaysPrice] = useState("");
   const [minusAmounts, setMinusAmounts] = useState({});
@@ -456,8 +458,11 @@ const CollectionSummary = () => {
     setRefreshing(true);
     setError("");
     try {
-      // Fetch full customer data with last8Days
-      const res = await axios.get(`${ADMIN_PATH}/user-info`);
+      // Fetch full customer data and delivery partners
+      const [res, delPartnersRes] = await Promise.all([
+        axios.get(`${ADMIN_PATH}/user-info`),
+        axios.get(`${ADMIN_PATH}/get-del-partner`)
+      ]);
       if (Array.isArray(res.data)) {
         setData({
           customers: res.data,
@@ -466,6 +471,7 @@ const CollectionSummary = () => {
       } else {
         setError("Failed to fetch collection summary");
       }
+      setDeliveryPartners(delPartnersRes.data || []);
       
       // Also fetch inventory metrics for the selected date
       await fetchInventoryMetrics(selectedDate);
@@ -751,13 +757,56 @@ const CollectionSummary = () => {
           <label className="text-sm font-medium text-gray-600">Agent:</label>
           <select
             value={selectedAgent}
-            onChange={(e) => setSelectedAgent(e.target.value)}
+            onChange={(e) => {
+              const newAgent = e.target.value;
+              setSelectedAgent(newAgent);
+              if (newAgent === "all") {
+                setSelectedOutlet("all");
+              } else {
+                const partner = deliveryPartners.find(p => p.name === newAgent);
+                if (partner && partner.outlet) {
+                  setSelectedOutlet(partner.outlet);
+                } else {
+                  setSelectedOutlet("all");
+                }
+              }
+            }}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
           >
             <option value="all">All Delivery Agents</option>
             {deliveryAgentOptions.map((agent) => (
               <option key={agent} value={agent}>
                 {agent}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Outlet Filter */}
+        <div className="flex items-center gap-2 ml-2">
+          <label className="text-sm font-medium text-gray-600">Outlet:</label>
+          <select
+            value={selectedOutlet}
+            onChange={(e) => {
+              const newOutlet = e.target.value;
+              setSelectedOutlet(newOutlet);
+              if (newOutlet === "all") {
+                setSelectedAgent("all");
+              } else {
+                const partner = deliveryPartners.find(p => p.outlet === newOutlet);
+                if (partner && partner.name) {
+                  setSelectedAgent(partner.name);
+                } else {
+                  setSelectedAgent("all");
+                }
+              }
+            }}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+          >
+            <option value="all">All Outlets</option>
+            {Array.from(new Set(deliveryPartners.map(p => p.outlet).filter(Boolean))).sort().map((outlet) => (
+              <option key={outlet} value={outlet}>
+                {outlet}
               </option>
             ))}
           </select>
