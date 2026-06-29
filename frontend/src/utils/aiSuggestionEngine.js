@@ -376,45 +376,11 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
 
   // LOGIC 6: Yesterday delivery status
   if (logicOption === "logic6") {
-    const today = new Date();
-    // Use Asia/Kolkata weekday name to avoid server/local mismatch
-    const weekday = new Intl.DateTimeFormat("en-US", {
-      weekday: "long",
-      timeZone: "Asia/Kolkata",
-    }).format(today);
 
-    // Since all weeks are 7 days, “last {weekday}” => today - 7 days
-    const lastWeekSameWeekday = new Date(today);
-    lastWeekSameWeekday.setDate(lastWeekSameWeekday.getDate() - 7);
-    const lastWeekdayDate = getDateStringInTimeZone(
-      lastWeekSameWeekday,
-      "Asia/Kolkata",
-    );
-
-    const lastWeekdayEntry = customer?.last8Days?.[lastWeekdayDate];
-    const lastWeekdayStatus = String(
-      typeof lastWeekdayEntry === "string"
-        ? lastWeekdayEntry
-        : lastWeekdayEntry?.status || lastWeekdayEntry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    const didDeliverLastWeekday = lastWeekdayStatus === "delivered";
-
-    return {
-      suggestion: didDeliverLastWeekday ? "TURN_ON_TOMORROW" : "TURN_OFF_TOMORROW",
-      confidence: didDeliverLastWeekday ? 95 : 85,
-      score: didDeliverLastWeekday ? 1 : -1,
-      reason: `Logic 7: Today is ${weekday}. Checking last ${weekday} (${lastWeekdayDate}) status: ${lastWeekdayStatus || "pending"}. ${didDeliverLastWeekday ? "Delivered last week same weekday, turn ON" : "Not delivered last week same weekday, turn OFF"}.`,
-    };
-  }
-
-  // LOGIC 6: Yesterday delivery status
-  if (logicOption === "logic6") {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayDate = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
+
     const yesterdayEntry = customer?.last8Days?.[yesterdayDate];
     const yesterdayStatus = String(
       typeof yesterdayEntry === "string"
@@ -423,31 +389,26 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
     )
       .trim()
       .toLowerCase();
-    const checkedStatuses = [
-      "checked",
-      "reached",
-      "price_mismatch",
-      "shop_closed",
-      "stock_available",
-      "other_vendor",
-    ];
+
     const didDeliverYesterday = yesterdayStatus === "delivered";
-    const shouldTurnOn =
+
+    // “checked” OR “pending” should turn ON tomorrow.
+    const isYesterdayCheckedOrPending =
       yesterdayStatus === "pending" ||
-      !yesterdayStatus ||
-      checkedStatuses.includes(yesterdayStatus);
+      yesterdayStatus === "checked";
 
     return {
       suggestion: didDeliverYesterday
         ? "TURN_OFF_TOMORROW"
-        : shouldTurnOn
+        : isYesterdayCheckedOrPending
           ? "TURN_ON_TOMORROW"
           : "TURN_OFF_TOMORROW",
-      confidence: 90,
-      score: didDeliverYesterday ? -1 : 1,
-      reason: `Logic 6: Yesterday (${yesterdayDate}) status is ${yesterdayStatus || "pending"}. ${didDeliverYesterday ? "Delivery happened yesterday, turn OFF" : "Yesterday was checked/pending, turn ON"}.`,
+      confidence: didDeliverYesterday ? 90 : 85,
+      score: didDeliverYesterday ? -1 : isYesterdayCheckedOrPending ? 1 : -1,
+      reason: `Logic 6: Yesterday (${yesterdayDate}) status is ${yesterdayStatus || "pending"}. ${didDeliverYesterday ? "Delivery happened yesterday, turn OFF" : isYesterdayCheckedOrPending ? "Yesterday was checked/pending, turn ON" : "Yesterday was neither delivered nor checked/pending, keep OFF"}.`,
     };
   }
+
 
   // Fallback if an unknown logic is selected
   return {

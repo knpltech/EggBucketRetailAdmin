@@ -2211,7 +2211,6 @@ const getInventoryMetrics = async (req, res) => {
         agentName: data.agentName || "",
       });
     });
-
     const nettSales = totalLoad - totalReturn;
 
     return res.status(200).json({

@@ -61,6 +61,7 @@ const AISuggestions = () => {
 
   const [searchQuery] = useState("");
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
+  const [businessTypes, setBusinessTypes] = useState([]);
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
 
 
@@ -88,6 +89,15 @@ const AISuggestions = () => {
     try {
       // Fetch only D1-D3 candidates through a short-lived client/backend cache.
       const userInfoData = await getCachedAISuggestionCandidates();
+      
+      // Fetch business types dynamically
+      try {
+        const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
+        setBusinessTypes(btRes.data || []);
+      } catch (err) {
+        console.error("Error fetching business types:", err);
+      }
+
       let allCustomers = [];
 
       // Backend returns an array if no pagination is requested, or { customers: [...] } 
@@ -303,20 +313,11 @@ const AISuggestions = () => {
             className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="ALL">All Customer Types</option>
-            <option value="Kirana Store">Kirana Store</option>
-            <option value="Hotel">Hotel</option>
-            <option value="Meat Shop">Meat Shop</option>
-            <option value="Restuarant & Cafe">Restuarant & Cafe</option>
-            <option value="Canteen & Catering">Canteen & Catering</option>
-            <option value="Vegetables Shop">Vegetables Shop</option>
-            <option value="Condiments">Condiments</option>
-            <option value="Bakery & Cake Shop">Bakery & Cake Shop</option>
-            <option value="Hostel & PG">Hostel & PG</option>
-            <option value="Street Food Cart">Street Food Cart</option>
-            <option value="Wholesaler">Wholesaler</option>
-            <option value="Supermart">Supermart</option>
-            <option value="Cloud Kitchens">Cloud Kitchens</option>
-            <option value="Dummy Customers">Dummy Customers</option>
+            {businessTypes.map((bt) => (
+              <option key={bt} value={bt}>
+                {bt}
+              </option>
+            ))}
           </select>
           <select
             value={sortOption}
