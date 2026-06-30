@@ -101,9 +101,9 @@ const CollectionSummary = () => {
           totalDamage: res.data.totalDamage || 0,
           nettSales: res.data.nettSales || 0,
           cashHandoverEntries: res.data.cashHandoverEntries || [],
-          loadingEntries: res.data.loadingEntries || [],
-          returnEntries: res.data.returnEntries || [],
-          damageEntries: res.data.damageEntries || [],
+          loadingEntries: res.data.loadingEntries,
+          returnEntries: res.data.returnEntries,
+          damageEntries: res.data.damageEntries,
         });
       }
     } catch (err) {
