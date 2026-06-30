@@ -84,6 +84,9 @@ const CollectionSummary = () => {
     totalDamage: 0,
     nettSales: 0,
     cashHandoverEntries: [],
+    loadingEntries: [],
+    returnEntries: [],
+    damageEntries: [],
   });
 
   const fetchInventoryMetrics = useCallback(async (date) => {
@@ -98,6 +101,9 @@ const CollectionSummary = () => {
           totalDamage: res.data.totalDamage || 0,
           nettSales: res.data.nettSales || 0,
           cashHandoverEntries: res.data.cashHandoverEntries || [],
+          loadingEntries: res.data.loadingEntries || [],
+          returnEntries: res.data.returnEntries || [],
+          damageEntries: res.data.damageEntries || [],
         });
       }
     } catch (err) {
@@ -249,20 +255,135 @@ const CollectionSummary = () => {
     }
   };
 
-  // Calculate cash handed over based on selected agent filter
-  const displayedCashHandover = useMemo(() => {
-    const entries = inventoryMetrics.cashHandoverEntries || [];
-    if (selectedAgent === "all") {
-      return entries.reduce((sum, item) => sum + item.cash, 0);
+  // Calculate metrics based on selected outlet and agent filters
+  const displayedMetrics = useMemo(() => {
+    const {
+      totalLoad = 0,
+      totalReturn = 0,
+      totalDamage = 0,
+      nettSales = 0,
+      cashHandoverEntries = [],
+      loadingEntries,
+      returnEntries,
+      damageEntries,
+    } = inventoryMetrics;
+
+    // Fallback if detailed entries are not yet populated from backend
+    if (!loadingEntries || !returnEntries || !damageEntries) {
+      let cashHandover = 0;
+      if (selectedAgent === "all") {
+        cashHandover = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+      } else {
+        cashHandover = cashHandoverEntries
+          .filter(
+            (item) =>
+              item.agentName?.toLowerCase().trim() ===
+              selectedAgent?.toLowerCase().trim()
+          )
+          .reduce((sum, item) => sum + item.cash, 0);
+      }
+      return {
+        totalLoad,
+        totalReturn,
+        totalDamage,
+        nettSales,
+        cashHandover,
+      };
     }
-    return entries
-      .filter(
-        (item) =>
-          item.agentName?.toLowerCase().trim() ===
-          selectedAgent?.toLowerCase().trim(),
-      )
+
+    if (selectedOutlet === "all") {
+      const load = loadingEntries.reduce((sum, item) => sum + item.quantity, 0);
+      const ret = returnEntries.reduce((sum, item) => sum + item.quantity, 0);
+      const dmg = damageEntries.reduce((sum, item) => sum + item.quantity, 0);
+      const cash = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+      return {
+        totalLoad: load,
+        totalReturn: ret,
+        totalDamage: dmg,
+        nettSales: load - ret,
+        cashHandover: cash,
+      };
+    }
+
+    const isMatchingOutlet = (entryOutlet, entryAgent, entrySupervisor) => {
+      const targetOutletLower = selectedOutlet.toLowerCase().trim();
+      const cleanTargetOutlet = targetOutletLower.replace(/^eggbucket\s+/, "");
+
+      // 1. Direct match with entryOutlet
+      if (entryOutlet) {
+        const entryOutletLower = entryOutlet.toLowerCase().trim();
+        const cleanEntryOutlet = entryOutletLower.replace(/^eggbucket\s+/, "");
+        if (cleanEntryOutlet === cleanTargetOutlet) {
+          return true;
+        }
+
+        // Check if entryOutlet is a partner name (e.g. "Rohan")
+        const partnerByOutletName = deliveryPartners.find(
+          (p) => p.name?.toLowerCase().trim() === entryOutletLower
+        );
+        if (partnerByOutletName && partnerByOutletName.outlet) {
+          const pOutletLower = partnerByOutletName.outlet.toLowerCase().trim().replace(/^eggbucket\s+/, "");
+          if (pOutletLower === cleanTargetOutlet) {
+            return true;
+          }
+        }
+      }
+
+      // 2. Check if agentName belongs to the selectedOutlet
+      if (entryAgent) {
+        const agentLower = entryAgent.toLowerCase().trim();
+        const partnerByAgent = deliveryPartners.find(
+          (p) => p.name?.toLowerCase().trim() === agentLower
+        );
+        if (partnerByAgent && partnerByAgent.outlet) {
+          const pOutletLower = partnerByAgent.outlet.toLowerCase().trim().replace(/^eggbucket\s+/, "");
+          if (pOutletLower === cleanTargetOutlet) {
+            return true;
+          }
+        }
+      }
+
+      // 3. Check if supervisorName belongs to the selectedOutlet
+      if (entrySupervisor) {
+        const superLower = entrySupervisor.toLowerCase().trim();
+        const partnerBySupervisor = deliveryPartners.find(
+          (p) => p.name?.toLowerCase().trim() === superLower
+        );
+        if (partnerBySupervisor && partnerBySupervisor.outlet) {
+          const pOutletLower = partnerBySupervisor.outlet.toLowerCase().trim().replace(/^eggbucket\s+/, "");
+          if (pOutletLower === cleanTargetOutlet) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    };
+
+    const filteredLoad = loadingEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .reduce((sum, item) => sum + item.quantity, 0);
+
+    const filteredReturn = returnEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .reduce((sum, item) => sum + item.quantity, 0);
+
+    const filteredDamage = damageEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .reduce((sum, item) => sum + item.quantity, 0);
+
+    const filteredCash = cashHandoverEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
       .reduce((sum, item) => sum + item.cash, 0);
-  }, [inventoryMetrics.cashHandoverEntries, selectedAgent]);
+
+    return {
+      totalLoad: filteredLoad,
+      totalReturn: filteredReturn,
+      totalDamage: filteredDamage,
+      nettSales: filteredLoad - filteredReturn,
+      cashHandover: filteredCash,
+    };
+  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners]);
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -873,10 +994,11 @@ const CollectionSummary = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {/* Added Sales/Load/Return/Damage cards (dynamic values from frontend only) */}
         {(() => {
-          const sales = inventoryMetrics.nettSales;
-          const load = inventoryMetrics.totalLoad;
-          const ret = inventoryMetrics.totalReturn;
-          const dmg = inventoryMetrics.totalDamage;
+          const sales = displayedMetrics.nettSales;
+          const load = displayedMetrics.totalLoad;
+          const ret = displayedMetrics.totalReturn;
+          const dmg = displayedMetrics.totalDamage;
+          const cash = displayedMetrics.cashHandover;
 
           const cards = [
             {
@@ -913,7 +1035,7 @@ const CollectionSummary = () => {
             },
             {
               label: "Cash Handed Over",
-              value: displayedCashHandover,
+              value: cash,
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-red-500",
               unit: "",

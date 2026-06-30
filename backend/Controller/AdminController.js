@@ -2165,34 +2165,64 @@ const getInventoryMetrics = async (req, res) => {
     let totalReturn = 0;
     let totalDamage = 0;
 
+    const loadingEntries = [];
     loadingSnap.forEach((doc) => {
-      const q = doc.data().quantity;
+      const data = doc.data();
+      const q = data.quantity;
+      let qty = 0;
       if (typeof q === "number" && !isNaN(q)) {
-        totalLoad += q;
+        qty = q;
       } else if (typeof q === "string") {
         const parsed = parseInt(q, 10);
-        if (!isNaN(parsed)) totalLoad += parsed;
+        if (!isNaN(parsed)) qty = parsed;
       }
+      totalLoad += qty;
+      loadingEntries.push({
+        quantity: qty,
+        outletName: data.outletName || "",
+        agentName: data.agentName || "",
+        supervisorName: data.supervisorName || "",
+      });
     });
 
+    const returnEntries = [];
     returnSnap.forEach((doc) => {
-      const q = doc.data().quantity;
+      const data = doc.data();
+      const q = data.quantity;
+      let qty = 0;
       if (typeof q === "number" && !isNaN(q)) {
-        totalReturn += q;
+        qty = q;
       } else if (typeof q === "string") {
         const parsed = parseInt(q, 10);
-        if (!isNaN(parsed)) totalReturn += parsed;
+        if (!isNaN(parsed)) qty = parsed;
       }
+      totalReturn += qty;
+      returnEntries.push({
+        quantity: qty,
+        outletName: data.outletName || "",
+        agentName: data.agentName || "",
+        supervisorName: data.supervisorName || "",
+      });
     });
 
+    const damageEntries = [];
     damageSnap.forEach((doc) => {
-      const q = doc.data().quantity;
+      const data = doc.data();
+      const q = data.quantity;
+      let qty = 0;
       if (typeof q === "number" && !isNaN(q)) {
-        totalDamage += q;
+        qty = q;
       } else if (typeof q === "string") {
         const parsed = parseInt(q, 10);
-        if (!isNaN(parsed)) totalDamage += parsed;
+        if (!isNaN(parsed)) qty = parsed;
       }
+      totalDamage += qty;
+      damageEntries.push({
+        quantity: qty,
+        outletName: data.outletName || "",
+        agentName: data.agentName || "",
+        supervisorName: data.supervisorName || "",
+      });
     });
 
     const cashHandoverEntries = [];
@@ -2209,8 +2239,11 @@ const getInventoryMetrics = async (req, res) => {
       cashHandoverEntries.push({
         cash: cashVal,
         agentName: data.agentName || "",
+        outletName: data.outletName || "",
+        supervisorName: data.supervisorName || "",
       });
     });
+
     const nettSales = totalLoad - totalReturn;
 
     return res.status(200).json({
@@ -2221,6 +2254,9 @@ const getInventoryMetrics = async (req, res) => {
       totalDamage,
       nettSales,
       cashHandoverEntries,
+      loadingEntries,
+      returnEntries,
+      damageEntries,
     });
   } catch (err) {
     console.error("getInventoryMetrics error:", err);
