@@ -67,6 +67,15 @@ import {
   getInventoryMetrics,
 } from "../Controller/AdminController.js";
 
+import { 
+  getCustomerAnalytics,
+  getSalesAnalytics,
+  getDeliveryAnalytics,
+  getPaymentAnalytics,
+  getInventoryAnalytics,
+  getCustomerConversionAnalytics
+} from "../Controller/BusinessStatsController.js";
+
 // Customer routes
 router.route("/login").post(login);
 router.use(authenticateToken);
@@ -89,6 +98,13 @@ router.post("/zones/add", addZone);
 router.get("/zones", getZones);
 router.post("/business-types/add", addBusinessType);
 router.get("/business-types", getBusinessTypes);
+
+router.get("/analytics/customer", getCustomerAnalytics);
+router.get("/analytics/sales", getSalesAnalytics);
+router.get("/analytics/delivery", getDeliveryAnalytics);
+router.get("/analytics/payment", getPaymentAnalytics);
+router.get("/analytics/inventory", getInventoryAnalytics);
+router.get("/analytics/customer-conversion", getCustomerConversionAnalytics);
 
 router.get("/analytics/last8", getAnalyticsLast8);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);

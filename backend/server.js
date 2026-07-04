@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import adminRouter from "./Routes/AdminRoutes.js";
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
 import { startSkipDeliveryCron } from "./jobs/skipDeliveryCron.js";
+import "./jobs/businessAnalyticsCron.js";
 
 dotenv.config();
 
