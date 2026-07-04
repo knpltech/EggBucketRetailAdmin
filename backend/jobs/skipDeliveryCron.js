@@ -3,6 +3,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import cache from "../Controller/cache.js";
 import { invalidateActiveCountCache } from "../Controller/CustomerInfoController.js";
 import { calculateAndSavePeakPotentials } from "./categoryPeakCron.js";
+import { generateGenuineAnalytics } from "./businessAnalyticsCron.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -285,12 +286,21 @@ export const runSkipDeliveryJobOnce = async () => {
     `[skipDeliveryCron][weekly] ${today} weekday=${weekday}: processed=${processed}, updated=${updated}`,
   );
 
-  // ⭐ NEW: Calculate and save category peak potentials using the SAME customer data
-  // This saves ~387 reads per day by reusing the customersSnap we already fetched above.
+  // ⭐ Calculate and save category peak potentials using the SAME customer data
+  // This saves ~N reads per day by reusing the customersSnap we already fetched above.
   try {
     await calculateAndSavePeakPotentials(db, customersSnap);
   } catch (err) {
     console.error("[skipDeliveryCron] Error calculating peak potentials:", err);
+  }
+
+  // ⭐ Run analytics cron with the SAME customer snapshot (saves another N reads at midnight)
+  try {
+    console.log("[skipDeliveryCron] Running midnight analytics with shared snapshot...");
+    await generateGenuineAnalytics(customersSnap);
+    console.log("[skipDeliveryCron] Midnight analytics completed successfully");
+  } catch (err) {
+    console.error("[skipDeliveryCron] Error running midnight analytics:", err);
   }
 };
 

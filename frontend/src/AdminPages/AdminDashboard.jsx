@@ -24,6 +24,7 @@ export default function AdminDashboard() {
     { label: "Customer Retention", path: "/admin/customer-retention" },
     { label: "AI Suggestions", path: "/admin/ai-suggestions" },
     { label: "Collections", path: "/admin/collections" },
+    { label: "Business Statistics", path: "/admin/business-statistics" },
     { label: "Customer Management", path: "/admin/customer-management" },
     { label: "Customer Map ", path: "/admin/customer-map-for-delivery" },
   ];
