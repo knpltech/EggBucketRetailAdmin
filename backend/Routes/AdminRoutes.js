@@ -51,6 +51,8 @@ import {
   updateCustomerPotential,
   addZone,
   getZones,
+  addRoute,
+  getRoutes,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getRetentionCustomers,
@@ -96,6 +98,8 @@ router.post("/customer/weekly-schedule", saveWeeklySchedule);
 router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
+router.post("/routes/add", addRoute);
+router.get("/routes", getRoutes);
 router.post("/business-types/add", addBusinessType);
 router.get("/business-types", getBusinessTypes);
 

@@ -1207,6 +1207,11 @@ const updateCustomerMeta = async (req, res) => {
       updateData.businessType = req.body.businessType;
     }
 
+    // ✅ ROUTE
+    if (req.body.route !== undefined) {
+      updateData.route = req.body.route;
+    }
+
     // ✅ REMARKS
     if (remarks !== undefined) updateData.remarks = remarks;
 
@@ -1268,6 +1273,29 @@ const addZone = async (req, res) => {
   }
 };
 
+const addRoute = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "Route name required" });
+
+    const db = getFirestore();
+
+    // Check duplicate
+    const snap = await db.collection("routes").where("name", "==", name).get();
+    if (!snap.empty) {
+      return res.status(400).json({ message: "Route already exists" });
+    }
+
+    await db.collection("routes").add({ name });
+    cache.del("routes:list");
+
+    res.json({ message: "Route added" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 const getZones = async (req, res) => {
   try {
     const cacheKey = "zones:list";
@@ -1283,6 +1311,27 @@ const getZones = async (req, res) => {
 
     cache.set(cacheKey, zones, 3600); // Cache for 1 hour
     res.json(zones);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getRoutes = async (req, res) => {
+  try {
+    const cacheKey = "routes:list";
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const db = getFirestore();
+    const snap = await db.collection("routes").get();
+    const routes = snap.docs.map((doc) => doc.data().name).filter(Boolean);
+
+    // Sort alphabetically
+    routes.sort((a, b) => a.localeCompare(b));
+
+    cache.set(cacheKey, routes, 3600); // Cache for 1 hour
+    res.json(routes);
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: "Server error" });
@@ -2276,6 +2325,8 @@ export {
   toggleTodayDelivery,
   addZone,
   getZones,
+  addRoute,
+  getRoutes,
   addBusinessType,
   getBusinessTypes,
   getAnalyticsLast8,

@@ -10,6 +10,7 @@ const PAGE_SIZE = 25;
 const CustomerInfo = () => {
   const [customers, setCustomers] = useState([]);
   const [zones, setZones] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [businessTypes, setBusinessTypes] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -20,6 +21,9 @@ const CustomerInfo = () => {
 
   const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [editingZoneId, setEditingZoneId] = useState(null);
+
+  const [assigningRouteId, setAssigningRouteId] = useState(null);
+  const [editingRouteId, setEditingRouteId] = useState(null);
 
   const [assigningTypeId, setAssigningTypeId] = useState(null);
   const [editingTypeId, setEditingTypeId] = useState(null);
@@ -52,6 +56,7 @@ const CustomerInfo = () => {
       await Promise.all([
         fetchCustomers({ page: 1, sortBy: sortOption, cursor: "" }),
         fetchZones(),
+        fetchRoutes(),
         fetchBusinessTypes(),
       ]);
     } finally {
@@ -186,6 +191,52 @@ const CustomerInfo = () => {
       await fetchCustomers({ page: currentPage });
     } finally {
       setAssigningZoneId(null);
+    }
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/routes`);
+      setRoutes(res.data || []);
+    } catch (err) {
+      console.warn("Routes API unavailable, using empty route list:", err);
+      setRoutes([]);
+    }
+  };
+
+  const addRoutePrompt = async () => {
+    const name = prompt("Enter new Route name:");
+
+    if (!name) return;
+
+    try {
+      await axios.post(`${ADMIN_PATH}/routes/add`, { name });
+
+      setRoutes((prev) => {
+        const updated = prev.includes(name) ? prev : [...prev, name];
+        return updated.sort((a, b) => a.localeCompare(b));
+      });
+
+      alert("Route Added");
+    } catch (error) {
+      alert(error.response?.data?.message || "Failed to add route");
+    }
+  };
+
+  const assignRoute = async (id, routeName) => {
+    if (!routeName || assigningRouteId === id) return;
+
+    try {
+      setAssigningRouteId(id);
+
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        route: routeName,
+      });
+
+      await fetchCustomers({ page: currentPage });
+    } finally {
+      setAssigningRouteId(null);
     }
   };
 
@@ -361,6 +412,13 @@ const CustomerInfo = () => {
           </button>
 
           <button
+            onClick={addRoutePrompt}
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Add Route
+          </button>
+
+          <button
             onClick={addBusinessTypePrompt}
             className="bg-blue-600 text-white px-4 py-2 rounded"
           >
@@ -385,6 +443,7 @@ const CustomerInfo = () => {
               <th className="p-3 text-left">Business</th>
               <th className="p-3 text-left">Phone</th>
               <th className="p-3 text-left">Zone</th>
+              <th className="p-3 text-left">Route</th>
               <th className="p-3 text-left">Business Type</th>
               <th className="p-3 text-left">Created</th>
               <th className="p-3 text-left">Action</th>
@@ -477,6 +536,72 @@ const CustomerInfo = () => {
                       <button
                         onClick={() =>
                           setEditingZoneId(c.id)
+                        }
+                        className="text-gray-500"
+                      >
+                        <FiEdit2 />
+                      </button>
+
+                    </div>
+                  )}
+                </td>
+
+                {/* ROUTE */}
+
+                <td
+                  className="p-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+
+                  {!c.route || c.route === "UNASSIGNED" ? (
+
+                    <select
+                      disabled={assigningRouteId === c.id}
+                      onChange={(e) =>
+                        assignRoute(c.id, e.target.value)
+                      }
+                      className="border rounded px-2 py-1 w-40"
+                    >
+                      <option value="">Assign</option>
+
+                      {routes.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+
+                    </select>
+
+                  ) : editingRouteId === c.id ? (
+
+                    <select
+                      autoFocus
+                      defaultValue={c.route}
+                      onBlur={() => setEditingRouteId(null)}
+                      onChange={async (e) => {
+                        await assignRoute(c.id, e.target.value);
+                        setEditingRouteId(null);
+                      }}
+                      className="border rounded px-2 py-1 w-40"
+                    >
+
+                      {routes.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+
+                    </select>
+
+                  ) : (
+
+                    <div className="flex items-center gap-2">
+
+                      <span>{c.route}</span>
+
+                      <button
+                        onClick={() =>
+                          setEditingRouteId(c.id)
                         }
                         className="text-gray-500"
                       >
