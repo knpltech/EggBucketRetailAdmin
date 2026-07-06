@@ -11,21 +11,7 @@ import {
 import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 
-// TABS
-const TABS = [
-  "ALL",
-  "PRIME CUSTOMER",
-  "CALLING CUSTOMER",
-  "ONBOARDING",
-  "D0",
-  "D1",
-  "D2",
-  "D3",
-  "D4",
-  "D5",
-  "D6",
-  "D7",
-];
+// NO STATIC TABS
 
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
 /**
@@ -101,7 +87,7 @@ function syncPrimeCustomer(customer = {}) {
   };
 }
 
-export default function CustomerManagement() {
+export default function CustomerRoutes() {
   const [customers, setCustomers] = useState([]);
   const [categoryPeaks, setCategoryPeaks] = useState({});
   const [loading, setLoading] = useState(true);
@@ -113,6 +99,7 @@ export default function CustomerManagement() {
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
   const [zones, setZones] = useState([]);
   const [businessTypes, setBusinessTypes] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -213,6 +200,14 @@ export default function CustomerManagement() {
           setZones(zonesRes.data || []);
         } catch (err) {
           console.error("Error fetching zones:", err);
+        }
+
+        // Fetch routes dynamically
+        try {
+          const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
+          setRoutes(routesRes.data || []);
+        } catch (err) {
+          console.error("Error fetching routes:", err);
         }
 
         // Fetch business types dynamically
@@ -319,25 +314,8 @@ export default function CustomerManagement() {
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-    if (activeTab === "PRIME CUSTOMER") {
-      // Filter by calculated Peak Potential >= 10 from last8Days
-      list = list.filter((c) => {
-        const peakPotential = computePeakPotentialNumber(c.last8Days);
-        return peakPotential >= 10;
-      });
-    } else if (activeTab === "CALLING CUSTOMER") {
-      list = list.filter((c) => String(c.zone || "").trim().toUpperCase() === "CALLING CUSTOMER");
-    } else if (activeTab === "ONBOARDING") {
-      list = list.filter(
-        (c) =>
-          !c.zone ||
-          c.zone === "" ||
-          c.zone === null ||
-          c.zone === "UNASSIGNED",
-      );
-    } else if (/^D[0-7]$/.test(activeTab)) {
-      const targetDays = Number(activeTab.slice(1));
-      list = list.filter((c) => getDeliveredCount(c) === targetDays);
+    if (activeTab !== "ALL") {
+      list = list.filter((c) => String(c.route || "").trim() === activeTab);
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -647,10 +625,7 @@ export default function CustomerManagement() {
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER, CALLING CUSTOMER and ONBOARDING tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") {
-        baseData.Current_Category = getCurrentCategory(c);
-      }
+      // Removed Current_Category since it's not applicable here
       baseData.Status = getLatestStatus(c);
       baseData.Remarks = getRemarkDisplay(c);
       return baseData;
@@ -672,7 +647,7 @@ export default function CustomerManagement() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">Customer Management</h1>
+        <h1 className="text-3xl font-bold">Customer Routes</h1>
 
         <div className="flex items-center gap-4">
           <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
@@ -722,44 +697,11 @@ export default function CustomerManagement() {
       </div>
 
       {/* ⭐ Total Peak Potential & Potential Achieved row */}
-      <div className="flex gap-4 mb-4">
-        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500">
-          <p className="text-xs text-gray-500 whitespace-nowrap">
-            Best {weekdayName} Potential
-          </p>
-          <p className="text-xl font-bold text-orange-600">
-            {loading ? "…" : `T(${totalPeakPotential})`}
-          </p>
-        </div>
-
-        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500">
-          <p className="text-xs text-gray-500 whitespace-nowrap">
-            Potential Achieved
-          </p>
-          <p className="text-xl font-bold text-purple-600">
-            {loading ? "…" : potentialAchieved}
-          </p>
-          {!loading && totalPeakPotential > 0 && (
-            <p
-              className="text-xs font-semibold mt-1"
-              style={{
-                color:
-                  achievementPercentage >= 100
-                    ? "#0F9D58"
-                    : achievementPercentage >= 70
-                      ? "#FB8C00"
-                      : "#FF3B30",
-              }}
-            >
-              {achievementPercentage}% achieved
-            </p>
-          )}
-        </div>
-      </div>
+      {/* Stats Boxes Removed */}
 
       {/* TABS */}
       <div className="flex gap-2 mb-4 flex-wrap">
-        {TABS.map((t) => (
+        {["ALL", ...routes].map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -820,9 +762,8 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Customer ID</th>
               <th className="px-2 py-3">Name</th>
               <th className="px-2 py-3">Zone</th>
-              <th className="px-2 py-3">Route</th>
-              <th className="px-2 py-3">Delivery Plan</th>
-              <th className="px-2 py-3">Weekly Schedule</th>
+              {activeTab === "ALL" && <th className="px-2 py-3">Route</th>}
+
               <th className="px-2 py-3">Peak_Potential</th>
               <th className="px-2 py-3">Peak_Frequency</th>
               <th className="px-2 py-3">Delivery_Gap</th>
@@ -842,138 +783,13 @@ export default function CustomerManagement() {
                 <td className="px-2 py-3 font-medium text-gray-700">
                   {c.zone || "UNASSIGNED"}
                 </td>
-                <td className="px-2 py-3 font-medium text-gray-700">
-                  {c.route || "UNASSIGNED"}
-                </td>
+                {activeTab === "ALL" && (
+                  <td className="px-2 py-3 font-medium text-gray-700">
+                    {c.route || "UNASSIGNED"}
+                  </td>
+                )}
 
-                <td className="px-2 py-3">
-                  {(() => {
-                    const effective = getTodayEffectiveStatus(c);
-                    const isOn = effective === "ON";
-                    const isUpdating = updatingTodayId === c.id;
 
-                    // Detect today's delivery/check status
-                    const last8Days = c.last8Days || {};
-                    const todayEntry = last8Days[todayDate];
-                    const todayStatus = String(
-                      typeof todayEntry === "string"
-                        ? todayEntry
-                        : todayEntry?.status || "",
-                    )
-                      .trim()
-                      .toLowerCase();
-
-                    const completedStatuses = [
-                      "delivered",
-                      "checked",
-                      "reached",
-                      "price_mismatch",
-                      "stock_available",
-                      "other_vendor",
-                      "shop_closed",
-                    ];
-
-                    const isCompleted = completedStatuses.includes(todayStatus);
-
-                    const isLocked = isCompleted;
-
-                    return (
-                      <label
-                        className={`relative inline-flex items-center ${isUpdating || isLocked
-                            ? "opacity-50 cursor-not-allowed"
-                            : "cursor-pointer"
-                          }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={isOn}
-                          disabled={isUpdating || isLocked}
-                          onChange={() => toggleTodayDelivery(c)}
-                          aria-label={isOn ? "Today: ON" : "Today: OFF"}
-                        />
-                        <div className="w-12 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
-                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6" />
-                      </label>
-                    );
-                  })()}
-                </td>
-
-                <td className="px-2 py-3">
-                  {(() => {
-                    const isOpen = openScheduleId === c.id;
-                    const isUpdating = updatingScheduleId === c.id;
-                    const schedule = c.weeklySchedule || {
-                      mon: true,
-                      tue: true,
-                      wed: true,
-                      thu: true,
-                      fri: true,
-                      sat: true,
-                      sun: true,
-                    };
-                    const days = [
-                      "mon",
-                      "tue",
-                      "wed",
-                      "thu",
-                      "fri",
-                      "sat",
-                      "sun",
-                    ];
-                    const labels = {
-                      mon: "MON",
-                      tue: "TUE",
-                      wed: "WED",
-                      thu: "THU",
-                      fri: "FRI",
-                      sat: "SAT",
-                      sun: "SUN",
-                    };
-                    const activeDaysCount =
-                      Object.values(schedule).filter(Boolean).length;
-                    return (
-                      <div className="relative inline-block">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenScheduleId(isOpen ? null : c.id);
-                          }}
-                          className="px-3 py-1 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 transition whitespace-nowrap"
-                          disabled={isUpdating}
-                        >
-                          {activeDaysCount} Days {isOpen ? "▲" : "▼"}
-                        </button>
-                        {isOpen && (
-                          <div
-                            className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 p-2 min-w-[120px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {days.map((day) => (
-                              <button
-                                key={day}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateWeeklySchedule(c, day);
-                                }}
-                                disabled={isUpdating}
-                                className={`block w-full text-left px-3 py-1 rounded mb-1 last:mb-0 font-medium text-sm transition ${schedule[day]
-                                    ? "bg-green-500 text-white border border-green-600"
-                                    : "bg-red-500 text-white border border-red-600"
-                                  } ${isUpdating
-                                    ? "opacity-50 cursor-not-allowed"
-                                    : "cursor-pointer hover:opacity-90"
-                                  }`}
-                              >
-                                {labels[day]}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </td>
 
                 <td className="px-2 py-3">
                   <span

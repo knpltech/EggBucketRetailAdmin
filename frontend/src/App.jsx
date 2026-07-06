@@ -24,6 +24,7 @@ import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
 import CustomerManagement from "./AdminPages/CustomerManagement";
+import CustomerRoutes from "./AdminPages/CustomerRoutes";
 import CustomerManagementV from "./Admin-View/cutM";
 import CustomerMapV from "./Admin-View/customerMapV";
 import SupervisorDashboard from "./Supervisor/SupervisorDashboard";
@@ -92,6 +93,7 @@ function App() {
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
         <Route path="customer-management" element={<CustomerManagement />} />
+        <Route path="routes" element={<CustomerRoutes />} />
         <Route
           path="customer-map-for-delivery"
           element={<CustomerMapForDelivery />}
