@@ -84,6 +84,8 @@ const CollectionSummary = () => {
     totalDamage: 0,
     nettSales: 0,
     cashHandoverEntries: [],
+    foodAllowanceEntries: [],
+    incentiveEntries: [],
     loadingEntries: [],
     returnEntries: [],
     damageEntries: [],
@@ -101,6 +103,8 @@ const CollectionSummary = () => {
           totalDamage: res.data.totalDamage || 0,
           nettSales: res.data.nettSales || 0,
           cashHandoverEntries: res.data.cashHandoverEntries || [],
+          foodAllowanceEntries: res.data.foodAllowanceEntries || [],
+          incentiveEntries: res.data.incentiveEntries || [],
           loadingEntries: res.data.loadingEntries,
           returnEntries: res.data.returnEntries,
           damageEntries: res.data.damageEntries,
@@ -263,6 +267,8 @@ const CollectionSummary = () => {
       totalDamage = 0,
       nettSales = 0,
       cashHandoverEntries = [],
+      foodAllowanceEntries = [],
+      incentiveEntries = [],
       loadingEntries,
       returnEntries,
       damageEntries,
@@ -271,16 +277,18 @@ const CollectionSummary = () => {
     // Fallback if detailed entries are not yet populated from backend
     if (!loadingEntries || !returnEntries || !damageEntries) {
       let cashHandover = 0;
+      let foodAllowance = 0;
+      let incentives = 0;
       if (selectedAgent === "all") {
         cashHandover = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+        foodAllowance = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
+        incentives = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
       } else {
-        cashHandover = cashHandoverEntries
-          .filter(
-            (item) =>
-              item.agentName?.toLowerCase().trim() ===
-              selectedAgent?.toLowerCase().trim()
-          )
-          .reduce((sum, item) => sum + item.cash, 0);
+        const agentFilter = (item) =>
+          item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim();
+        cashHandover = cashHandoverEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        foodAllowance = foodAllowanceEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        incentives = incentiveEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
       }
       return {
         totalLoad,
@@ -288,6 +296,8 @@ const CollectionSummary = () => {
         totalDamage,
         nettSales,
         cashHandover,
+        foodAllowance,
+        incentives,
       };
     }
 
@@ -296,12 +306,16 @@ const CollectionSummary = () => {
       const ret = returnEntries.reduce((sum, item) => sum + item.quantity, 0);
       const dmg = damageEntries.reduce((sum, item) => sum + item.quantity, 0);
       const cash = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+      const food = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
+      const inc = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
       return {
         totalLoad: load,
         totalReturn: ret,
         totalDamage: dmg,
         nettSales: load - ret,
         cashHandover: cash,
+        foodAllowance: food,
+        incentives: inc,
       };
     }
 
@@ -376,12 +390,22 @@ const CollectionSummary = () => {
       .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
       .reduce((sum, item) => sum + item.cash, 0);
 
+    const filteredFood = foodAllowanceEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .reduce((sum, item) => sum + item.cash, 0);
+
+    const filteredIncentive = incentiveEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .reduce((sum, item) => sum + item.cash, 0);
+
     return {
       totalLoad: filteredLoad,
       totalReturn: filteredReturn,
       totalDamage: filteredDamage,
       nettSales: filteredLoad - filteredReturn,
       cashHandover: filteredCash,
+      foodAllowance: filteredFood,
+      incentives: filteredIncentive,
     };
   }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners]);
 
@@ -991,14 +1015,13 @@ const CollectionSummary = () => {
       </div>
 
       {/* Summary Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        {/* Added Sales/Load/Return/Damage cards (dynamic values from frontend only) */}
+      {/* Row 1 Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {(() => {
           const sales = displayedMetrics.nettSales;
           const load = displayedMetrics.totalLoad;
           const ret = displayedMetrics.totalReturn;
           const dmg = displayedMetrics.totalDamage;
-          const cash = displayedMetrics.cashHandover;
 
           const cards = [
             {
@@ -1033,12 +1056,72 @@ const CollectionSummary = () => {
               unit: "Pcs",
               topRight: "Qty",
             },
+          ];
+
+          return cards.map((card) => (
+            <div
+              key={card.label}
+              className={`bg-white rounded-lg p-6 shadow border-t-4 ${card.color}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-gray-600">{card.label}</p>
+                <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
+              </div>
+              <div className="flex items-baseline gap-2 mt-2">
+                <p className="text-3xl font-bold text-gray-900">
+                  {card.format(card.value)}
+                </p>
+                {card.unit && (
+                  <span className="text-2xl font-semibold text-gray-500 ml-1">{card.unit}</span>
+                )}
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+
+      {/* Row 2 Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {(() => {
+          const cash = displayedMetrics.cashHandover || 0;
+          const food = displayedMetrics.foodAllowance || 0;
+          const inc = displayedMetrics.incentives || 0;
+          // difference/balance = Total Cash - Cash Handover - Food Allowance
+          const totalCash = filteredTotals.totalCash || 0;
+          const diff = totalCash - cash - food;
+
+          const cards = [
             {
-              label: "Cash Handed Over",
+              label: "Cash Handover",
               value: cash,
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
-              color: "border-t-red-500",
-              unit: "",
+              color: "border-t-blue-500",
+              topRight: "Amt",
+            },
+            {
+              label: "Food Allowance",
+              value: food,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-green-500",
+              topRight: "Amt",
+            },
+            {
+              label: "Incentives",
+              value: inc,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-purple-500",
+              topRight: "Amt",
+            },
+            {
+              label: "Difference/Balance",
+              value: diff,
+              format: (v) => {
+                if (v < 0) {
+                  return `-₹${Math.abs(v).toLocaleString("en-IN")}`;
+                }
+                return `₹${v.toLocaleString("en-IN")}`;
+              },
+              color: "border-t-orange-500",
               topRight: "Amt",
             },
           ];
@@ -1056,9 +1139,6 @@ const CollectionSummary = () => {
                 <p className="text-3xl font-bold text-gray-900">
                   {card.format(card.value)}
                 </p>
-                {card.unit && (
-                  <span className="text-2xl font-semibold text-gray-500">{card.unit}</span>
-                )}
               </div>
             </div>
           ));
