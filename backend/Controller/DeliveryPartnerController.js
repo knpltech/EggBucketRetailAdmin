@@ -134,6 +134,28 @@ const updateDeliveryPartner = async (req, res) => {
   }
 };
 
+// Controller to assign route to a delivery partner
+const assignRouteToDeliveryPartner = async (req, res) => {
+  try {
+    const { uid, route } = req.body;
+    if (!uid) {
+      return res.status(400).json({ message: "UID is required." });
+    }
+
+    const db = getFirestore();
+    await db.collection("DeliveryMan").doc(uid).update({ route });
+
+    // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
+    res.status(200).json({ message: "Route assigned to delivery partner successfully." });
+  } catch (err) {
+    console.error("Error assigning route to delivery partner:", err);
+    res.status(500).json({ message: "Server error while assigning route." });
+  }
+};
+
 // Controller to delete a delivery partner
 const deleteDeliveryPartner = async (req, res) => {
   try {
@@ -202,6 +224,7 @@ export {
   addDeliveryPartner,
   getDeliveryPartners,
   updateDeliveryPartner,
+  assignRouteToDeliveryPartner,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 };

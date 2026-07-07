@@ -215,6 +215,10 @@ const PersonnelList = () => {
                 <span className="w-20 text-gray-500">Password:</span>
                 <span>{partner.password}</span>
               </div>
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500">Route:</span>
+                <span>{partner.route || 'Unassigned'}</span>
+              </div>
             </div>
           </div>
           <div className="flex space-x-3 ml-4">

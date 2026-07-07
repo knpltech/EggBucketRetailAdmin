@@ -298,7 +298,7 @@ const resolveDeliveryAgent = (entry, fallbackAgent, deliveryManMap) => {
   }
 
   const agentId =
-    (entryIsObject ? (entry.agentId || entry.deliveredBy) : null) ||
+    (entryIsObject ? (entry.agentId || entry.assignedDeliverymen) : null) ||
     fallbackAgent;
 
   if (typeof agentId === "string") {
@@ -719,7 +719,7 @@ const getUserDeliveries = async (req, res) => {
 
     for (const doc of deliveriesSnapshot.docs) {
       const data = doc.data();
-      const deliveredByUID = data.deliveredBy;
+      const deliveredByUID = data.assignedDeliverymen || data.deliveredBy;
       const { status, reason } = getStatusAndReasonFromType(
         data.type,
         data.checkReason,
@@ -743,7 +743,7 @@ const getUserDeliveries = async (req, res) => {
 
       deliveries.push({
         id: doc.id,
-        deliveredBy: deliveredByUID,
+        assignedDeliverymen: deliveredByUID,
         timestamp: data.timestamp,
         type: data.type,
         status,
@@ -832,7 +832,7 @@ const getAllCustomerDeliveries = async (req, res) => {
         const hasAgent = Boolean(
           entry.agentName ||
           entry.agentId ||
-          entry.deliveredBy ||
+          entry.assignedDeliverymen ||
           entry.deliveryMan,
         );
         const hasReason = entry.reason !== undefined;
@@ -859,12 +859,12 @@ const getAllCustomerDeliveries = async (req, res) => {
           const resolvedAgent =
             resolveDeliveryAgent(
               entry,
-              customerData.deliveredBy || customerData.deliveryMan,
+              customerData.assignedDeliverymen || customerData.deliveredBy || customerData.deliveryMan,
               deliveryManMap,
             ) ||
             resolveDeliveryAgent(
               subData,
-              customerData.deliveredBy || customerData.deliveryMan,
+              customerData.assignedDeliverymen || customerData.deliveredBy || customerData.deliveryMan,
               deliveryManMap,
             );
 
@@ -900,7 +900,7 @@ const getAllCustomerDeliveries = async (req, res) => {
 
             const resolvedAgent = resolveDeliveryAgent(
               d,
-              customerData.deliveredBy || customerData.deliveryMan,
+              customerData.assignedDeliverymen || customerData.deliveredBy || customerData.deliveryMan,
               deliveryManMap,
             );
 
@@ -932,12 +932,12 @@ const getAllCustomerDeliveries = async (req, res) => {
           const resolvedAgent =
             resolveDeliveryAgent(
               entry,
-              customerData.deliveredBy || customerData.deliveryMan,
+              customerData.assignedDeliverymen || customerData.deliveredBy || customerData.deliveryMan,
               deliveryManMap,
             ) ||
             resolveDeliveryAgent(
               subData,
-              customerData.deliveredBy || customerData.deliveryMan,
+              customerData.assignedDeliverymen || customerData.deliveredBy || customerData.deliveryMan,
               deliveryManMap,
             );
 
