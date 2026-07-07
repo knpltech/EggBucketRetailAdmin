@@ -259,6 +259,38 @@ const CollectionSummary = () => {
     }
   };
 
+  // Helper to match delivery partner names fuzzily (handles case variations, first-name matches, and common spelling differences like Bishal/Vishal)
+  const findPartnerByName = useCallback((name) => {
+    if (!name) return null;
+    const clean = name.toLowerCase().replace(/[^a-z]/g, "");
+    
+    // 1. Try exact match first
+    let found = deliveryPartners.find(
+      (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
+    );
+    if (found) return found;
+    
+    // 2. Try matching first word / substring
+    const firstWord = name.toLowerCase().trim().split(/\s+/)[0];
+    found = deliveryPartners.find((p) => {
+      const pName = p.name?.toLowerCase().trim();
+      if (!pName) return false;
+      const pFirstWord = pName.split(/\s+/)[0];
+      return pFirstWord === firstWord || pName.includes(firstWord) || firstWord.includes(pName);
+    });
+    if (found) return found;
+
+    // 3. Try matching Bishal / Vishal similarity
+    if (clean.includes("bishal") || clean.includes("vishal")) {
+      return deliveryPartners.find((p) => {
+        const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
+        return pClean.includes("vishal") || pClean.includes("bishal");
+      });
+    }
+
+    return null;
+  }, [deliveryPartners]);
+
   // Calculate metrics based on selected outlet and agent filters
   const displayedMetrics = useMemo(() => {
     const {
@@ -332,9 +364,7 @@ const CollectionSummary = () => {
         }
 
         // Check if entryOutlet is a partner name (e.g. "Rohan")
-        const partnerByOutletName = deliveryPartners.find(
-          (p) => p.name?.toLowerCase().trim() === entryOutletLower
-        );
+        const partnerByOutletName = findPartnerByName(entryOutlet);
         if (partnerByOutletName && partnerByOutletName.outlet) {
           const pOutletLower = partnerByOutletName.outlet.toLowerCase().trim().replace(/^eggbucket\s+/, "");
           if (pOutletLower === cleanTargetOutlet) {
@@ -345,10 +375,7 @@ const CollectionSummary = () => {
 
       // 2. Check if agentName belongs to the selectedOutlet
       if (entryAgent) {
-        const agentLower = entryAgent.toLowerCase().trim();
-        const partnerByAgent = deliveryPartners.find(
-          (p) => p.name?.toLowerCase().trim() === agentLower
-        );
+        const partnerByAgent = findPartnerByName(entryAgent);
         if (partnerByAgent && partnerByAgent.outlet) {
           const pOutletLower = partnerByAgent.outlet.toLowerCase().trim().replace(/^eggbucket\s+/, "");
           if (pOutletLower === cleanTargetOutlet) {
@@ -359,10 +386,7 @@ const CollectionSummary = () => {
 
       // 3. Check if supervisorName belongs to the selectedOutlet
       if (entrySupervisor) {
-        const superLower = entrySupervisor.toLowerCase().trim();
-        const partnerBySupervisor = deliveryPartners.find(
-          (p) => p.name?.toLowerCase().trim() === superLower
-        );
+        const partnerBySupervisor = findPartnerByName(entrySupervisor);
         if (partnerBySupervisor && partnerBySupervisor.outlet) {
           const pOutletLower = partnerBySupervisor.outlet.toLowerCase().trim().replace(/^eggbucket\s+/, "");
           if (pOutletLower === cleanTargetOutlet) {
@@ -407,7 +431,7 @@ const CollectionSummary = () => {
       foodAllowance: filteredFood,
       incentives: filteredIncentive,
     };
-  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners]);
+  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners, findPartnerByName]);
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -908,12 +932,12 @@ const CollectionSummary = () => {
               if (newAgent === "all") {
                 setSelectedOutlet("all");
               } else {
-                const partner = deliveryPartners.find(p => p.name === newAgent);
-                if (partner && partner.outlet) {
-                  setSelectedOutlet(partner.outlet);
-                } else {
-                  setSelectedOutlet("all");
-                }
+                 const partner = findPartnerByName(newAgent);
+                 if (partner && partner.outlet) {
+                   setSelectedOutlet(partner.outlet);
+                 } else {
+                   setSelectedOutlet("all");
+                 }
               }
             }}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
