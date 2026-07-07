@@ -24,6 +24,7 @@ import {
 import {
   deleteCustomer,
   updateCustomer,
+  assignAgent,
 } from "../Controller/CustomerController.js";
 
 // import delivery partner functions from DeliveryPartnerController
@@ -31,6 +32,7 @@ import {
   addDeliveryPartner,
   getDeliveryPartners,
   updateDeliveryPartner,
+  assignRouteToDeliveryPartner,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 } from "../Controller/DeliveryPartnerController.js";
@@ -69,7 +71,7 @@ import {
   getInventoryMetrics,
 } from "../Controller/AdminController.js";
 
-import { 
+import {
   getCustomerAnalytics,
   getSalesAnalytics,
   getDeliveryAnalytics,
@@ -89,6 +91,7 @@ router.get("/ai-suggestions/candidates", getAISuggestionCandidates);
 router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);
 router.put("/customer/update", updateCustomer);
+router.put("/customer/assign-agent", assignAgent);
 router.get("/customer/deliveries/:id", getUserDeliveries);
 router.get("/all-deliveries", getAllCustomerDeliveries);
 router.post("/add-customer", upload.single("image"), addCustomer);
@@ -128,6 +131,7 @@ router.get("/inventory-metrics", getInventoryMetrics);
 router.post("/add-del-partner", addDeliveryPartner);
 router.get("/get-del-partner", getDeliveryPartners);
 router.put("/delivery/update", updateDeliveryPartner);
+router.put("/delivery/assign-route", assignRouteToDeliveryPartner);
 router.delete("/delivery/delete", deleteDeliveryPartner);
 router.put("/delivery/toggle/:id", toggleDeliveryPerson);
 router.get("/customer-map-status", getCustomerMapStatus);

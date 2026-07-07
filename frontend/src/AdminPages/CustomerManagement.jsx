@@ -111,7 +111,9 @@ export default function CustomerManagement() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
+  const [activeRouteTab, setActiveRouteTab] = useState("ALL");
   const [zones, setZones] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [businessTypes, setBusinessTypes] = useState([]);
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
@@ -215,6 +217,14 @@ export default function CustomerManagement() {
           console.error("Error fetching zones:", err);
         }
 
+        // Fetch routes dynamically
+        try {
+          const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
+          setRoutes(routesRes.data || []);
+        } catch (err) {
+          console.error("Error fetching routes:", err);
+        }
+
         // Fetch business types dynamically
         try {
           const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
@@ -233,7 +243,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -352,6 +362,12 @@ export default function CustomerManagement() {
       );
     }
 
+    if (activeRouteTab !== "ALL") {
+      list = list.filter(
+        (c) => String(c.route || "").trim().toLowerCase() === activeRouteTab.toLowerCase()
+      );
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -436,7 +452,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -812,6 +828,27 @@ export default function CustomerManagement() {
         </div>
       )}
 
+      {/* ROUTE FILTERS TABS */}
+      {routes && routes.length > 0 && (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button
+            onClick={() => setActiveRouteTab("ALL")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === "ALL" ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            ALL ROUTES
+          </button>
+          {routes.map((r) => (
+            <button
+              key={r}
+              onClick={() => setActiveRouteTab(r)}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === r ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-xs text-center border-collapse">
@@ -821,6 +858,7 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Name</th>
               <th className="px-2 py-3">Zone</th>
               <th className="px-2 py-3">Route</th>
+
               <th className="px-2 py-3">Delivery Plan</th>
               <th className="px-2 py-3">Weekly Schedule</th>
               <th className="px-2 py-3">Peak_Potential</th>

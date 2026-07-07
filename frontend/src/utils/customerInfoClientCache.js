@@ -141,3 +141,13 @@ export const patchCachedUserInfoCustomer = (customerId, updater) => {
     // Ignore storage errors; local React state is already updated.
   }
 };
+
+export const invalidateClientUserInfoCache = () => {
+  try {
+    sessionStorage.removeItem(CACHE_KEY);
+    memoryPayload = null;
+    memoryExpiresAt = 0;
+  } catch (err) {
+    console.error("Failed to invalidate cache", err);
+  }
+};

@@ -293,7 +293,7 @@ const resolveDeliveryAgent = (entry, fallbackAgent, deliveryManMap = null) => {
   }
 
   const agentId =
-    (entryIsObject ? entry.agentId || entry.deliveredBy : null) ||
+    (entryIsObject ? entry.agentId || entry.assignedDeliverymen : null) ||
     fallbackAgent;
 
   if (typeof agentId === "string") {
@@ -582,7 +582,7 @@ const getRetentionCustomers = async (req, res) => {
         typeof entry === "string" ? { status: entry } : entry || {};
 
       // 1. Check nested agent object or string (deliveryMan or agent)
-      const nestedAgent = entryObj.deliveryMan || entryObj.agent || null;
+      const nestedAgent = entryObj.assignedDeliverymen || entryObj.agent || null;
       if (nestedAgent) {
         if (typeof nestedAgent === "string" && nestedAgent.trim()) {
           const mapped = deliveryPartnerMap.get(nestedAgent.trim());
@@ -606,14 +606,14 @@ const getRetentionCustomers = async (req, res) => {
         return directAgentName;
       }
 
-      // 3. Check agentId or deliveredBy
-      const agentId = entryObj.agentId || entryObj.deliveredBy || "";
+      // 3. Check agentId or assignedDeliverymen
+      const agentId = entryObj.agentId || entryObj.assignedDeliverymen || "";
       if (agentId) {
         return deliveryPartnerMap.get(agentId) || agentId;
       }
 
       // 4. Fallback to default assigned delivery partner
-      const defaultAgentId = customer.deliveredBy || customer.deliveryMan || "";
+      const defaultAgentId = customer.assignedDeliverymen || customer.deliveredBy || customer.deliveryMan || "";
       if (defaultAgentId) {
         if (typeof defaultAgentId === "string") {
           return deliveryPartnerMap.get(defaultAgentId) || defaultAgentId;
@@ -731,7 +731,7 @@ const getRetentionCustomers = async (req, res) => {
         checkReason: entryObj.reason || "",
         status: entryObj.status,
         time: entryObj.time || null,
-        deliveredBy: entryObj.agentId || null,
+        assignedDeliverymen: entryObj.agentId || null,
         traysDelivered:
           entryObj.quantity ?? entryObj.trays ?? entryObj.traysDelivered ?? 0,
       };
@@ -1290,6 +1290,83 @@ const addRoute = async (req, res) => {
     cache.del("routes:list");
 
     res.json({ message: "Route added" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const updateRoute = async (req, res) => {
+  try {
+    const { oldName, newName } = req.body;
+    if (!oldName || !newName) return res.status(400).json({ message: "oldName and newName required" });
+
+    const db = getFirestore();
+
+    if (oldName !== newName) {
+      const snap = await db.collection("routes").where("name", "==", newName).get();
+      if (!snap.empty) {
+        return res.status(400).json({ message: "A route with this name already exists" });
+      }
+
+      const oldSnap = await db.collection("routes").where("name", "==", oldName).get();
+      if (!oldSnap.empty) {
+        await oldSnap.docs[0].ref.update({ name: newName });
+      } else {
+        await db.collection("routes").add({ name: newName });
+      }
+
+      const customersSnap = await db.collection("customers").where("route", "==", oldName).get();
+      if (!customersSnap.empty) {
+        const batch = db.batch();
+        customersSnap.forEach(doc => {
+           batch.update(doc.ref, { route: newName });
+        });
+        await batch.commit();
+      }
+    }
+
+    cache.del("routes:list");
+    const keys = await cache.keysAsync("customerInfo:userInfo*");
+    if (keys && keys.length > 0) {
+      await cache.delAsync(keys);
+    }
+
+    res.json({ message: "Route updated successfully" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const deleteRoute = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "Route name required" });
+
+    const db = getFirestore();
+
+    const snap = await db.collection("routes").where("name", "==", name).get();
+    if (!snap.empty) {
+      await snap.docs[0].ref.delete();
+    }
+
+    const customersSnap = await db.collection("customers").where("route", "==", name).get();
+    if (!customersSnap.empty) {
+      const batch = db.batch();
+      customersSnap.forEach(doc => {
+         batch.update(doc.ref, { route: "" });
+      });
+      await batch.commit();
+    }
+
+    cache.del("routes:list");
+    const keys = await cache.keysAsync("customerInfo:userInfo*");
+    if (keys && keys.length > 0) {
+      await cache.delAsync(keys);
+    }
+
+    res.json({ message: "Route deleted successfully" });
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: "Server error" });
@@ -2368,6 +2445,8 @@ export {
   addZone,
   getZones,
   addRoute,
+  updateRoute,
+  deleteRoute,
   getRoutes,
   addBusinessType,
   getBusinessTypes,
