@@ -1,20 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin, FiSearch } from "react-icons/fi";
+import { FiUsers, FiMapPin } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
+import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 
 export default function CustomerRoutes() {
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState([]);
   const [routes, setRoutes] = useState([]);
-  const [zones, setZones] = useState([]);
   const [agents, setAgents] = useState([]);
 
   // Filtering and Selection
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedZone, setSelectedZone] = useState("ALL");
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
   const [assignSelectedAgent, setAssignSelectedAgent] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
@@ -31,14 +28,12 @@ export default function CustomerRoutes() {
             : [];
         setCustomers(rows);
 
-        const [routesRes, zonesRes, agentsRes] = await Promise.all([
+        const [routesRes, agentsRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/routes`),
-          axios.get(`${ADMIN_PATH}/zones`),
           axios.get(`${ADMIN_PATH}/get-del-partner`),
         ]);
 
         setRoutes(routesRes.data || []);
-        setZones(zonesRes.data || []);
         setAgents(agentsRes.data || []);
       } catch (err) {
         console.error("Init error in Route Management:", err);
@@ -57,8 +52,8 @@ export default function CustomerRoutes() {
     routes.forEach(routeName => {
       routeMap[routeName] = {
         name: routeName,
-        zone: null,
-        customers: 0,
+        totalCustomers: 0,
+        activeCustomers: 0,
         agentsAssigned: {},
         assignedAgent: "Unassigned",
         assignedAgentName: "Unassigned"
@@ -69,10 +64,10 @@ export default function CustomerRoutes() {
     customers.forEach(customer => {
       const route = customer.route;
       if (route && routeMap[route]) {
-        routeMap[route].customers += 1;
+        routeMap[route].totalCustomers += 1;
         
-        if (!routeMap[route].zone && customer.zone) {
-          routeMap[route].zone = customer.zone;
+        if (getTodayEffectiveStatus(customer) === "ON") {
+          routeMap[route].activeCustomers += 1;
         }
 
         const agentId = customer.assignedDeliverymen;
@@ -101,8 +96,7 @@ export default function CustomerRoutes() {
       }
 
       return {
-        ...routeInfo,
-        zone: routeInfo.zone || "UNASSIGNED"
+        ...routeInfo
       };
     });
   }, [routes, customers, agents]);
@@ -123,16 +117,8 @@ export default function CustomerRoutes() {
     });
   }, [agents, customers]);
 
-  // Handle Search and Filters
-  const filteredRoutes = useMemo(() => {
-    return routeData.filter(route => {
-      const matchesSearch = route.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesZone = selectedZone === "ALL" || route.zone === selectedZone;
-      return matchesSearch && matchesZone;
-    });
-  }, [routeData, searchQuery, selectedZone]);
-
-  const totalCustomersAssigned = routeData.reduce((sum, route) => sum + route.customers, 0);
+  const totalCustomersAssigned = routeData.reduce((sum, route) => sum + route.totalCustomers, 0);
+  const totalActiveCustomers = routeData.reduce((sum, route) => sum + route.activeCustomers, 0);
 
   const getInitials = (name) => {
     if (!name) return "UN";
@@ -266,44 +252,19 @@ export default function CustomerRoutes() {
           </div>
         </div>
       </div>
-
       <div className="flex gap-6">
         {/* LEFT PANEL - ALL ROUTES */}
         <div className="flex-[2] bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
           <div className="p-5 border-b border-gray-100 flex justify-between items-center">
             <h2 className="text-lg font-bold text-gray-800">All Routes</h2>
           </div>
-          
-          <div className="p-4 flex gap-4 border-b border-gray-100">
-            <div className="relative flex-1">
-              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Search routes..." 
-                className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <select 
-              className="border rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-500 w-48"
-              value={selectedZone}
-              onChange={(e) => setSelectedZone(e.target.value)}
-            >
-              <option value="ALL">All Zones</option>
-              {zones.map(z => (
-                <option key={z} value={z}>{z}</option>
-              ))}
-            </select>
-          </div>
-
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left text-sm border-collapse">
               <thead className="bg-gray-50 sticky top-0 border-b border-gray-200 shadow-sm">
                 <tr>
                   <th className="px-6 py-4 font-semibold text-gray-700">Route Name</th>
-                  <th className="px-6 py-4 font-semibold text-gray-700">Zone</th>
-                  <th className="px-6 py-4 font-semibold text-gray-700 text-center">Customers</th>
+                  <th className="px-6 py-4 font-semibold text-gray-700 text-center">Total Customers</th>
+                  <th className="px-6 py-4 font-semibold text-gray-700 text-center">Active Customers</th>
                   <th className="px-6 py-4 font-semibold text-gray-700">Assigned Agent</th>
                 </tr>
               </thead>
@@ -312,18 +273,18 @@ export default function CustomerRoutes() {
                   <tr>
                     <td colSpan="4" className="text-center py-10 text-gray-500">Loading...</td>
                   </tr>
-                ) : filteredRoutes.length === 0 ? (
+                ) : routeData.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="text-center py-10 text-gray-500">No routes found.</td>
                   </tr>
                 ) : (
-                  filteredRoutes.map((route, i) => (
+                  routeData.map((route, i) => (
                     <tr key={route.name} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-6 py-4 font-medium text-blue-600 border-l-4 border-l-transparent hover:border-l-blue-600">
                         {route.name}
                       </td>
-                      <td className="px-6 py-4 text-gray-600">{route.zone}</td>
-                      <td className="px-6 py-4 text-center font-medium text-gray-800">{route.customers}</td>
+                      <td className="px-6 py-4 text-center font-medium text-gray-800">{route.totalCustomers}</td>
+                      <td className="px-6 py-4 text-center font-medium text-gray-800">{route.activeCustomers}</td>
                       <td className="px-6 py-4">
                         {route.assignedAgent === "Unassigned" ? (
                            <span className="text-red-500 font-medium">Unassigned</span>
@@ -346,15 +307,15 @@ export default function CustomerRoutes() {
           <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-sm font-medium text-gray-700 rounded-b-xl mt-auto">
              <div className="flex flex-col items-center flex-1">
                 <span className="text-gray-500 text-xs">Total Routes</span>
-                <span className="text-lg">{filteredRoutes.length}</span>
+                <span className="text-lg">{routeData.length}</span>
              </div>
              <div className="flex flex-col items-center flex-1 border-l border-gray-300">
                 <span className="text-gray-500 text-xs">Total Customers</span>
-                <span className="text-lg">{filteredRoutes.reduce((sum, r) => sum + r.customers, 0)}</span>
+                <span className="text-lg">{routeData.reduce((sum, r) => sum + r.totalCustomers, 0)}</span>
              </div>
              <div className="flex flex-col items-center flex-1 border-l border-gray-300 text-blue-600">
                 <span className="text-gray-500 text-xs text-blue-600/70">Assigned Agents</span>
-                <span className="text-lg">{filteredRoutes.filter(r => r.assignedAgent !== "Unassigned").length}/{filteredRoutes.length}</span>
+                <span className="text-lg">{routeData.filter(r => r.assignedAgent !== "Unassigned").length}/{routeData.length}</span>
              </div>
           </div>
         </div>

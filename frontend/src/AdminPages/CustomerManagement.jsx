@@ -363,9 +363,13 @@ export default function CustomerManagement() {
     }
 
     if (activeRouteTab !== "ALL") {
-      list = list.filter(
-        (c) => String(c.route || "").trim().toLowerCase() === activeRouteTab.toLowerCase()
-      );
+      if (activeRouteTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.route || String(c.route).trim() === "");
+      } else {
+        list = list.filter(
+          (c) => String(c.route || "").trim().toLowerCase() === activeRouteTab.toLowerCase()
+        );
+      }
     }
 
     if (sortBy === "name") {
@@ -836,6 +840,12 @@ export default function CustomerManagement() {
             className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === "ALL" ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             ALL ROUTES
+          </button>
+          <button
+            onClick={() => setActiveRouteTab("UNASSIGNED")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === "UNASSIGNED" ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            UNASSIGNED
           </button>
           {routes.map((r) => (
             <button
