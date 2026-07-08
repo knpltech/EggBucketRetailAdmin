@@ -63,10 +63,10 @@ const SalesGraphs = ({ graphs }) => {
 
       <GraphContainer title="Revenue by Business Type">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart layout="vertical" data={graphs.revenueByBusinessType} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
+          <BarChart layout="vertical" data={graphs.revenueByBusinessType} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
             <XAxis type="number" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
-            <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} width={80} />
+            <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} width={130} />
             <Tooltip formatter={(value) => `₹${value}`} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
             <Bar dataKey="value" name="Revenue" fill={COLORS[4]} radius={[0, 4, 4, 0]} barSize={20} />
           </BarChart>
