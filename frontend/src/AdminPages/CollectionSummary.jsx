@@ -772,7 +772,7 @@ const CollectionSummary = () => {
       c.upi,
       c.amount,
       typeof c.amount === "number" && typeof c.quantity === "number" && c.quantity > 0
-        ? (c.amount / c.quantity).toFixed(2)
+        ? (c.amount / c.quantity).toFixed(3)
         : "-",
     ]);
 
@@ -1115,7 +1115,7 @@ const CollectionSummary = () => {
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400">
           <p className="text-sm text-gray-600 mb-2">Sales Point</p>
           <p className="text-3xl font-bold text-gray-900">
-            {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(2) : "0.00"}
+            {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
           </p>
         </div>
 
@@ -1444,8 +1444,8 @@ const CollectionSummary = () => {
                   typeof item.quantity === "number" &&
                   item.quantity > 0
                     ? `₹${(item.amount / item.quantity).toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
+                        minimumFractionDigits: 3,
+                        maximumFractionDigits: 3,
                       })}`
                     : "-"}
                 </td>
