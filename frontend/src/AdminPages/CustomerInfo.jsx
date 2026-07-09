@@ -4,6 +4,7 @@ import { ADMIN_PATH } from "../constant";
 import { FaTrash, FaEdit } from "react-icons/fa";
 import { FiEdit2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import { getCachedUserInfo } from "../utils/customerInfoClientCache";
 
 const PAGE_SIZE = 25;
 
@@ -72,19 +73,67 @@ const CustomerInfo = () => {
       const requestedCursor =
         cursor !== undefined ? cursor : pageCursors[page] || "";
 
-      const res = await axios.get(`${ADMIN_PATH}/user-info`, {
-        params: {
-          limit: PAGE_SIZE,
-          cursor: requestedCursor,
-          sortBy: requestedSort,
-        },
-      });
+      let responseCustomers = [];
+      let pagination = {};
 
-      const payload = res.data || {};
-      const responseCustomers = Array.isArray(payload)
-        ? payload
-        : payload.customers || [];
-      const pagination = payload.pagination || {};
+      if (requestedSort === "zone" || requestedSort === "businessType") {
+        const userInfoData = await getCachedUserInfo();
+        const rows = Array.isArray(userInfoData?.customers)
+          ? userInfoData.customers
+          : Array.isArray(userInfoData)
+            ? userInfoData
+            : [];
+            
+        const sorted = [...rows].sort((a, b) => {
+          if (requestedSort === "zone") {
+            const zoneA = String(a?.zone || "").trim();
+            const zoneB = String(b?.zone || "").trim();
+            const isUnassignedA = !zoneA || zoneA.toUpperCase() === "UNASSIGNED";
+            const isUnassignedB = !zoneB || zoneB.toUpperCase() === "UNASSIGNED";
+            
+            if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+            if (isUnassignedA) return 1;
+            if (isUnassignedB) return -1;
+            return zoneA.localeCompare(zoneB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+          }
+
+          if (requestedSort === "businessType") {
+            const bizA = String(a?.business || "").trim();
+            const bizB = String(b?.business || "").trim();
+            const isUnassignedA = !bizA || bizA.toUpperCase() === "UNASSIGNED";
+            const isUnassignedB = !bizB || bizB.toUpperCase() === "UNASSIGNED";
+            
+            if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+            if (isUnassignedA) return 1;
+            if (isUnassignedB) return -1;
+            return bizA.localeCompare(bizB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+          }
+          return 0;
+        });
+
+        const offset = (page - 1) * PAGE_SIZE;
+        responseCustomers = sorted.slice(offset, offset + PAGE_SIZE);
+        
+        pagination = {
+          totalPages: Math.ceil(sorted.length / PAGE_SIZE),
+          hasNextPage: page < Math.ceil(sorted.length / PAGE_SIZE),
+          nextCursor: null,
+        };
+      } else {
+        const res = await axios.get(`${ADMIN_PATH}/user-info`, {
+          params: {
+            limit: PAGE_SIZE,
+            cursor: requestedCursor,
+            sortBy: requestedSort,
+          },
+        });
+
+        const payload = res.data || {};
+        responseCustomers = Array.isArray(payload)
+          ? payload
+          : payload.customers || [];
+        pagination = payload.pagination || {};
+      }
       const resolvedTotalPages = Math.max(
         1,
         Number(pagination.totalPages) || 1,
@@ -158,7 +207,8 @@ const CustomerInfo = () => {
   const fetchZones = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/zones`);
-      setZones(res.data || []);
+      const fetchedZones = res.data || [];
+      setZones(fetchedZones.sort((a, b) => String(a).localeCompare(String(b))));
     } catch (err) {
       console.warn("Zones API unavailable, using empty zone list:", err);
       setZones([]);
@@ -197,7 +247,8 @@ const CustomerInfo = () => {
   const fetchRoutes = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/routes`);
-      setRoutes(res.data || []);
+      const fetchedRoutes = res.data || [];
+      setRoutes(fetchedRoutes.sort((a, b) => String(a).localeCompare(String(b))));
     } catch (err) {
       console.warn("Routes API unavailable, using empty route list:", err);
       setRoutes([]);
@@ -243,7 +294,8 @@ const CustomerInfo = () => {
   const fetchBusinessTypes = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/business-types`);
-      setBusinessTypes(res.data || []);
+      const fetchedTypes = res.data || [];
+      setBusinessTypes(fetchedTypes.sort((a, b) => String(a).localeCompare(String(b))));
     } catch (err) {
       console.warn("Business Types API unavailable:", err);
       setBusinessTypes([]);
@@ -340,6 +392,9 @@ const CustomerInfo = () => {
     if (sortOption === "createdAt") {
       return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
     }
+    if (sortOption === "zone" || sortOption === "businessType") {
+      return 0; // Already sorted in fetchCustomers
+    }
 
     return String(a?.name || "").localeCompare(String(b?.name || ""));
   });
@@ -402,6 +457,8 @@ const CustomerInfo = () => {
           >
             <option value="createdAt">Created Date</option>
             <option value="name">Name</option>
+            <option value="zone">Zone</option>
+            <option value="businessType">Business</option>
           </select>
 
           <button
