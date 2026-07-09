@@ -1229,14 +1229,14 @@ const getCategoryPeakPotentials = async (req, res) => {
   try {
     const db = getFirestore();
     const INDIA_TZ = "Asia/Kolkata";
-    
+
     // Get today's weekday name in IST
     const now = new Date();
     const dayIndex = new Intl.DateTimeFormat("en-US", {
       weekday: "short",
       timeZone: INDIA_TZ,
     }).format(now);
-    
+
     const WEEKDAY_NAMES = [
       "Sunday", "Monday", "Tuesday", "Wednesday",
       "Thursday", "Friday", "Saturday",
@@ -1246,7 +1246,7 @@ const getCategoryPeakPotentials = async (req, res) => {
 
     const docRef = db.collection("categoryPeakPotentials").doc(weekdayName);
     const docSnap = await docRef.get();
-    
+
     if (!docSnap.exists) {
       return res.status(200).json({});
     }
