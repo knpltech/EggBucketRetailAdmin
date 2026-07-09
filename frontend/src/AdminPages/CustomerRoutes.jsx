@@ -54,11 +54,20 @@ export default function CustomerRoutes() {
         name: routeName,
         totalCustomers: 0,
         activeCustomers: 0,
+        weeklyBestPotential: 0,
+        potentialAchieved: 0,
         agentsAssigned: {},
         assignedAgent: "Unassigned",
         assignedAgentName: "Unassigned"
       };
     });
+
+    const todayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
 
     // Process customers
     customers.forEach(customer => {
@@ -73,6 +82,34 @@ export default function CustomerRoutes() {
         const agentId = customer.assignedDeliverymen;
         if (agentId) {
           routeMap[route].agentsAssigned[agentId] = (routeMap[route].agentsAssigned[agentId] || 0) + 1;
+        }
+        
+        // Calculate Weekly Best Potential
+        let maxTrays = 0;
+        const last8Days = customer.last8Days || {};
+        Object.values(last8Days).forEach((entry) => {
+          if (!entry) return;
+          const status = String(typeof entry === "string" ? entry : entry?.status || entry?.type || "").trim().toLowerCase();
+          if (status !== "delivered") return;
+          const trays = entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
+          const numTrays = Number(trays);
+          if (Number.isFinite(numTrays) && numTrays > maxTrays) {
+            maxTrays = numTrays;
+          }
+        });
+        routeMap[route].weeklyBestPotential += maxTrays;
+
+        // Calculate Potential Achieved today
+        const todayEntry = last8Days[todayDate];
+        if (todayEntry) {
+          const status = String(typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "").trim().toLowerCase();
+          if (status === "delivered") {
+            const trays = todayEntry.traysDelivered ?? todayEntry.trays ?? todayEntry.quantity ?? todayEntry?.deliveredTrays ?? 0;
+            const numTrays = Number(trays);
+            if (Number.isFinite(numTrays) && numTrays > 0) {
+              routeMap[route].potentialAchieved += numTrays;
+            }
+          }
         }
       }
     });
@@ -203,19 +240,27 @@ export default function CustomerRoutes() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full font-sans">
       {/* HEADER & STATS */}
-      <div className="mb-8 flex flex-col md:flex-row justify-between md:items-end gap-4">
+      <div className="mb-8 flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Route Management</h1>
           <p className="text-sm text-gray-500 mt-1">
             Organize delivery routes and assign agents to ensure efficient coverage and no overlaps.
           </p>
         </div>
-        <button
-          onClick={addRoutePrompt}
-          className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors self-start md:self-auto"
-        >
-          + Add Route
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={addRoutePrompt}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit"
+          >
+            + Add Route
+          </button>
+          <div className="bg-white p-4 rounded-xl shadow border-l-4 border-green-500">
+            <p className="text-sm text-gray-600">Total Active</p>
+            <p className="text-2xl font-bold text-green-600">
+              {loading ? "…" : totalActiveCustomers}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="mb-8">
@@ -258,34 +303,46 @@ export default function CustomerRoutes() {
           <div className="p-5 border-b border-gray-100 flex justify-between items-center">
             <h2 className="text-lg font-bold text-gray-800">All Routes</h2>
           </div>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left text-sm border-collapse">
-              <thead className="bg-gray-50 sticky top-0 border-b border-gray-200 shadow-sm">
-                <tr>
-                  <th className="px-6 py-4 font-semibold text-gray-700">Route Name</th>
-                  <th className="px-6 py-4 font-semibold text-gray-700 text-center">Total Customers</th>
-                  <th className="px-6 py-4 font-semibold text-gray-700 text-center">Active Customers</th>
-                  <th className="px-6 py-4 font-semibold text-gray-700">Assigned Agent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="4" className="text-center py-10 text-gray-500">Loading...</td>
-                  </tr>
-                ) : routeData.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" className="text-center py-10 text-gray-500">No routes found.</td>
-                  </tr>
-                ) : (
-                  routeData.map((route, i) => (
-                    <tr key={route.name} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-blue-600 border-l-4 border-l-transparent hover:border-l-blue-600">
-                        {route.name}
-                      </td>
-                      <td className="px-6 py-4 text-center font-medium text-gray-800">{route.totalCustomers}</td>
-                      <td className="px-6 py-4 text-center font-medium text-gray-800">{route.activeCustomers}</td>
-                      <td className="px-6 py-4">
+          <div className="flex-1 overflow-auto bg-gray-50 p-4">
+            {/* Header */}
+            <div className="flex items-center px-6 py-2 mb-2 text-sm font-semibold text-gray-500 sticky top-0 z-10">
+              <div className="flex-[1.5]">Route Name</div>
+              <div className="flex-1 text-center">Total</div>
+              <div className="flex-1 text-center">Active</div>
+              <div className="flex-1 text-center">Weekly Best</div>
+              <div className="flex-1 text-center">Achieved</div>
+              <div className="flex-[1.5] pl-6">Assigned Agent</div>
+            </div>
+            
+            {/* Rows */}
+            <div className="flex flex-col gap-3">
+              {loading ? (
+                <div className="text-center py-10 text-gray-500">Loading...</div>
+              ) : routeData.length === 0 ? (
+                <div className="text-center py-10 text-gray-500">No routes found.</div>
+              ) : (
+                routeData.map((route, i) => {
+                  const colors = [
+                    { border: "border-l-blue-500", text: "text-blue-500" },
+                    { border: "border-l-green-500", text: "text-green-500" },
+                    { border: "border-l-orange-500", text: "text-orange-500" },
+                    { border: "border-l-purple-500", text: "text-purple-500" },
+                    { border: "border-l-teal-500", text: "text-teal-500" },
+                    { border: "border-l-pink-500", text: "text-pink-500" },
+                  ];
+                  const color = colors[i % colors.length];
+
+                  return (
+                    <div key={route.name} className={`flex items-center bg-white shadow-sm border border-gray-100 border-l-4 ${color.border} rounded-xl p-4 hover:shadow-md transition-shadow`}>
+                      <div className="flex-[1.5]">
+                        <p className={`font-bold text-base ${color.text}`}>{route.name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Route {i + 1}</p>
+                      </div>
+                      <div className="flex-1 text-center font-medium text-gray-800">{route.totalCustomers}</div>
+                      <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
+                      <div className="flex-1 text-center font-bold text-orange-500">{route.weeklyBestPotential > 0 ? `T(${route.weeklyBestPotential})` : '-'}</div>
+                      <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
+                      <div className="flex-[1.5] pl-6 flex items-center">
                         {route.assignedAgent === "Unassigned" ? (
                            <span className="text-red-500 font-medium">Unassigned</span>
                         ) : (
@@ -296,12 +353,12 @@ export default function CustomerRoutes() {
                              <span className="text-gray-700 font-medium">{route.assignedAgentName}</span>
                            </div>
                         )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-sm font-medium text-gray-700 rounded-b-xl mt-auto">
