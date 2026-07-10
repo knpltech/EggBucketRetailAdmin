@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiTarget, FiTrendingUp } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
 import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
@@ -10,6 +10,7 @@ export default function CustomerRoutes() {
   const [customers, setCustomers] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [categoryPeaks, setCategoryPeaks] = useState({});
 
   // Filtering and Selection
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
@@ -28,13 +29,15 @@ export default function CustomerRoutes() {
             : [];
         setCustomers(rows);
 
-        const [routesRes, agentsRes] = await Promise.all([
+        const [routesRes, agentsRes, peakRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/routes`),
           axios.get(`${ADMIN_PATH}/get-del-partner`),
+          axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} })),
         ]);
 
         setRoutes(routesRes.data || []);
         setAgents(agentsRes.data || []);
+        setCategoryPeaks(peakRes.data || {});
       } catch (err) {
         console.error("Init error in Route Management:", err);
       } finally {
@@ -54,7 +57,7 @@ export default function CustomerRoutes() {
         name: routeName,
         totalCustomers: 0,
         activeCustomers: 0,
-        weeklyBestPotential: 0,
+        bestPotential: Number(categoryPeaks[`ROUTE_${routeName.toUpperCase()}`]) || 0,
         potentialAchieved: 0,
         agentsAssigned: {},
         assignedAgent: "Unassigned",
@@ -84,22 +87,8 @@ export default function CustomerRoutes() {
           routeMap[route].agentsAssigned[agentId] = (routeMap[route].agentsAssigned[agentId] || 0) + 1;
         }
         
-        // Calculate Weekly Best Potential
-        let maxTrays = 0;
-        const last8Days = customer.last8Days || {};
-        Object.values(last8Days).forEach((entry) => {
-          if (!entry) return;
-          const status = String(typeof entry === "string" ? entry : entry?.status || entry?.type || "").trim().toLowerCase();
-          if (status !== "delivered") return;
-          const trays = entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0;
-          const numTrays = Number(trays);
-          if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-            maxTrays = numTrays;
-          }
-        });
-        routeMap[route].weeklyBestPotential += maxTrays;
-
         // Calculate Potential Achieved today
+        const last8Days = customer.last8Days || {};
         const todayEntry = last8Days[todayDate];
         if (todayEntry) {
           const status = String(typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "").trim().toLowerCase();
@@ -136,7 +125,7 @@ export default function CustomerRoutes() {
         ...routeInfo
       };
     });
-  }, [routes, customers, agents]);
+  }, [routes, customers, agents, categoryPeaks]);
 
   // Compute Agent stats for Right Sidebar
   const agentStats = useMemo(() => {
@@ -156,6 +145,8 @@ export default function CustomerRoutes() {
 
   const totalCustomersAssigned = routeData.reduce((sum, route) => sum + route.totalCustomers, 0);
   const totalActiveCustomers = routeData.reduce((sum, route) => sum + route.activeCustomers, 0);
+  const totalBestPotential = routeData.reduce((sum, route) => sum + (route.bestPotential || 0), 0);
+  const totalAchievedPotential = routeData.reduce((sum, route) => sum + (route.potentialAchieved || 0), 0);
 
   const getInitials = (name) => {
     if (!name) return "UN";
@@ -264,8 +255,8 @@ export default function CustomerRoutes() {
       </div>
 
       <div className="mb-8">
-        <div className="flex gap-6 mt-6">
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex-1 flex items-center justify-between">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mt-6">
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Total Routes</p>
               <p className="text-3xl font-bold text-gray-800">{routes.length}</p>
@@ -275,7 +266,7 @@ export default function CustomerRoutes() {
               <FiMapPin />
             </div>
           </div>
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex-1 flex items-center justify-between">
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Total Agents</p>
               <p className="text-3xl font-bold text-gray-800">{agents.length}</p>
@@ -285,7 +276,7 @@ export default function CustomerRoutes() {
               <FiUsers />
             </div>
           </div>
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex-1 flex items-center justify-between">
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Customers Assigned</p>
               <p className="text-3xl font-bold text-gray-800">{totalCustomersAssigned}</p>
@@ -293,6 +284,26 @@ export default function CustomerRoutes() {
             </div>
             <div className="p-3 bg-orange-50 rounded-lg text-orange-600 text-2xl">
               <FiUsers />
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Total Potential</p>
+              <p className="text-3xl font-bold text-gray-800">T({totalBestPotential})</p>
+              <p className="text-xs text-orange-500 mt-1">Across All Routes</p>
+            </div>
+            <div className="p-3 bg-orange-50 rounded-lg text-orange-600 text-2xl">
+              <FiTarget />
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Total Achieved</p>
+              <p className="text-3xl font-bold text-gray-800">{totalAchievedPotential}</p>
+              <p className="text-xs text-purple-500 mt-1">Across All Routes</p>
+            </div>
+            <div className="p-3 bg-purple-50 rounded-lg text-purple-600 text-2xl">
+              <FiTrendingUp />
             </div>
           </div>
         </div>
@@ -309,7 +320,7 @@ export default function CustomerRoutes() {
               <div className="flex-[1.5]">Route Name</div>
               <div className="flex-1 text-center">Total</div>
               <div className="flex-1 text-center">Active</div>
-              <div className="flex-1 text-center">Weekly Best</div>
+              <div className="flex-1 text-center">Best Potential</div>
               <div className="flex-1 text-center">Achieved</div>
               <div className="flex-[1.5] pl-6">Assigned Agent</div>
             </div>
@@ -340,7 +351,7 @@ export default function CustomerRoutes() {
                       </div>
                       <div className="flex-1 text-center font-medium text-gray-800">{route.totalCustomers}</div>
                       <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
-                      <div className="flex-1 text-center font-bold text-orange-500">{route.weeklyBestPotential > 0 ? `T(${route.weeklyBestPotential})` : '-'}</div>
+                      <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
                       <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
                       <div className="flex-[1.5] pl-6 flex items-center">
                         {route.assignedAgent === "Unassigned" ? (

@@ -470,6 +470,10 @@ export default function CustomerManagement() {
 
   // ─── Total Peak Potential: persistent best for the current tab ─────────
   const totalPeakPotential = useMemo(() => {
+    if (activeRouteTab !== "ALL") {
+      return Number(categoryPeaks[`ROUTE_${activeRouteTab.toUpperCase()}`]) || 0;
+    }
+
     if (activeZoneTab !== "ALL") {
       return Number(categoryPeaks[`ZONE_${activeZoneTab.toUpperCase()}`]) || 0;
     }
@@ -489,7 +493,7 @@ export default function CustomerManagement() {
       key = activeTab; // "D0", "D1", etc.
     }
     return Number(categoryPeaks[key]) || 0;
-  }, [categoryPeaks, activeTab, activeBusinessTab, activeZoneTab]);
+  }, [categoryPeaks, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab]);
 
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
   const potentialAchieved = useMemo(() => {
