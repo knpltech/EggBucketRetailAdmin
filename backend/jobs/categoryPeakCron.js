@@ -204,6 +204,18 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
         categoryTotals[zoneKey] += targetTrays;
       }
     }
+
+    // Add to Route if applicable
+    if (data.route) {
+      const rType = String(data.route).trim().toUpperCase();
+      if (rType && rType !== "UNASSIGNED") {
+        const routeKey = `ROUTE_${rType}`;
+        if (categoryTotals[routeKey] === undefined) {
+          categoryTotals[routeKey] = 0;
+        }
+        categoryTotals[routeKey] += targetTrays;
+      }
+    }
   });
 
   console.log(`[categoryPeakCron] Today's totals:`, categoryTotals);
