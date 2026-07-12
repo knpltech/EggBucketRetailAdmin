@@ -141,9 +141,40 @@ const assignRouteToDeliveryPartner = async (req, res) => {
     if (!uid) {
       return res.status(400).json({ message: "UID is required." });
     }
+    if (!route) {
+      return res.status(400).json({ message: "Route is required." });
+    }
 
     const db = getFirestore();
-    await db.collection("DeliveryMan").doc(uid).update({ route });
+    const batch = db.batch();
+    const snapshot = await db.collection("DeliveryMan").get();
+
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      const currentRoute = data.route || "";
+
+      if (doc.id === uid) {
+        let newRouteValue = route;
+        if (currentRoute) {
+          const routesList = currentRoute.split(",").map((r) => r.trim()).filter(Boolean);
+          if (!routesList.includes(route)) {
+            routesList.push(route);
+          }
+          newRouteValue = routesList.join(",");
+        }
+        batch.update(doc.ref, { route: newRouteValue });
+      } else {
+        if (currentRoute) {
+          const routesList = currentRoute.split(",").map((r) => r.trim()).filter(Boolean);
+          if (routesList.includes(route)) {
+            const updatedList = routesList.filter((r) => r !== route);
+            batch.update(doc.ref, { route: updatedList.join(",") });
+          }
+        }
+      }
+    });
+
+    await batch.commit();
 
     // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
     cache.del("allDeliveryPartners:v1");

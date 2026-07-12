@@ -202,6 +202,38 @@ export default function CustomerRoutes() {
       });
       setCustomers(updatedCustomers);
 
+      // Update agents local state to sync with backend behavior
+      const updatedAgents = agents.map(a => {
+        let currentRoute = a.route || "";
+        if (a.id === assignSelectedAgent) {
+          let newRouteValue = assignSelectedRoute;
+          if (currentRoute) {
+            const routesList = currentRoute.split(",").map(r => r.trim()).filter(Boolean);
+            if (!routesList.includes(assignSelectedRoute)) {
+              routesList.push(assignSelectedRoute);
+            }
+            newRouteValue = routesList.join(",");
+          }
+          return {
+            ...a,
+            route: newRouteValue
+          };
+        } else {
+          if (currentRoute) {
+            const routesList = currentRoute.split(",").map(r => r.trim()).filter(Boolean);
+            if (routesList.includes(assignSelectedRoute)) {
+              const updatedList = routesList.filter(r => r !== assignSelectedRoute);
+              return {
+                ...a,
+                route: updatedList.join(",")
+              };
+            }
+          }
+          return a;
+        }
+      });
+      setAgents(updatedAgents);
+
       alert("Agent assigned successfully!");
 
     } catch (err) {
@@ -445,6 +477,11 @@ export default function CustomerRoutes() {
                       <div>
                         <p className="text-sm font-semibold text-gray-800">{agent.name || agent.display_name}</p>
                         <p className="text-xs text-gray-500">{agent.customersAssigned} Customers</p>
+                        {agent.route && (
+                          <p className="text-[10px] text-gray-400 mt-0.5 font-medium truncate max-w-[150px]">
+                            Routes: {agent.route}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div>
