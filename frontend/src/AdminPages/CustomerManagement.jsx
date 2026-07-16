@@ -112,6 +112,8 @@ export default function CustomerManagement() {
   const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
+  const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
+  const [activeStatusTab, setActiveStatusTab] = useState("ALL STATUS");
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [businessTypes, setBusinessTypes] = useState([]);
@@ -243,7 +245,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeWeekdayTab, activeStatusTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -372,6 +374,35 @@ export default function CustomerManagement() {
       }
     }
 
+    if (activeWeekdayTab === "EVERYDAY") {
+      list = list.filter((c) => {
+        const s = c.weeklySchedule || { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true };
+        return s.mon && s.tue && s.wed && s.thu && s.fri && s.sat && s.sun;
+      });
+    } else if (activeWeekdayTab !== "ALL CUSTOMERS") {
+      const dayKeyMap = {
+        "Sunday": "sun",
+        "Monday": "mon",
+        "Tuesday": "tue",
+        "Wednesday": "wed",
+        "Thursday": "thu",
+        "Friday": "fri",
+        "Saturday": "sat"
+      };
+      const dayKey = dayKeyMap[activeWeekdayTab];
+      if (dayKey) {
+        list = list.filter((c) => {
+          const s = c.weeklySchedule || { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true };
+          const isEveryday = s.mon && s.tue && s.wed && s.thu && s.fri && s.sat && s.sun;
+          return s[dayKey] === true && !isEveryday;
+        });
+      }
+    }
+
+    if (activeStatusTab !== "ALL STATUS") {
+      list = list.filter((c) => getLatestStatus(c).toLowerCase() === activeStatusTab.toLowerCase());
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -456,7 +487,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeWeekdayTab, activeStatusTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -863,6 +894,32 @@ export default function CustomerManagement() {
         </div>
       )}
 
+      {/* WEEKDAY FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {["ALL CUSTOMERS", "EVERYDAY", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
+          <button
+            key={day}
+            onClick={() => setActiveWeekdayTab(day)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeWeekdayTab === day ? "bg-purple-600 text-white border-purple-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {day}
+          </button>
+        ))}
+      </div>
+
+      {/* STATUS FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {["ALL STATUS", "Pending", "Checked", "Delivered"].map((status) => (
+          <button
+            key={status}
+            onClick={() => setActiveStatusTab(status)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeStatusTab === status ? "bg-orange-600 text-white border-orange-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+
       {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-xs text-center border-collapse">
@@ -932,8 +989,8 @@ export default function CustomerManagement() {
                     return (
                       <label
                         className={`relative inline-flex items-center ${isUpdating || isLocked
-                            ? "opacity-50 cursor-not-allowed"
-                            : "cursor-pointer"
+                          ? "opacity-50 cursor-not-allowed"
+                          : "cursor-pointer"
                           }`}
                       >
                         <input
@@ -1010,8 +1067,8 @@ export default function CustomerManagement() {
                                 }}
                                 disabled={isUpdating}
                                 className={`block w-full text-left px-3 py-1 rounded mb-1 last:mb-0 font-medium text-sm transition ${schedule[day]
-                                    ? "bg-green-500 text-white border border-green-600"
-                                    : "bg-red-500 text-white border border-red-600"
+                                  ? "bg-green-500 text-white border border-green-600"
+                                  : "bg-red-500 text-white border border-red-600"
                                   } ${isUpdating
                                     ? "opacity-50 cursor-not-allowed"
                                     : "cursor-pointer hover:opacity-90"
