@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiCalendar } from "react-icons/fi";
+import { FiUsers, FiCalendar, FiEdit2 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { ADMIN_PATH } from "../constant";
@@ -122,6 +122,30 @@ export default function CustomerManagement() {
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
   const [openScheduleId, setOpenScheduleId] = useState(null);
   const [calendarCustomer, setCalendarCustomer] = useState(null);
+
+  const [assigningRouteId, setAssigningRouteId] = useState(null);
+  const [editingRouteId, setEditingRouteId] = useState(null);
+
+  const assignRoute = async (id, routeName) => {
+    if (!routeName || assigningRouteId === id) return;
+
+    try {
+      setAssigningRouteId(id);
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        route: routeName,
+      });
+
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, route: routeName } : c))
+      );
+    } catch (err) {
+      console.error("Error assigning route:", err);
+      alert("Failed to assign route");
+    } finally {
+      setAssigningRouteId(null);
+    }
+  };
 
   const canDownloadExcel = true;
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -945,8 +969,51 @@ export default function CustomerManagement() {
                 <td className="px-2 py-3 font-medium text-gray-700">
                   {c.zone || "UNASSIGNED"}
                 </td>
-                <td className="px-2 py-3 font-medium text-gray-700">
-                  {c.route || "UNASSIGNED"}
+                <td
+                  className="px-2 py-3 font-medium text-gray-700"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {!c.route || c.route === "UNASSIGNED" ? (
+                    <select
+                      disabled={assigningRouteId === c.id}
+                      onChange={(e) => assignRoute(c.id, e.target.value)}
+                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
+                    >
+                      <option value="">Assign</option>
+                      {routes.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  ) : editingRouteId === c.id ? (
+                    <select
+                      autoFocus
+                      defaultValue={c.route}
+                      onBlur={() => setEditingRouteId(null)}
+                      onChange={async (e) => {
+                        await assignRoute(c.id, e.target.value);
+                        setEditingRouteId(null);
+                      }}
+                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
+                    >
+                      {routes.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2">
+                      <span>{c.route}</span>
+                      <button
+                        onClick={() => setEditingRouteId(c.id)}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        <FiEdit2 />
+                      </button>
+                    </div>
+                  )}
                 </td>
 
                 <td className="px-2 py-3">
