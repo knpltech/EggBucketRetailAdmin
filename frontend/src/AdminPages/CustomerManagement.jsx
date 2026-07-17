@@ -374,12 +374,7 @@ export default function CustomerManagement() {
       }
     }
 
-    if (activeWeekdayTab === "EVERYDAY") {
-      list = list.filter((c) => {
-        const s = c.weeklySchedule || { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true };
-        return s.mon && s.tue && s.wed && s.thu && s.fri && s.sat && s.sun;
-      });
-    } else if (activeWeekdayTab !== "ALL CUSTOMERS") {
+    if (activeWeekdayTab !== "ALL CUSTOMERS") {
       const dayKeyMap = {
         "Sunday": "sun",
         "Monday": "mon",
@@ -393,8 +388,7 @@ export default function CustomerManagement() {
       if (dayKey) {
         list = list.filter((c) => {
           const s = c.weeklySchedule || { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true };
-          const isEveryday = s.mon && s.tue && s.wed && s.thu && s.fri && s.sat && s.sun;
-          return s[dayKey] === true && !isEveryday;
+          return s[dayKey] === true;
         });
       }
     }
@@ -896,7 +890,7 @@ export default function CustomerManagement() {
 
       {/* WEEKDAY FILTERS TABS */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {["ALL CUSTOMERS", "EVERYDAY", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
+        {["ALL CUSTOMERS", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
           <button
             key={day}
             onClick={() => setActiveWeekdayTab(day)}

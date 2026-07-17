@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin, FiTarget, FiTrendingUp } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
 import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
@@ -16,6 +16,11 @@ export default function CustomerRoutes() {
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
   const [assignSelectedAgent, setAssignSelectedAgent] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
+
+  // Inline editing
+  const [editingRoute, setEditingRoute] = useState(null);
+  const [editRouteValue, setEditRouteValue] = useState("");
+  const [isSavingRoute, setIsSavingRoute] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -260,6 +265,33 @@ export default function CustomerRoutes() {
     }
   };
 
+  const saveRouteName = async (oldName) => {
+    if (isSavingRoute) return;
+
+    const newName = editRouteValue.trim();
+    if (!newName || newName === oldName) {
+      setEditingRoute(null);
+      return;
+    }
+
+    setIsSavingRoute(true);
+    try {
+      await axios.put(`${ADMIN_PATH}/routes/update`, { oldName, newName });
+      
+      setRoutes((prev) => {
+        return prev.map(r => r === oldName ? newName : r).sort((a, b) => a.localeCompare(b));
+      });
+      
+      setCustomers(prev => prev.map(c => c.route === oldName ? { ...c, route: newName } : c));
+      
+      setEditingRoute(null);
+    } catch (error) {
+      alert(error.response?.data?.message || "Failed to update route");
+    } finally {
+      setIsSavingRoute(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full font-sans">
       {/* HEADER & STATS */}
@@ -378,8 +410,40 @@ export default function CustomerRoutes() {
                   return (
                     <div key={route.name} className={`flex items-center bg-white shadow-sm border border-gray-100 border-l-4 ${color.border} rounded-xl p-4 hover:shadow-md transition-shadow`}>
                       <div className="flex-[1.5]">
-                        <p className={`font-bold text-base ${color.text}`}>{route.name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">Route {i + 1}</p>
+                        {editingRoute === route.name ? (
+                          <div className="flex flex-col gap-1 pr-2">
+                            <input 
+                              type="text"
+                              value={editRouteValue}
+                              onChange={(e) => setEditRouteValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveRouteName(route.name);
+                                else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
+                              }}
+                              className={`border rounded px-2 py-1 text-sm outline-none font-bold ${color.text} min-w-[200px] ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              autoFocus
+                              disabled={isSavingRoute}
+                            />
+                            <div className="flex gap-2 text-xs">
+                              <button onClick={() => saveRouteName(route.name)} disabled={isSavingRoute} className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}>
+                                {isSavingRoute ? 'Saving...' : 'Save'}
+                              </button>
+                              <button onClick={() => setEditingRoute(null)} disabled={isSavingRoute} className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <p className={`font-bold text-base ${color.text}`}>{route.name}</p>
+                              <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="text-gray-400 hover:text-blue-500 transition-colors" title="Rename route">
+                                <FiEdit2 size={14} />
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">Route {i + 1}</p>
+                          </>
+                        )}
                       </div>
                       <div className="flex-1 text-center font-medium text-gray-800">{route.totalCustomers}</div>
                       <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
