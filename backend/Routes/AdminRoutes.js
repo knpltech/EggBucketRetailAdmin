@@ -54,6 +54,7 @@ import {
   addZone,
   getZones,
   addRoute,
+  updateRoute,
   getRoutes,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
@@ -102,6 +103,7 @@ router.post("/customer/toggle-delivery", toggleTodayDelivery);
 router.post("/zones/add", addZone);
 router.get("/zones", getZones);
 router.post("/routes/add", addRoute);
+router.put("/routes/update", updateRoute);
 router.get("/routes", getRoutes);
 router.post("/business-types/add", addBusinessType);
 router.get("/business-types", getBusinessTypes);
