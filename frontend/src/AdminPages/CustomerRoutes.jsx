@@ -135,14 +135,17 @@ export default function CustomerRoutes() {
   // Compute Agent stats for Right Sidebar
   const agentStats = useMemo(() => {
     return agents.map(agent => {
-      const customersAssigned = customers.filter(c => 
+      const assigned = customers.filter(c => 
         c.assignedDeliverymen === agent.id || 
         c.assignedDeliverymen === agent.name
-      ).length;
+      );
+      const customersAssigned = assigned.length;
+      const activeCustomers = assigned.filter(c => getTodayEffectiveStatus(c) === "ON").length;
 
       return {
         ...agent,
         customersAssigned,
+        activeCustomers,
         isActive: agent.active !== false
       };
     });
@@ -484,9 +487,11 @@ export default function CustomerRoutes() {
           </div>
         </div>
 
-        {/* RIGHT PANEL - ASSIGN AGENT */}
-        <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col max-h-[800px]">
-          <h2 className="text-lg font-bold text-gray-800 mb-6">Assign Agent to Route</h2>
+        {/* RIGHT COLUMN */}
+        <div className="flex-1 flex flex-col gap-6">
+          {/* ASSIGN AGENT PANEL */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col max-h-[800px]">
+            <h2 className="text-lg font-bold text-gray-800 mb-6">Assign Agent to Route</h2>
           
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Route</label>
@@ -517,9 +522,9 @@ export default function CustomerRoutes() {
           </div>
 
           <div className="flex-1 overflow-auto border border-gray-100 rounded-lg p-2 mb-6">
-            <p className="text-sm font-semibold text-gray-800 mb-3 px-2">Available Agents ({agentStats.length})</p>
+            <p className="text-sm font-semibold text-gray-800 mb-3 px-2">Agents with Customers ({agentStats.filter(a => a.customersAssigned > 0).length})</p>
             <div className="flex flex-col gap-2">
-              {agentStats.map((agent, i) => {
+              {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
                 const isSelected = assignSelectedAgent === agent.id;
                 const colors = [
                    "bg-teal-100 text-teal-700", "bg-orange-100 text-orange-700", 
@@ -573,7 +578,54 @@ export default function CustomerRoutes() {
             {isAssigning ? "Assigning..." : "Assign Agent"}
           </button>
         </div>
+
+        {/* COMPACT ASSIGNED AGENTS CARDS */}
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col max-h-[800px]">
+          <h2 className="text-base font-bold text-gray-800 mb-4">Assigned Deliverymen</h2>
+          {agentStats.filter(a => a.customersAssigned > 0).length === 0 ? (
+            <p className="text-sm text-gray-500">No deliverymen are currently assigned to any customers.</p>
+          ) : (
+            <div className="flex flex-col gap-3 overflow-y-auto pr-1">
+              {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
+                const colors = [
+                    "bg-blue-50 border-blue-200 text-blue-800",
+                    "bg-green-50 border-green-200 text-green-800",
+                    "bg-orange-50 border-orange-200 text-orange-800",
+                    "bg-purple-50 border-purple-200 text-purple-800",
+                ];
+                const colorClass = colors[i % colors.length];
+
+                return (
+                  <div key={agent.id} className={`border rounded-xl p-3 flex flex-col gap-2 shadow-sm ${colorClass}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-xs shadow-sm">
+                        {getInitials(agent.name || agent.display_name)}
+                      </div>
+                      <div className="overflow-hidden flex-1">
+                        <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
+                        <p className="text-[10px] font-medium opacity-80 truncate" title={agent.route}>
+                          {agent.route}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 text-xs font-semibold">
+                      <div className="flex-1 bg-white/70 px-2 py-1.5 rounded-lg flex justify-between items-center">
+                        <span className="opacity-80">Total</span>
+                        <span>{agent.customersAssigned}</span>
+                      </div>
+                      <div className="flex-1 bg-white/70 px-2 py-1.5 rounded-lg flex justify-between items-center">
+                        <span className="opacity-80">Active</span>
+                        <span className="text-green-700">{agent.activeCustomers}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  </div>
   );
 }
