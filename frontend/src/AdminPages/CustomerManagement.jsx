@@ -374,15 +374,23 @@ export default function CustomerManagement() {
     }
 
     if (activeBusinessTab !== "ALL") {
-      list = list.filter(
-        (c) => String(c.businessType || "").trim().toLowerCase() === activeBusinessTab.toLowerCase()
-      );
+      if (activeBusinessTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.businessType || String(c.businessType).trim() === "" || String(c.businessType).trim().toUpperCase() === "UNASSIGNED");
+      } else {
+        list = list.filter(
+          (c) => String(c.businessType || "").trim().toLowerCase() === activeBusinessTab.toLowerCase()
+        );
+      }
     }
 
     if (activeZoneTab !== "ALL") {
-      list = list.filter(
-        (c) => String(c.zone || "").trim().toLowerCase() === activeZoneTab.toLowerCase()
-      );
+      if (activeZoneTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.zone || String(c.zone).trim() === "" || String(c.zone).trim().toUpperCase() === "UNASSIGNED");
+      } else {
+        list = list.filter(
+          (c) => String(c.zone || "").trim().toLowerCase() === activeZoneTab.toLowerCase()
+        );
+      }
     }
 
     if (activeRouteTab !== "ALL") {
@@ -847,6 +855,12 @@ export default function CustomerManagement() {
           >
             ALL CATEGORIES
           </button>
+          <button
+            onClick={() => setActiveBusinessTab("UNASSIGNED")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "UNASSIGNED" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            UNASSIGNED
+          </button>
           {businessTypes.map((t) => (
             <button
               key={t}
@@ -867,6 +881,12 @@ export default function CustomerManagement() {
             className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === "ALL" ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             ALL ZONES
+          </button>
+          <button
+            onClick={() => setActiveZoneTab("UNASSIGNED")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === "UNASSIGNED" ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            UNASSIGNED
           </button>
           {zones.map((z) => (
             <button
