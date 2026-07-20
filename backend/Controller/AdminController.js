@@ -1324,9 +1324,30 @@ const updateRoute = async (req, res) => {
         });
         await batch.commit();
       }
+
+      const deliveryManSnap = await db.collection("DeliveryMan").get();
+      if (!deliveryManSnap.empty) {
+        const batch = db.batch();
+        let updatedCount = 0;
+        deliveryManSnap.forEach(doc => {
+          const data = doc.data();
+          if (data.route) {
+            const routesList = data.route.split(",").map(r => r.trim());
+            if (routesList.includes(oldName)) {
+              const newRouteStr = routesList.map(r => r === oldName ? newName : r).join(",");
+              batch.update(doc.ref, { route: newRouteStr });
+              updatedCount++;
+            }
+          }
+        });
+        if (updatedCount > 0) {
+          await batch.commit();
+        }
+      }
     }
 
     cache.del("routes:list");
+    cache.del("allDeliveryPartners:v1");
     const keys = await cache.keysAsync("customerInfo:userInfo*");
     if (keys && keys.length > 0) {
       await cache.delAsync(keys);

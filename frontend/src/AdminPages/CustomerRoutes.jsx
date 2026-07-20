@@ -287,6 +287,18 @@ export default function CustomerRoutes() {
       
       setCustomers(prev => prev.map(c => c.route === oldName ? { ...c, route: newName } : c));
       
+      setAgents(prev => prev.map(a => {
+        if (!a.route) return a;
+        const routesList = a.route.split(",").map(r => r.trim());
+        if (routesList.includes(oldName)) {
+          return {
+            ...a,
+            route: routesList.map(r => r === oldName ? newName : r).join(",")
+          };
+        }
+        return a;
+      }));
+      
       setEditingRoute(null);
     } catch (error) {
       alert(error.response?.data?.message || "Failed to update route");
@@ -375,21 +387,21 @@ export default function CustomerRoutes() {
           </div>
         </div>
       </div>
-      <div className="flex gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT PANEL - ALL ROUTES */}
-        <div className="flex-[2] bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col min-w-0">
           <div className="p-5 border-b border-gray-100 flex justify-between items-center">
             <h2 className="text-lg font-bold text-gray-800">All Routes</h2>
           </div>
           <div className="flex-1 overflow-auto bg-gray-50 p-4">
             {/* Header */}
             <div className="flex items-center px-6 py-2 mb-2 text-sm font-semibold text-gray-500 sticky top-0 z-10">
-              <div className="flex-[1.5]">Route Name</div>
+              <div style={{ flex: 1.5 }}>Route Name</div>
               <div className="flex-1 text-center">Total</div>
               <div className="flex-1 text-center">Active</div>
               <div className="flex-1 text-center">Best Potential</div>
               <div className="flex-1 text-center">Achieved</div>
-              <div className="flex-[1.5] pl-6">Assigned Agent</div>
+              <div style={{ flex: 1.5 }} className="pl-6">Assigned Agent</div>
             </div>
             
             {/* Rows */}
@@ -412,7 +424,7 @@ export default function CustomerRoutes() {
 
                   return (
                     <div key={route.name} className={`flex items-center bg-white shadow-sm border border-gray-100 border-l-4 ${color.border} rounded-xl p-4 hover:shadow-md transition-shadow`}>
-                      <div className="flex-[1.5]">
+                      <div style={{ flex: 1.5 }} className="min-w-0 pr-2">
                         {editingRoute === route.name ? (
                           <div className="flex flex-col gap-1 pr-2">
                             <input 
@@ -423,7 +435,7 @@ export default function CustomerRoutes() {
                                 if (e.key === 'Enter') saveRouteName(route.name);
                                 else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
                               }}
-                              className={`border rounded px-2 py-1 text-sm outline-none font-bold ${color.text} min-w-[200px] ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              className={`border rounded px-2 py-1 text-sm outline-none font-bold ${color.text} w-full ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
                               autoFocus
                               disabled={isSavingRoute}
                             />
@@ -438,9 +450,9 @@ export default function CustomerRoutes() {
                           </div>
                         ) : (
                           <>
-                            <div className="flex items-center gap-2">
-                              <p className={`font-bold text-base ${color.text}`}>{route.name}</p>
-                              <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="text-gray-400 hover:text-blue-500 transition-colors" title="Rename route">
+                            <div className="flex items-start gap-2">
+                              <p className={`font-bold text-base break-words ${color.text}`} title={route.name}>{route.name}</p>
+                              <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-1" title="Rename route">
                                 <FiEdit2 size={14} />
                               </button>
                             </div>
@@ -452,15 +464,15 @@ export default function CustomerRoutes() {
                       <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
                       <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
                       <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
-                      <div className="flex-[1.5] pl-6 flex items-center">
+                      <div style={{ flex: 1.5 }} className="pl-6 flex items-center min-w-0">
                         {route.assignedAgent === "Unassigned" ? (
                            <span className="text-red-500 font-medium">Unassigned</span>
                         ) : (
                            <div className="flex items-center gap-2">
-                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
                                {getInitials(route.assignedAgentName)}
                              </div>
-                             <span className="text-gray-700 font-medium">{route.assignedAgentName}</span>
+                             <span className="text-gray-700 font-medium truncate" title={route.assignedAgentName}>{route.assignedAgentName}</span>
                            </div>
                         )}
                       </div>
@@ -488,7 +500,7 @@ export default function CustomerRoutes() {
         </div>
 
         {/* RIGHT COLUMN */}
-        <div className="flex-1 flex flex-col gap-6">
+        <div className="lg:col-span-1 flex flex-col gap-6 min-w-0">
           {/* ASSIGN AGENT PANEL */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col max-h-[800px]">
             <h2 className="text-lg font-bold text-gray-800 mb-6">Assign Agent to Route</h2>
@@ -603,7 +615,7 @@ export default function CustomerRoutes() {
                       </div>
                       <div className="overflow-hidden flex-1">
                         <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
-                        <p className="text-[10px] font-medium opacity-80 truncate" title={agent.route}>
+                        <p className="text-[10px] font-medium opacity-80 break-words whitespace-normal" title={agent.route}>
                           {agent.route}
                         </p>
                       </div>
