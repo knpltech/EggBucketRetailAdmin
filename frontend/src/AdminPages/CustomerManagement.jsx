@@ -361,13 +361,13 @@ export default function CustomerManagement() {
         return peakPotential >= 10;
       });
     } else if (activeTab === "ONBOARDING") {
-      list = list.filter(
-        (c) =>
-          !c.zone ||
-          c.zone === "" ||
-          c.zone === null ||
-          c.zone === "UNASSIGNED",
-      );
+      const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      list = list.filter((c) => {
+        if (!c.createdAt) return false;
+        const createdTime = new Date(c.createdAt).getTime();
+        return (now - createdTime) <= fortyFiveDaysMs;
+      });
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => getDeliveredCount(c) === targetDays);
