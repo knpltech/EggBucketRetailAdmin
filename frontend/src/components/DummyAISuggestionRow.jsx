@@ -253,62 +253,63 @@ const DummyAISuggestionRow = ({
   );
 
   return (
-    <tr className="border-t hover:bg-gray-50 bg-white text-center">
-      <td className="px-2 py-3 text-gray-700">{customer.custid}</td>
-      <td className="px-2 py-3 text-gray-900 font-bold">{customer.name}</td>
+    <tr className="border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors">
+      <td className="px-1.5 py-3 text-[12px] text-gray-600 font-medium">{customer.custid}</td>
+      <td className="px-1.5 py-3 text-[12px] text-gray-900 font-bold uppercase leading-tight min-w-[90px]">{customer.name}</td>
+      <td className="px-1.5 py-3 text-[11px] text-gray-700 font-medium max-w-[150px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
 
-      <td className="px-2 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
           style={{ backgroundColor: getPotentialColor(peakPotential) }}
         >
           {peakPotential}
         </span>
       </td>
 
-      <td className="px-2 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
           style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
           {peakFrequency}
         </span>
       </td>
 
-      <td className="px-2 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
           style={{ backgroundColor: getDeliveryGapColor(deliveryGap) }}
         >
           {deliveryGap}
         </span>
       </td>
 
-      <td className="px-2 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-3 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
           style={{ backgroundColor: getCurrentCategoryColor(currentCategory) }}
         >
           {currentCategory}
         </span>
       </td>
-      
+
       {/* Current Toggle Column */}
-      <td className="px-2 py-3">
-        <div className="flex items-center justify-center space-x-1">
-          <div className={`w-2.5 h-2.5 rounded-full ${isTodayOn ? "bg-green-500" : "bg-red-500"} shadow-sm`}></div>
-          <span className="text-xs text-gray-700">
+      <td className="px-1.5 py-3">
+        <div className="flex items-center justify-center space-x-1.5">
+          <div className={`w-2.5 h-2.5 rounded-full ${isTodayOn ? "bg-green-500" : "bg-gray-400"} shadow-sm`}></div>
+          <span className="text-[13px] text-gray-700 font-medium">
             {isTodayOn ? "ON" : "OFF"}
           </span>
         </div>
       </td>
 
-      {/* Logic Selection Dropdown */}
-      <td className="px-2 py-3">
+      {/* Assigned Logic */}
+      <td className="px-1.5 py-3">
         <select
           value={customerLogic}
           onChange={(e) => onLogicChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-2 py-1 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          className="border border-gray-300 px-2 py-1 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50"
         >
           <option value="logic1">Logic 1</option>
           <option value="logic2">Logic 2</option>
@@ -320,58 +321,66 @@ const DummyAISuggestionRow = ({
         </select>
       </td>
 
-      {/* AI Suggestion Column */}
-      <td className="px-2 py-3">
-        <div className="flex items-center justify-center space-x-1">
-          <div className={`w-2.5 h-2.5 rounded-full ${dotClass} shadow-sm mt-0.5`}></div>
-          <div className="flex flex-col">
-            <span className="text-xs font-medium text-gray-800">
-              {text} {subText && <span className="text-gray-500 font-normal ml-1">{subText}</span>}
-            </span>
+      {/* AI Suggestion Badge */}
+      <td className="px-1.5 py-3">
+        {suggestedStatus === "ON" ? (
+          <div className="inline-flex items-center justify-center border border-green-500 text-green-700 rounded-full px-3 py-1 font-bold bg-green-50/80 min-w-[70px] shadow-sm">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+             </svg>
+             ON
           </div>
-        </div>
+        ) : suggestedStatus === "OFF" ? (
+          <div className="inline-flex items-center justify-center border border-red-300 text-red-600 rounded-full px-3 py-1 font-bold bg-red-50/80 min-w-[70px] shadow-sm">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+             </svg>
+             OFF
+          </div>
+        ) : (
+          <div className="inline-flex items-center justify-center border border-gray-300 text-gray-500 rounded-full px-3 py-1 font-bold bg-gray-50 min-w-[70px]">
+             --
+          </div>
+        )}
       </td>
 
-      {/* Apply AI Suggestion Column */}
-      <td className="px-2 py-3">
-        <div className="flex items-center justify-center gap-1">
+      <td className="px-1.5 py-3">
+        <div className="flex items-center justify-center gap-2">
           <label
             className={`relative inline-flex items-center ${
-              isUpdating || !suggestedStatus || alreadyApplied
-                ? "opacity-70 cursor-not-allowed"
-                : "cursor-pointer"
+              isUpdating ? "opacity-70 cursor-not-allowed" : "cursor-pointer"
             }`}
           >
             <input
               type="checkbox"
               className="sr-only peer"
               checked={isTodayOn}
-              disabled={isUpdating || !suggestedStatus || alreadyApplied}
-              onChange={() => onApplySuggestion?.(customer, suggestedStatus)}
-              aria-label={`Apply AI suggestion: ${suggestedStatus || "Unknown"}`}
+              disabled={isUpdating}
+              onChange={() => onApplySuggestion?.(customer, isTodayOn ? "OFF" : "ON")}
+              aria-label="Toggle Delivery"
             />
-            <div className="w-10 h-5 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
-            <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+            <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:bg-green-500 transition-colors shadow-inner" />
+            <div className="absolute left-[2px] top-[2px] w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4 shadow-sm" />
           </label>
-          <span className="text-xs font-medium text-gray-600">
-            {suggestedStatus || "--"}
+          <span className="text-[12px] font-bold text-gray-600 w-6 text-left">
+            {isTodayOn ? "ON" : "OFF"}
           </span>
         </div>
       </td>
 
-      {/* Execution Calendar Column */}
-      <td className="px-2 py-3">
+      {/* Execution Calendar */}
+      <td className="px-1.5 py-3">
         <div className="relative inline-block">
-          <div
-            className="flex justify-center items-center cursor-pointer hover:bg-gray-100 p-1.5 rounded-full transition-colors w-min mx-auto"
+          <button
+            className="flex justify-center items-center cursor-pointer p-1.5 rounded transition-colors mx-auto text-blue-500 hover:text-blue-700"
             onClick={(e) => {
               e.stopPropagation();
               setCalendarOpen((prev) => !prev);
             }}
             title="Click to view full calendar"
           >
-            <FiCalendar className="w-4 h-4 text-blue-600" />
-          </div>
+            <FiCalendar className="w-5 h-5" />
+          </button>
           {calendarOpen && (
             <ExecutionCalendarModal
               customer={customer}

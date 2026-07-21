@@ -10,6 +10,7 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
             <tr>
               <th className="p-3 text-left font-semibold text-gray-800">Customer ID</th>
               <th className="p-3 text-left font-semibold text-gray-800">Customer Name</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Route</th>
               <th className="p-3 text-left font-semibold text-gray-800">Peak_Potential</th>
               <th className="p-3 text-left font-semibold text-gray-800">Peak_Frequency</th>
               <th className="p-3 text-left font-semibold text-gray-800">Delivery_Gap</th>
@@ -28,6 +29,9 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
                 </td>
                 <td className="p-4 py-6">
                   <div className="h-4 bg-gray-200 rounded w-32"></div>
+                </td>
+                <td className="p-4 py-6">
+                  <div className="h-4 bg-gray-200 rounded w-16"></div>
                 </td>
                 <td className="p-4 py-6">
                   <div className="h-4 bg-gray-200 rounded w-12"></div>
@@ -73,6 +77,7 @@ const AISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestio
             <tr>
               <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Customer ID</th>
               <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Customer Name</th>
+              <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Route</th>
               <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Peak_Potential</th>
               <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Peak_Frequency</th>
               <th className="px-2 py-3 text-center font-semibold text-gray-800 whitespace-nowrap">Delivery_Gap</th>

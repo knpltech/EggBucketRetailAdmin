@@ -171,7 +171,7 @@ function getDateStringInTimeZone(date, timeZone) {
     const month = parts.find((p) => p.type === "month")?.value;
     const day = parts.find((p) => p.type === "day")?.value;
     if (year && month && day) return `${year}-${month}-${day}`;
-  } catch (error) {}
+  } catch (error) { }
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -254,6 +254,7 @@ const AISuggestionRow = ({
     <tr className="border-t hover:bg-gray-50 bg-white text-center">
       <td className="px-2 py-3 text-gray-700">{customer.custid}</td>
       <td className="px-2 py-3 text-gray-900 font-bold">{customer.name}</td>
+      <td className="px-1.5 py-3 text-[11px] text-gray-700 font-medium max-w-[150px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
 
       <td className="px-2 py-3 text-gray-700 font-medium">
         <span
@@ -290,7 +291,7 @@ const AISuggestionRow = ({
           {currentCategory}
         </span>
       </td>
-      
+
       {/* Current Toggle Column */}
       <td className="px-2 py-3">
         <div className="flex items-center justify-center space-x-1">
@@ -317,11 +318,10 @@ const AISuggestionRow = ({
       <td className="px-2 py-3">
         <div className="flex items-center justify-center gap-1">
           <label
-            className={`relative inline-flex items-center ${
-              isUpdating || !suggestedStatus || alreadyApplied
+            className={`relative inline-flex items-center ${isUpdating || !suggestedStatus || alreadyApplied
                 ? "opacity-70 cursor-not-allowed"
                 : "cursor-pointer"
-            }`}
+              }`}
           >
             <input
               type="checkbox"

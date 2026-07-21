@@ -211,7 +211,6 @@ export const generateAISuggestion = (customer, logicOption = "logic1") => {
     const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
 
     const aiScore = peakFrequencyNumber - 7 + deliveryGapNumber;
-
     let suggestion = "";
     let reason = `AI Score: ${aiScore} (Peak: ${peakFrequencyNumber}, Gap: ${deliveryGapNumber})`;
 

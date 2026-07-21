@@ -310,16 +310,28 @@ const DummyAISuggestions = () => {
     exportToExcel(sortedData, "Multiple Logics (Dummy)");
   };
 
+  const totalCustomers = processedData.length;
+  const suggestOnCount = processedData.filter((item) => {
+    const sugg = item.suggestion?.suggestion || "";
+    return sugg.includes("ON");
+  }).length;
+  const suggestOffCount = totalCustomers - suggestOnCount;
+
+  const suggestOnPercentage = totalCustomers > 0 ? ((suggestOnCount / totalCustomers) * 100).toFixed(1) : 0;
+  const suggestOffPercentage = totalCustomers > 0 ? ((suggestOffCount / totalCustomers) * 100).toFixed(1) : 0;
+
   return (
-    <div className="p-4 bg-gray-100 min-h-screen">
-      <div className="flex justify-between items-center mb-4 gap-4">
-        <h1 className="text-xl font-bold whitespace-nowrap">Dummy AI Suggestions</h1>
-        <div className="flex gap-2">
+    <div className="p-6 bg-[#FAFAFA] min-h-screen font-sans">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">AI Suggestions</h1>
+          <p className="text-sm text-gray-500 mt-1 font-medium">Final daily decision: Turn ON or OFF for today</p>
+        </div>
+        <div className="flex items-center gap-2">
           <select
             value={businessTypeFilter}
             onChange={(e) => setBusinessTypeFilter(e.target.value)}
-
-            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
           >
             <option value="ALL">All Customer Types</option>
             {businessTypes.map((bt) => (
@@ -328,10 +340,11 @@ const DummyAISuggestions = () => {
               </option>
             ))}
           </select>
+          
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value)}
-            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
           >
             <option value="DEFAULT">Sort: Default (AI Confidence)</option>
             <option value="NAME_ASC">Name (A-Z)</option>
@@ -342,25 +355,66 @@ const DummyAISuggestions = () => {
             <option value="PEAK_POTENTIAL">Peak Potential</option>
             <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
           </select>
+          
           <select
             value={suggestionFilterOption}
             onChange={(e) => setSuggestionFilterOption(e.target.value)}
-
-            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
           >
             <option value="ALL">All Suggestions</option>
             <option value="TURN_ON_TOMORROW">Turn ON Tomorrow</option>
             <option value="TURN_OFF_TOMORROW">Turn OFF Tomorrow</option>
           </select>
-          <button
-            onClick={handleDownloadExcel}
-            disabled={loading || sortedData.length === 0}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-4 py-1 rounded-lg text-sm transition duration-200 whitespace-nowrap"
-          >
-            Download Excel
-          </button>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* Card 1 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">Total Customers</span>
+            <div className="text-3xl font-extrabold text-gray-900 mt-1">{totalCustomers}</div>
+          </div>
+        </div>
+
+        {/* Card 2 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09l2.846.813-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">AI Suggest ON</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{suggestOnCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">{suggestOnPercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3 */}
+        <div className="bg-white rounded-xl shadow-sm border border-red-100 p-5 flex items-center gap-4 bg-gradient-to-r from-red-50/30 to-white">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600 border border-red-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">AI Suggest OFF</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{suggestOffCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">{suggestOffPercentage}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
 
       {error && (
         <div className="bg-red-50 text-red-600 p-4 rounded-md mb-6 border border-red-200">
@@ -368,14 +422,23 @@ const DummyAISuggestions = () => {
         </div>
       )}
 
-      <DummyAISuggestionTable
-        data={currentData}
-        loading={loading}
-        onApplySuggestion={handleApplySuggestion}
-        updatingSuggestionId={updatingSuggestionId}
-        rowLogics={rowLogics}
-        onLogicChange={handleLogicChange}
-      />
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="flex justify-between items-center p-4 border-b border-gray-100">
+          <span className="text-[13px] text-gray-500 font-semibold">
+          </span>
+          <div className="flex items-center gap-3">
+          </div>
+        </div>
+
+        <DummyAISuggestionTable
+          data={currentData}
+          loading={loading}
+          onApplySuggestion={handleApplySuggestion}
+          updatingSuggestionId={updatingSuggestionId}
+          rowLogics={rowLogics}
+          onLogicChange={handleLogicChange}
+        />
+      </div>
 
       {!loading && !error && (
         <div className="mt-4 flex items-center justify-between">
