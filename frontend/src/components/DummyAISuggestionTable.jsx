@@ -1,7 +1,7 @@
 import React from "react";
 import DummyAISuggestionRow from "./DummyAISuggestionRow";
 
-const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowLogics, onLogicChange }) => {
+const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowPatterns, onPatternChange }) => {
   if (loading) {
     return (
       <div className="overflow-x-auto bg-white shadow rounded mt-6">
@@ -16,7 +16,7 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
               <th className="p-3 text-left font-semibold text-gray-800">Delivery_Gap</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Category</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
-              <th className="p-3 text-left font-semibold text-gray-800">Assigned Logic</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Assigned Pattern</th>
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Apply AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Execution Calendar</th>
@@ -66,7 +66,7 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Delivery Gap</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Current Category</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Current Toggle</th>
-              <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Assigned Logic</th>
+              <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Assigned Pattern</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">AI Suggestion</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Apply AI Suggestion</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Execution Calendar</th>
@@ -80,8 +80,8 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
                 suggestionData={item.suggestion}
                 onApplySuggestion={onApplySuggestion}
                 isUpdating={updatingSuggestionId === item.customer.id}
-                customerLogic={rowLogics[item.customer.id] || "logic1"}
-                onLogicChange={onLogicChange}
+                customerPattern={rowPatterns[item.customer.id] || "Every Day Buyer"}
+                onPatternChange={onPatternChange}
               />
             ))}
           </tbody>

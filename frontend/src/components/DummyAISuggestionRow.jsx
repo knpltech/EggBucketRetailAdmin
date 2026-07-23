@@ -4,6 +4,7 @@ import {
   computeCurrentCategory,
   getTodayEffectiveStatus,
 } from "../utils/aiSuggestionEngine";
+import { BUYING_PATTERNS } from "../utils/dummyAiSuggestionEngine";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
 const getSuggestionConfig = (suggestion, reason, score) => {
@@ -233,8 +234,8 @@ const DummyAISuggestionRow = ({
   suggestionData,
   onApplySuggestion,
   isUpdating = false,
-  customerLogic = "logic1",
-  onLogicChange
+  customerPattern = "Every Day Buyer",
+  onPatternChange
 }) => {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
@@ -304,20 +305,15 @@ const DummyAISuggestionRow = ({
         </div>
       </td>
 
-      {/* Assigned Logic */}
       <td className="px-1.5 py-3">
         <select
-          value={customerLogic}
-          onChange={(e) => onLogicChange(customer.id, e.target.value)}
+          value={customerPattern}
+          onChange={(e) => onPatternChange(customer.id, e.target.value)}
           className="border border-gray-300 px-2 py-1 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50"
         >
-          <option value="logic1">Logic 1</option>
-          <option value="logic2">Logic 2</option>
-          <option value="logic3">Logic 3</option>
-          <option value="logic4">Logic 4</option>
-          <option value="logic5">Logic 5</option>
-          <option value="logic6">Logic 6</option>
-          <option value="logic7">Logic 7</option>
+          {BUYING_PATTERNS.map(pattern => (
+            <option key={pattern} value={pattern}>{pattern}</option>
+          ))}
         </select>
       </td>
 
