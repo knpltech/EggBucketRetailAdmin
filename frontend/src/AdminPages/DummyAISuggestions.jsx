@@ -14,7 +14,7 @@ import {
   normalizeDeliveryGap,
   resolvePeakFrequency,
 } from "../utils/aiSuggestionEngine";
-import { generateDummyAISuggestion } from "../utils/dummyAiSuggestionEngine";
+import { generateDummyAISuggestion, BUYING_PATTERNS } from "../utils/dummyAiSuggestionEngine";
 import {
   getCachedUserInfo,
   getCachedAISuggestionCandidates,
@@ -65,19 +65,31 @@ const DummyAISuggestions = () => {
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
   const [businessTypes, setBusinessTypes] = useState([]);
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
+  const [patternFilter, setPatternFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
 
 
   // Default sorting: TOGGLE (ON FIRST) as soon as page opens
   const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
   // INDIVIDUAL PATTERN MAPPING: { customerId: 'Every Day Buyer' }
-  const [rowPatterns, setRowPatterns] = useState({});
+  const [rowPatterns, setRowPatterns] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dummyAIPatterns");
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
 
   const handlePatternChange = (customerId, newPattern) => {
-    setRowPatterns((prev) => ({
-      ...prev,
-      [customerId]: newPattern
-    }));
+    setRowPatterns((prev) => {
+      const updated = { ...prev, [customerId]: newPattern };
+      try {
+        localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
   };
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -220,9 +232,17 @@ const DummyAISuggestions = () => {
         String(normalizedCustomerType).trim().toLowerCase() ===
           String(businessTypeFilter).trim().toLowerCase();
 
-      return matchesSearch && matchesCustomerType;
+      // Pattern filter (Logic Sets)
+      const customerPattern = rowPatterns[item.customer.id] || "Every Day Buyer";
+      const matchesPattern = patternFilter === "ALL" || customerPattern === patternFilter;
+
+      // Category filter (D1, D2, D3, D4)
+      const currentCategory = computeCurrentCategory(item.customer.last8Days);
+      const matchesCategory = categoryFilter === "ALL" || currentCategory === categoryFilter;
+
+      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption]);
+  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, rowPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -332,8 +352,8 @@ const DummyAISuggestions = () => {
     exportToExcel(sortedData, "Multiple Patterns (Dummy)");
   };
 
-  const totalCustomers = processedData.length;
-  const suggestOnCount = processedData.filter((item) => {
+  const totalCustomers = filteredData.length;
+  const suggestOnCount = filteredData.filter((item) => {
     const sugg = item.suggestion?.suggestion || "";
     return sugg.includes("ON");
   }).length;
@@ -361,6 +381,31 @@ const DummyAISuggestions = () => {
                 {bt}
               </option>
             ))}
+          </select>
+
+          <select
+            value={patternFilter}
+            onChange={(e) => setPatternFilter(e.target.value)}
+            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+          >
+            <option value="ALL">All Logic Sets</option>
+            {BUYING_PATTERNS.map((pattern) => (
+              <option key={pattern} value={pattern}>
+                {pattern}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+          >
+            <option value="ALL">All Current Category</option>
+            <option value="D1">D1</option>
+            <option value="D2">D2</option>
+            <option value="D3">D3</option>
+            <option value="D4">D4</option>
           </select>
           
           <select
