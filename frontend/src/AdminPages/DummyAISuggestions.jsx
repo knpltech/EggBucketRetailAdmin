@@ -14,7 +14,9 @@ import {
   normalizeDeliveryGap,
   resolvePeakFrequency,
 } from "../utils/aiSuggestionEngine";
+import { generateDummyAISuggestion } from "../utils/dummyAiSuggestionEngine";
 import {
+  getCachedUserInfo,
   getCachedAISuggestionCandidates,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
@@ -68,13 +70,13 @@ const DummyAISuggestions = () => {
   // Default sorting: TOGGLE (ON FIRST) as soon as page opens
   const [sortOption, setSortOption] = useState("TOGGLE_ON_FIRST");
 
-  // INDIVIDUAL LOGIC MAPPING: { customerId: 'logic1' }
-  const [rowLogics, setRowLogics] = useState({});
+  // INDIVIDUAL PATTERN MAPPING: { customerId: 'Every Day Buyer' }
+  const [rowPatterns, setRowPatterns] = useState({});
 
-  const handleLogicChange = (customerId, newLogic) => {
-    setRowLogics((prev) => ({
+  const handlePatternChange = (customerId, newPattern) => {
+    setRowPatterns((prev) => ({
       ...prev,
-      [customerId]: newLogic
+      [customerId]: newPattern
     }));
   };
 
@@ -95,8 +97,8 @@ const DummyAISuggestions = () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch only D1-D3 candidates through a short-lived client/backend cache.
-      const userInfoData = await getCachedAISuggestionCandidates();
+      // Fetch all customers through the standard cache
+      const userInfoData = await getCachedUserInfo();
       
       // Fetch business types dynamically
       try {
@@ -115,14 +117,34 @@ const DummyAISuggestions = () => {
         allCustomers = userInfoData.customers;
       }
 
-      // 1. Filter out customers with missing todayOverride and non-D1-D3 customers.
-      // 2. Filter to show only PENDING status for today (exclude Delivered/Checked)
+      // 1. Filter out customers with missing todayOverride.
+      // 2. Filter for D1 to D4 customers.
+      // 3. Exclude onboarding customers (<= 45 days old).
+      // 4. Filter to show only PENDING status for today.
       const validCustomers = allCustomers.filter((c) => {
         if (!c || !c.todayOverride) return false;
+        
         const currentCategoryNumber = getCurrentCategoryNumber(
           computeCurrentCategory(c.last8Days),
         );
-        if (currentCategoryNumber < 1 || currentCategoryNumber > 3) return false;
+        if (currentCategoryNumber < 1 || currentCategoryNumber > 4) return false;
+
+        // Exclude onboarding customers (<= 45 days)
+        if (c.createdAt) {
+          let createdTime;
+          if (typeof c.createdAt === 'object' && c.createdAt._seconds) {
+            createdTime = c.createdAt._seconds * 1000;
+          } else if (!isNaN(Number(c.createdAt))) {
+            createdTime = Number(c.createdAt);
+          } else {
+            createdTime = new Date(c.createdAt).getTime();
+          }
+
+          if (createdTime && !isNaN(createdTime)) {
+            const daysSinceCreation = (Date.now() - createdTime) / (1000 * 60 * 60 * 24);
+            if (daysSinceCreation <= 45) return false;
+          }
+        }
 
         // ⭐ OPTIMIZATION: Filter only PENDING customers (no additional reads)
         const todayStatus = getTodayDeliveryStatus(c);
@@ -141,10 +163,10 @@ const DummyAISuggestions = () => {
 
   const processedData = useMemo(() => {
     const data = customers.map((customer) => {
-      const customerLogic = rowLogics[customer.id] || "logic1";
+      const customerPattern = rowPatterns[customer.id] || "Every Day Buyer";
       return {
         customer,
-        suggestion: generateAISuggestion(customer, customerLogic),
+        suggestion: generateDummyAISuggestion(customer, customerPattern),
       };
     });
 
@@ -156,7 +178,7 @@ const DummyAISuggestions = () => {
     });
 
     return data;
-  }, [customers, rowLogics]);
+  }, [customers, rowPatterns]);
 
   const filteredData = useMemo(() => {
     return processedData.filter((item) => {
@@ -307,7 +329,7 @@ const DummyAISuggestions = () => {
   };
 
   const handleDownloadExcel = () => {
-    exportToExcel(sortedData, "Multiple Logics (Dummy)");
+    exportToExcel(sortedData, "Multiple Patterns (Dummy)");
   };
 
   const totalCustomers = processedData.length;
@@ -435,8 +457,8 @@ const DummyAISuggestions = () => {
           loading={loading}
           onApplySuggestion={handleApplySuggestion}
           updatingSuggestionId={updatingSuggestionId}
-          rowLogics={rowLogics}
-          onLogicChange={handleLogicChange}
+          rowPatterns={rowPatterns}
+          onPatternChange={handlePatternChange}
         />
       </div>
 
