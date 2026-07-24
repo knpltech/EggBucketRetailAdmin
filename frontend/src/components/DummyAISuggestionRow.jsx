@@ -13,28 +13,28 @@ const getSuggestionConfig = (suggestion, reason, score) => {
     : `AI Score: ${score} - ${reason}`;
 
   switch (suggestion) {
-    case "TURN_ON_TOMORROW":
+    case "TURN_ON_TODAY":
       return {
         colorClass: "text-green-600",
         dotClass: "bg-green-500",
         text: "Turn ON",
         subText: `(${scoreReason})`
       };
-    case "TURN_OFF_TOMORROW":
+    case "TURN_OFF_TODAY":
       return {
         colorClass: "text-red-600",
         dotClass: "bg-red-500",
         text: "Turn OFF",
         subText: `(${reason})`
       };
-    case "KEEP_ON_TOMORROW":
+    case "KEEP_ON_TODAY":
       return {
         colorClass: "text-green-600",
         dotClass: "bg-green-500",
         text: "Keep ON",
         subText: ""
       };
-    case "KEEP_OFF_TOMORROW":
+    case "KEEP_OFF_TODAY":
       return {
         colorClass: "text-orange-500",
         dotClass: "bg-orange-500",
@@ -82,11 +82,11 @@ const getCurrentCategoryColor = (value) => {
 
 const getSuggestionStatus = (suggestion) => {
   switch (suggestion) {
-    case "TURN_ON_TOMORROW":
-    case "KEEP_ON_TOMORROW":
+    case "TURN_ON_TODAY":
+    case "KEEP_ON_TODAY":
       return "ON";
-    case "TURN_OFF_TOMORROW":
-    case "KEEP_OFF_TOMORROW":
+    case "TURN_OFF_TODAY":
+    case "KEEP_OFF_TODAY":
       return "OFF";
     default:
       return null;
