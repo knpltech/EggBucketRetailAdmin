@@ -254,7 +254,7 @@ const DummyAISuggestionRow = ({
   );
 
   return (
-    <tr className="border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors">
+    <tr className={`border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors ${calendarOpen ? 'relative z-50' : ''}`}>
       <td className="px-1.5 py-3 text-[12px] text-gray-600 font-medium">{customer.custid}</td>
       <td className="px-1.5 py-3 text-[12px] text-gray-900 font-bold uppercase leading-tight min-w-[90px]">{customer.name}</td>
       <td className="px-1.5 py-3 text-[11px] text-gray-700 font-medium max-w-[150px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
@@ -366,7 +366,7 @@ const DummyAISuggestionRow = ({
 
       {/* Execution Calendar */}
       <td className="px-1.5 py-3">
-        <div className="relative inline-block">
+        <div className={`relative inline-block ${calendarOpen ? 'z-50' : ''}`}>
           <button
             className="flex justify-center items-center cursor-pointer p-1.5 rounded transition-colors mx-auto text-blue-500 hover:text-blue-700"
             onClick={(e) => {

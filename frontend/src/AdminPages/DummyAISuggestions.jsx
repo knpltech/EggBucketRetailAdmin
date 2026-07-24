@@ -87,7 +87,7 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
-      } catch (e) {}
+      } catch (e) { }
       return updated;
     });
   };
@@ -111,7 +111,7 @@ const DummyAISuggestions = () => {
     try {
       // Fetch all customers through the standard cache
       const userInfoData = await getCachedUserInfo();
-      
+
       // Fetch business types dynamically
       try {
         const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
@@ -135,7 +135,7 @@ const DummyAISuggestions = () => {
       // 4. Filter to show only PENDING status for today.
       const validCustomers = allCustomers.filter((c) => {
         if (!c || !c.todayOverride) return false;
-        
+
         const currentCategoryNumber = getCurrentCategoryNumber(
           computeCurrentCategory(c.last8Days),
         );
@@ -230,7 +230,7 @@ const DummyAISuggestions = () => {
       const matchesCustomerType =
         businessTypeFilter === "ALL" ||
         String(normalizedCustomerType).trim().toLowerCase() ===
-          String(businessTypeFilter).trim().toLowerCase();
+        String(businessTypeFilter).trim().toLowerCase();
 
       // Pattern filter (Logic Sets)
       const customerPattern = rowPatterns[item.customer.id] || "Every Day Buyer";
@@ -407,7 +407,7 @@ const DummyAISuggestions = () => {
             <option value="D3">D3</option>
             <option value="D4">D4</option>
           </select>
-          
+
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value)}
@@ -422,7 +422,7 @@ const DummyAISuggestions = () => {
             <option value="PEAK_POTENTIAL">Peak Potential</option>
             <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
           </select>
-          
+
           <select
             value={suggestionFilterOption}
             onChange={(e) => setSuggestionFilterOption(e.target.value)}
@@ -489,7 +489,7 @@ const DummyAISuggestions = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible">
         <div className="flex justify-between items-center p-4 border-b border-gray-100">
           <span className="text-[13px] text-gray-500 font-semibold">
           </span>
