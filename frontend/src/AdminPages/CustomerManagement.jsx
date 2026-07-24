@@ -599,6 +599,11 @@ export default function CustomerManagement() {
     return Math.round((potentialAchieved / totalPeakPotential) * 100);
   }, [potentialAchieved, totalPeakPotential]);
 
+  const lastAchievementPercentage = useMemo(() => {
+    if (totalPeakPotential <= 0) return 0;
+    return Math.round((lastWeekdayPotential / totalPeakPotential) * 100);
+  }, [lastWeekdayPotential, totalPeakPotential]);
+
   // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
@@ -863,6 +868,21 @@ export default function CustomerManagement() {
           <p className="text-xl font-bold text-blue-600">
             {loading ? "…" : lastWeekdayPotential}
           </p>
+          {!loading && totalPeakPotential > 0 && (
+            <p
+              className="text-xs font-semibold mt-1"
+              style={{
+                color:
+                  lastAchievementPercentage >= 100
+                    ? "#0F9D58"
+                    : lastAchievementPercentage >= 70
+                      ? "#FB8C00"
+                      : "#FF3B30",
+              }}
+            >
+              {lastAchievementPercentage}% achieved
+            </p>
+          )}
         </div>
       </div>
 
@@ -1011,7 +1031,7 @@ export default function CustomerManagement() {
 
           <tbody>
             {paginatedCustomers.map((c) => (
-              <tr key={c.id} className="border-t">
+              <tr key={c.id} className={`border-t ${calendarCustomer?.id === c.id ? 'relative z-50' : ''}`}>
                 <td className="px-2 py-3 font-medium">{c.custid || c.id}</td>
                 <td className="px-2 py-3 font-medium">{getName(c)}</td>
                 <td className="px-2 py-3 font-medium text-gray-700">

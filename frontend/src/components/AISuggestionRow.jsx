@@ -251,7 +251,7 @@ const AISuggestionRow = ({
   );
 
   return (
-    <tr className="border-t hover:bg-gray-50 bg-white text-center">
+    <tr className={`border-t hover:bg-gray-50 bg-white text-center ${calendarOpen ? 'relative z-50' : ''}`}>
       <td className="px-2 py-3 text-gray-700">{customer.custid}</td>
       <td className="px-2 py-3 text-gray-900 font-bold">{customer.name}</td>
       <td className="px-1.5 py-3 text-[11px] text-gray-700 font-medium max-w-[150px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>

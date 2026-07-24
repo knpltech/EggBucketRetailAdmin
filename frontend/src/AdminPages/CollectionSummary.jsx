@@ -41,6 +41,7 @@ const CollectionSummary = () => {
   };
 
   const [data, setData] = useState(null);
+  const [categoryPeaks, setCategoryPeaks] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -603,6 +604,98 @@ const CollectionSummary = () => {
     };
   }, [filtered]);
 
+  // ─── Weekday name for display ──────────────────────────────────────────────
+  const weekdayName = [
+    "Sunday", "Monday", "Tuesday", "Wednesday",
+    "Thursday", "Friday", "Saturday",
+  ][new Date(selectedDate + "T00:00:00").getDay() || new Date().getDay()];
+
+  // ─── Total Peak Potential: persistent best for the current tab ─────────
+  const totalPeakPotential = useMemo(() => {
+    return Number(categoryPeaks["ALL"]) || 0;
+  }, [categoryPeaks]);
+
+  // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
+  const potentialAchieved = filteredTotals.totalTrays;
+
+  // ─── Last Weekday Potential: sum of trays delivered exactly 7 days ago ────
+  const lastWeekdayPotential = useMemo(() => {
+    if (!data?.customers) return 0;
+    
+    // Calculate date exactly 7 days ago
+    const d = new Date(selectedDate + "T00:00:00");
+    d.setDate(d.getDate() - 7);
+    
+    // Format to YYYY-MM-DD in IST
+    let lastWeekDateStr = d.toISOString().split("T")[0];
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(d);
+
+      const year = parts.find((p) => p.type === "year")?.value;
+      const month = parts.find((p) => p.type === "month")?.value;
+      const day = parts.find((p) => p.type === "day")?.value;
+      if (year && month && day) {
+        lastWeekDateStr = `${year}-${month}-${day}`;
+      }
+    } catch (e) {}
+
+    let sum = 0;
+    data.customers.forEach((customer) => {
+      const last8Days = customer.last8Days || {};
+      const entry = last8Days[lastWeekDateStr];
+      if (!entry) return;
+      const entryObj = typeof entry === "string" ? { status: entry } : entry;
+      if (entryObj.status !== "delivered") return;
+
+      // Apply the same filters as the main list
+      let deliveryAgent = "-";
+      if (entryObj.agentName) {
+        deliveryAgent = entryObj.agentName;
+      } else if (entryObj.deliveryMan) {
+        deliveryAgent = typeof entryObj.deliveryMan === "object" ? entryObj.deliveryMan.name : entryObj.deliveryMan;
+      }
+
+      if (selectedAgent !== "all" && deliveryAgent !== selectedAgent) return;
+
+      // payment method filter
+      const baseAmount = entryObj.totalAmount ?? entryObj.amount ?? 0;
+      const cashAmount = typeof entryObj.cashAmount === "number" ? entryObj.cashAmount : (entryObj.paymentMethod === "CASH" ? baseAmount : 0);
+      const upiAmount = typeof entryObj.upiAmount === "number" ? entryObj.upiAmount : (entryObj.paymentMethod === "UPI" ? baseAmount : 0);
+      
+      let paymentMethod = entryObj.paymentMethod || "UNKNOWN";
+      if (paymentMethod === "UNKNOWN") {
+        if (cashAmount > 0 && upiAmount > 0) paymentMethod = "SPLIT";
+        else if (cashAmount > 0) paymentMethod = "CASH";
+        else if (upiAmount > 0) paymentMethod = "UPI";
+      }
+
+      if (activeTab === "CASH" && paymentMethod !== "CASH") return;
+      if (activeTab === "UPI" && paymentMethod !== "UPI") return;
+
+      const trays = entryObj.quantity ?? entryObj.trays ?? 0;
+      const numTrays = Number(trays);
+      sum += (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
+    });
+
+    return sum;
+  }, [data, selectedDate, selectedAgent, activeTab]);
+
+  // ─── Achievement %: today's trays vs best same-weekday total ──────────────
+  const achievementPercentage = useMemo(() => {
+    if (totalPeakPotential <= 0) return 0;
+    return Math.round((potentialAchieved / totalPeakPotential) * 100);
+  }, [potentialAchieved, totalPeakPotential]);
+
+  const lastAchievementPercentage = useMemo(() => {
+    if (totalPeakPotential <= 0) return 0;
+    return Math.round((lastWeekdayPotential / totalPeakPotential) * 100);
+  }, [lastWeekdayPotential, totalPeakPotential]);
+
   // Get unique delivery agents for selected date
   const deliveryAgentOptions = useMemo(() => {
     const agents = new Set();
@@ -628,9 +721,10 @@ const CollectionSummary = () => {
     setError("");
     try {
       // Fetch full customer data and delivery partners
-      const [res, delPartnersRes] = await Promise.all([
+      const [res, delPartnersRes, peakRes] = await Promise.all([
         axios.get(`${ADMIN_PATH}/user-info`),
-        axios.get(`${ADMIN_PATH}/get-del-partner`)
+        axios.get(`${ADMIN_PATH}/get-del-partner`),
+        axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} }))
       ]);
       if (Array.isArray(res.data)) {
         setData({
@@ -641,6 +735,7 @@ const CollectionSummary = () => {
         setError("Failed to fetch collection summary");
       }
       setDeliveryPartners(delPartnersRes.data || []);
+      setCategoryPeaks(peakRes.data || {});
       
       // Also fetch inventory metrics for the selected date
       await fetchInventoryMetrics(selectedDate);
@@ -882,6 +977,66 @@ const CollectionSummary = () => {
               )}
             </span>
           </p>
+        </div>
+
+        {/* ⭐ Total Peak Potential & Potential Achieved row */}
+        <div className="flex gap-4 mb-4 md:mb-0 flex-wrap">
+          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500 flex flex-col justify-center">
+            <p className="text-xs text-gray-500 whitespace-nowrap">
+              Best {weekdayName} Potential
+            </p>
+            <p className="text-xl font-bold text-orange-600">
+              {loading ? "…" : `T(${totalPeakPotential})`}
+            </p>
+          </div>
+
+          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500 flex flex-col justify-center">
+            <p className="text-xs text-gray-500 whitespace-nowrap">
+              Potential Achieved
+            </p>
+            <p className="text-xl font-bold text-purple-600">
+              {loading ? "…" : potentialAchieved}
+            </p>
+            {!loading && totalPeakPotential > 0 && (
+              <p
+                className="text-xs font-semibold mt-1"
+                style={{
+                  color:
+                    achievementPercentage >= 100
+                      ? "#0F9D58"
+                      : achievementPercentage >= 70
+                        ? "#FB8C00"
+                        : "#FF3B30",
+                }}
+              >
+                {achievementPercentage}% achieved
+              </p>
+            )}
+          </div>
+
+          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center">
+            <p className="text-xs text-gray-500 whitespace-nowrap">
+              Last {weekdayName} Potential
+            </p>
+            <p className="text-xl font-bold text-blue-600">
+              {loading ? "…" : lastWeekdayPotential}
+            </p>
+            {!loading && totalPeakPotential > 0 && (
+              <p
+                className="text-xs font-semibold mt-1"
+                style={{
+                  color:
+                    lastAchievementPercentage >= 100
+                      ? "#0F9D58"
+                      : lastAchievementPercentage >= 70
+                        ? "#FB8C00"
+                        : "#FF3B30",
+                }}
+              >
+                {lastAchievementPercentage}% achieved
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Stats Card */}
