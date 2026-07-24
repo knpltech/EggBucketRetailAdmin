@@ -5,6 +5,7 @@ import { FaTrash, FaEdit } from "react-icons/fa";
 import { FiEdit2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { getCachedUserInfo } from "../utils/customerInfoClientCache";
+import * as XLSX from "xlsx";
 
 const PAGE_SIZE = 25;
 
@@ -388,6 +389,56 @@ const CustomerInfo = () => {
     }
   };
 
+  const handleDownloadExcel = async () => {
+    try {
+      const userInfoData = await getCachedUserInfo();
+      const allCustomers = Array.isArray(userInfoData?.customers)
+        ? userInfoData.customers
+        : Array.isArray(userInfoData)
+          ? userInfoData
+          : [];
+
+      if (!allCustomers.length) {
+        alert("No data available to export");
+        return;
+      }
+
+      const exportData = allCustomers.map((c) => ({
+        "Cust ID": c.custid || "",
+        "Name": c.name || "",
+        "Business": c.business || "",
+        "Phone": c.phone || "",
+        "Zone": c.zone || "UNASSIGNED",
+        "Route": c.route || "UNASSIGNED",
+        "Business Type": c.businessType || "UNASSIGNED",
+        "Created At": c.createdAt ? new Date(c.createdAt).toLocaleString() : "",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      
+      const colWidths = [
+        { wch: 15 }, // Cust ID
+        { wch: 25 }, // Name
+        { wch: 20 }, // Business
+        { wch: 15 }, // Phone
+        { wch: 20 }, // Zone
+        { wch: 20 }, // Route
+        { wch: 20 }, // Business Type
+        { wch: 25 }, // Created At
+      ];
+      ws['!cols'] = colWidths;
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Customers");
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      XLSX.writeFile(wb, `Customer_Info_${timestamp}.xlsx`);
+    } catch (err) {
+      console.error("Error exporting to Excel", err);
+      alert("Failed to export Excel file");
+    }
+  };
+
   const sortedCustomers = [...customers].sort((a, b) => {
     if (sortOption === "createdAt") {
       return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
@@ -480,6 +531,13 @@ const CustomerInfo = () => {
             className="bg-blue-600 text-white px-4 py-2 rounded"
           >
             Add Business Type
+          </button>
+
+          <button
+            onClick={handleDownloadExcel}
+            className="bg-green-600 text-white px-4 py-2 rounded font-medium shadow-sm hover:bg-green-700 transition-colors"
+          >
+            Export Excel
           </button>
 
         </div>

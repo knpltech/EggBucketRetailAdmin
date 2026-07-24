@@ -38,52 +38,52 @@ const getDeliveryStatusForDate = (customer, dateStr) => {
 
 const everyDayBuyer = (customer) => {
   return {
-    suggestion: "TURN_ON_TOMORROW",
+    suggestion: "TURN_ON_TODAY",
     confidence: 100,
     reason: "Customer follows an Every Day buying pattern.",
   };
 };
 
 const alternateDayBuyer = (customer) => {
-  const today = new Date();
-  const todayStr = getDateStringInTimeZone(today, "Asia/Kolkata");
-  const todayStatus = getDeliveryStatusForDate(customer, todayStr);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
+  const yesterdayStatus = getDeliveryStatusForDate(customer, yesterdayStr);
   
-  if (todayStatus === "delivered") {
+  if (yesterdayStatus === "delivered") {
     return {
-      suggestion: "TURN_OFF_TOMORROW",
+      suggestion: "TURN_OFF_TODAY",
       confidence: 100,
-      reason: "Delivery received today. Customer follows an Alternate Day buying pattern, so skip tomorrow.",
+      reason: "Delivery received yesterday. Customer follows an Alternate Day buying pattern, so skip today.",
     };
   }
 
   return {
-    suggestion: "TURN_ON_TOMORROW",
+    suggestion: "TURN_ON_TODAY",
     confidence: 100,
-    reason: "No delivery received today. Customer follows an Alternate Day buying pattern, so send tomorrow.",
+    reason: "No delivery received yesterday. Customer follows an Alternate Day buying pattern, so send today.",
   };
 };
 
 const weekdayBuyer = (targetWeekdayName) => {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowWeekdayName = new Intl.DateTimeFormat("en-US", {
+  const today = new Date();
+  const todayWeekdayName = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     timeZone: "Asia/Kolkata",
-  }).format(tomorrow);
+  }).format(today);
 
-  if (tomorrowWeekdayName === targetWeekdayName) {
+  if (todayWeekdayName === targetWeekdayName) {
     return {
-      suggestion: "TURN_ON_TOMORROW",
+      suggestion: "TURN_ON_TODAY",
       confidence: 100,
-      reason: `Tomorrow matches the customer's scheduled buying day (${targetWeekdayName}).`,
+      reason: `Today matches the customer's scheduled buying day (${targetWeekdayName}).`,
     };
   }
 
   return {
-    suggestion: "TURN_OFF_TOMORROW",
+    suggestion: "TURN_OFF_TODAY",
     confidence: 100,
-    reason: `Tomorrow is ${tomorrowWeekdayName}, not their scheduled buying day (${targetWeekdayName}).`,
+    reason: `Today is ${todayWeekdayName}, not their scheduled buying day (${targetWeekdayName}).`,
   };
 };
 
@@ -107,7 +107,7 @@ export const generateDummyAISuggestion = (customer, pattern = "Every Day Buyer")
   // RULE: Skip config active (Applies across all patterns)
   if (skipConfig?.days > 0) {
     return {
-      suggestion: "KEEP_OFF_TOMORROW",
+      suggestion: "KEEP_OFF_TODAY",
       confidence: 100,
       score: 0,
       reason: "Customer currently in skip mode.",
@@ -135,7 +135,7 @@ export const generateDummyAISuggestion = (customer, pattern = "Every Day Buyer")
       return weekdayBuyer("Saturday");
     default:
       return {
-        suggestion: "TURN_OFF_TOMORROW",
+        suggestion: "TURN_OFF_TODAY",
         confidence: 0,
         score: 0,
         reason: "Unknown Buying Pattern selected.",

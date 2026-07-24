@@ -205,14 +205,14 @@ const DummyAISuggestions = () => {
       // Suggestion dropdown filter (Turn ON/OFF Tomorrow)
       const suggestion = item?.suggestion?.suggestion;
       const filterOption = suggestionFilterOption;
-      const isTurnOnTomorrow = filterOption === "TURN_ON_TOMORROW";
-      const isTurnOffTomorrow = filterOption === "TURN_OFF_TOMORROW";
+      const isTurnOnToday = filterOption === "TURN_ON_TODAY";
+      const isTurnOffToday = filterOption === "TURN_OFF_TODAY";
 
       // Suggestion dropdown should match against the generated suggestion.
       const matchesSuggestionOption =
         filterOption === "ALL" ||
-        (isTurnOnTomorrow && suggestion === "TURN_ON_TOMORROW") ||
-        (isTurnOffTomorrow && suggestion === "TURN_OFF_TOMORROW");
+        (isTurnOnToday && suggestion === "TURN_ON_TODAY") ||
+        (isTurnOffToday && suggestion === "TURN_OFF_TODAY");
 
       // If user selected a Turn ON/OFF option and the row does not match, drop it.
 
@@ -429,8 +429,8 @@ const DummyAISuggestions = () => {
             className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
           >
             <option value="ALL">All Suggestions</option>
-            <option value="TURN_ON_TOMORROW">Turn ON Tomorrow</option>
-            <option value="TURN_OFF_TOMORROW">Turn OFF Tomorrow</option>
+            <option value="TURN_ON_TODAY">Turn ON Today</option>
+            <option value="TURN_OFF_TODAY">Turn OFF Today</option>
           </select>
         </div>
       </div>

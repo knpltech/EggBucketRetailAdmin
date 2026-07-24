@@ -568,6 +568,31 @@ export default function CustomerManagement() {
     }, 0);
   }, [filtered, todayDate]);
 
+  // ─── Last Weekday Potential: sum of trays delivered exactly 7 days ago ────
+  const lastWeekdayPotential = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    const lastWeekDateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+
+    return filtered.reduce((sum, c) => {
+      const last8Days = c.last8Days || {};
+      const entry = last8Days[lastWeekDateStr];
+      if (!entry) return sum;
+      const status = (typeof entry === "string" ? entry : entry?.status || "")
+        .trim()
+        .toLowerCase();
+      if (status !== "delivered") return sum;
+      const trays =
+        entry.traysDelivered ??
+        entry.trays ??
+        entry.quantity ??
+        entry?.deliveredTrays ??
+        0;
+      const numTrays = Number(trays);
+      return sum + (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
+    }, 0);
+  }, [filtered]);
+
   // ─── Achievement %: today's trays vs best same-weekday total ──────────────
   const achievementPercentage = useMemo(() => {
     if (totalPeakPotential <= 0) return 0;
@@ -830,6 +855,14 @@ export default function CustomerManagement() {
               {achievementPercentage}% achieved
             </p>
           )}
+        </div>
+        <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-blue-500">
+          <p className="text-xs text-gray-500 whitespace-nowrap">
+            Last {weekdayName} Potential
+          </p>
+          <p className="text-xl font-bold text-blue-600">
+            {loading ? "…" : lastWeekdayPotential}
+          </p>
         </div>
       </div>
 
