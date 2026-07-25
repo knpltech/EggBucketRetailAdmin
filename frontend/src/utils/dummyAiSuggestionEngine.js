@@ -87,6 +87,55 @@ const weekdayBuyer = (targetWeekdayName) => {
   };
 };
 
+const lastWeekdayBuyer = (customer) => {
+  let latestDeliveryLastWeek = null;
+  const today = new Date();
+  
+  // Search from 7 to 14 days ago to find the most recent delivery from "last week"
+  for (let i = 7; i <= 14; i++) {
+    const pastDate = new Date();
+    pastDate.setDate(today.getDate() - i);
+    const dateStr = getDateStringInTimeZone(pastDate, "Asia/Kolkata");
+    if (getDeliveryStatusForDate(customer, dateStr) === "delivered") {
+      latestDeliveryLastWeek = pastDate;
+      break; // Found the latest one, ignore any older ones (e.g. ignore Tuesday if Thursday is found)
+    }
+  }
+
+  if (!latestDeliveryLastWeek) {
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: 50,
+      reason: "No delivery found last week to determine the pattern.",
+    };
+  }
+
+  const lastDeliveredDay = latestDeliveryLastWeek.getDay(); // 0 (Sun) to 6 (Sat)
+  const todayDay = today.getDay(); // 0 to 6
+
+  // Check if today is lastDeliveredDay, lastDeliveredDay - 1, or lastDeliveredDay + 1 (with wrap around)
+  const isMatch = 
+    todayDay === lastDeliveredDay || 
+    todayDay === (lastDeliveredDay + 1) % 7 || 
+    todayDay === (lastDeliveredDay + 6) % 7; // +6 is same as -1 with modulo
+
+  const weekdayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "Asia/Kolkata" }).format(latestDeliveryLastWeek);
+
+  if (isMatch) {
+    return {
+      suggestion: "TURN_ON_TODAY",
+      confidence: 90,
+      reason: `Customer's latest delivery last week was on ${weekdayName}. Today is within +/- 1 day of that.`,
+    };
+  } else {
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: 90,
+      reason: `Customer's latest delivery last week was on ${weekdayName}. Today is not within +/- 1 day of that.`,
+    };
+  }
+};
+
 // --- Main Engine Function ---
 
 export const BUYING_PATTERNS = [
@@ -98,7 +147,8 @@ export const BUYING_PATTERNS = [
   "Every Wednesday Buyer",
   "Every Thursday Buyer",
   "Every Friday Buyer",
-  "Every Saturday Buyer"
+  "Every Saturday Buyer",
+  "Last Weekday Buyer"
 ];
 
 export const generateDummyAISuggestion = (customer, pattern = "Every Day Buyer") => {
@@ -133,6 +183,8 @@ export const generateDummyAISuggestion = (customer, pattern = "Every Day Buyer")
       return weekdayBuyer("Friday");
     case "Every Saturday Buyer":
       return weekdayBuyer("Saturday");
+    case "Last Weekday Buyer":
+      return lastWeekdayBuyer(customer);
     default:
       return {
         suggestion: "TURN_OFF_TODAY",
