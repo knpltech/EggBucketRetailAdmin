@@ -423,7 +423,14 @@ export default function CustomerManagement() {
     }
 
     if (activeStatusTab !== "ALL STATUS") {
-      list = list.filter((c) => getLatestStatus(c).toLowerCase() === activeStatusTab.toLowerCase());
+      if (activeStatusTab === "Undelivered") {
+        list = list.filter((c) => {
+          const s = getLatestStatus(c).toLowerCase();
+          return s === "checked" || s === "pending";
+        });
+      } else {
+        list = list.filter((c) => getLatestStatus(c).toLowerCase() === activeStatusTab.toLowerCase());
+      }
     }
 
     if (sortBy === "name") {
@@ -995,7 +1002,7 @@ export default function CustomerManagement() {
 
       {/* STATUS FILTERS TABS */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {["ALL STATUS", "Pending", "Checked", "Delivered"].map((status) => (
+        {["ALL STATUS", "Pending", "Checked", "Delivered", "Undelivered"].map((status) => (
           <button
             key={status}
             onClick={() => setActiveStatusTab(status)}
