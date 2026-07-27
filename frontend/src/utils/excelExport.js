@@ -28,14 +28,25 @@ export const exportToExcel = (sortedData, logicOption) => {
     const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
     const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
 
+    const normalizePotential = (value) => {
+      const raw = String(value ?? "").trim().toUpperCase();
+      if (!raw) return "T1";
+      const normalized = raw.replace(/T\s*(\d+)/, "T$1");
+      const match = normalized.match(/^T(\d+)$/);
+      if (match) {
+        const num = Number(match[1]);
+        return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
+      }
+      return "T1";
+    };
+
     return {
       'Customer ID': customer.custid || '',
       'Customer Name': customer.name || '',
       'Business': customer.business || '',
       'Phone': customer.phone || '',
-      'Address': customer.address || '',
       'Peak Frequency': resolvePeakFrequency(customer) || '',
-      'Potential': customer.potential || '',
+      'Potential': normalizePotential(customer.potential),
       'Delivery Gap': deliveryGap || '',
       'Current Status': customer.todayOverride?.status || 'NOT SET',
       'AI Suggestion': suggestion.suggestion || '',
@@ -56,7 +67,6 @@ export const exportToExcel = (sortedData, logicOption) => {
     { wch: 20 }, // Customer Name
     { wch: 20 }, // Business
     { wch: 15 }, // Phone
-    { wch: 30 }, // Address
     { wch: 15 }, // Peak Frequency
     { wch: 12 }, // Potential
     { wch: 15 }, // Delivery Gap
