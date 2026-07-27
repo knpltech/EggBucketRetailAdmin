@@ -364,13 +364,24 @@ const DummyAISuggestions = () => {
 
   return (
     <div className="p-6 bg-[#FAFAFA] min-h-screen font-sans">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Suggestions</h1>
           <p className="text-sm text-gray-500 mt-1 font-medium">Final daily decision: Turn ON or OFF for today</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select
+        <div className="flex flex-col items-end gap-3">
+          <button
+            onClick={handleDownloadExcel}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors whitespace-nowrap"
+            title="Download all details as Excel"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Excel
+          </button>
+          <div className="flex items-center gap-2">
+            <select
             value={businessTypeFilter}
             onChange={(e) => setBusinessTypeFilter(e.target.value)}
             className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
@@ -432,6 +443,7 @@ const DummyAISuggestions = () => {
             <option value="TURN_ON_TODAY">Turn ON Today</option>
             <option value="TURN_OFF_TODAY">Turn OFF Today</option>
           </select>
+          </div>
         </div>
       </div>
 
