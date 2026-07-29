@@ -82,7 +82,7 @@ export default function CustomerRoutes() {
       const route = customer.route;
       if (route && routeMap[route]) {
         routeMap[route].totalCustomers += 1;
-        
+
         if (getTodayEffectiveStatus(customer) === "ON") {
           routeMap[route].activeCustomers += 1;
         }
@@ -91,7 +91,7 @@ export default function CustomerRoutes() {
         if (agentId) {
           routeMap[route].agentsAssigned[agentId] = (routeMap[route].agentsAssigned[agentId] || 0) + 1;
         }
-        
+
         // Calculate Potential Achieved today
         const last8Days = customer.last8Days || {};
         const todayEntry = last8Days[todayDate];
@@ -112,7 +112,7 @@ export default function CustomerRoutes() {
     return Object.values(routeMap).map(routeInfo => {
       let mostCommonAgent = null;
       let maxCount = 0;
-      
+
       for (const [agentId, count] of Object.entries(routeInfo.agentsAssigned)) {
         if (count > maxCount) {
           mostCommonAgent = agentId;
@@ -135,8 +135,8 @@ export default function CustomerRoutes() {
   // Compute Agent stats for Right Sidebar
   const agentStats = useMemo(() => {
     return agents.map(agent => {
-      const assigned = customers.filter(c => 
-        c.assignedDeliverymen === agent.id || 
+      const assigned = customers.filter(c =>
+        c.assignedDeliverymen === agent.id ||
         c.assignedDeliverymen === agent.name
       );
       const customersAssigned = assigned.length;
@@ -168,25 +168,25 @@ export default function CustomerRoutes() {
     try {
       // Find all customers in this route
       const customersInRoute = customers.filter(c => c.route === assignSelectedRoute);
-      
+
       if (customersInRoute.length === 0) {
-         alert("No customers found in this route.");
-         setIsAssigning(false);
-         return;
+        alert("No customers found in this route.");
+        setIsAssigning(false);
+        return;
       }
 
       // Update each customer to have the newly selected agent
       // We will perform API calls concurrently in batches
       const batchSize = 10;
       for (let i = 0; i < customersInRoute.length; i += batchSize) {
-         const batch = customersInRoute.slice(i, i + batchSize);
-         await Promise.all(batch.map(customer => {
-            return axios.put(`${ADMIN_PATH}/customer/assign-agent`, {
-               id: customer.id,
-               assignedDeliverymen: assignSelectedAgent,
-               deliveredBy: assignSelectedAgent
-            });
-         }));
+        const batch = customersInRoute.slice(i, i + batchSize);
+        await Promise.all(batch.map(customer => {
+          return axios.put(`${ADMIN_PATH}/customer/assign-agent`, {
+            id: customer.id,
+            assignedDeliverymen: assignSelectedAgent,
+            deliveredBy: assignSelectedAgent
+          });
+        }));
       }
 
       // Also assign the route to the delivery agent
@@ -200,13 +200,13 @@ export default function CustomerRoutes() {
 
       // Update customers local state without full reload
       const updatedCustomers = customers.map(c => {
-         if (c.route === assignSelectedRoute) {
-            return {
-               ...c,
-               assignedDeliverymen: assignSelectedAgent
-            };
-         }
-         return c;
+        if (c.route === assignSelectedRoute) {
+          return {
+            ...c,
+            assignedDeliverymen: assignSelectedAgent
+          };
+        }
+        return c;
       });
       setCustomers(updatedCustomers);
 
@@ -280,13 +280,13 @@ export default function CustomerRoutes() {
     setIsSavingRoute(true);
     try {
       await axios.put(`${ADMIN_PATH}/routes/update`, { oldName, newName });
-      
+
       setRoutes((prev) => {
         return prev.map(r => r === oldName ? newName : r).sort((a, b) => a.localeCompare(b));
       });
-      
+
       setCustomers(prev => prev.map(c => c.route === oldName ? { ...c, route: newName } : c));
-      
+
       setAgents(prev => prev.map(a => {
         if (!a.route) return a;
         const routesList = a.route.split(",").map(r => r.trim());
@@ -298,7 +298,7 @@ export default function CustomerRoutes() {
         }
         return a;
       }));
-      
+
       setEditingRoute(null);
     } catch (error) {
       alert(error.response?.data?.message || "Failed to update route");
@@ -334,54 +334,46 @@ export default function CustomerRoutes() {
       </div>
 
       <div className="mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Total Routes</p>
-              <p className="text-3xl font-bold text-gray-800">{routes.length}</p>
-              <p className="text-xs text-green-500 mt-1">{routes.length} Active Routes</p>
+              <p className="text-sm text-gray-500 mb-1">Total Customers</p>
+              <p className="text-3xl font-bold text-gray-800">{totalCustomersAssigned}</p>
+              <p className="text-xs text-blue-500 mt-1">Across All Routes</p>
             </div>
             <div className="p-3 bg-blue-50 rounded-lg text-blue-600 text-2xl">
-              <FiMapPin />
+              <FiUsers />
             </div>
           </div>
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Total Agents</p>
-              <p className="text-3xl font-bold text-gray-800">{agents.length}</p>
-              <p className="text-xs text-green-500 mt-1">{agents.filter(a => a.active !== false).length} Active Agents</p>
+              <p className="text-sm text-gray-500 mb-1">Active Customers</p>
+              <p className="text-3xl font-bold text-gray-800">{totalActiveCustomers}</p>
+              <p className="text-xs text-green-500 mt-1">Ready for Delivery</p>
             </div>
             <div className="p-3 bg-green-50 rounded-lg text-green-600 text-2xl">
-              <FiUsers />
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Customers Assigned</p>
-              <p className="text-3xl font-bold text-gray-800">{totalCustomersAssigned}</p>
-              <p className="text-xs text-green-500 mt-1">Across All Routes</p>
-            </div>
-            <div className="p-3 bg-orange-50 rounded-lg text-orange-600 text-2xl">
-              <FiUsers />
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Total Potential</p>
-              <p className="text-3xl font-bold text-gray-800">T({totalBestPotential})</p>
-              <p className="text-xs text-orange-500 mt-1">Across All Routes</p>
-            </div>
-            <div className="p-3 bg-orange-50 rounded-lg text-orange-600 text-2xl">
               <FiTarget />
             </div>
           </div>
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Total Achieved</p>
+              <p className="text-sm text-gray-500 mb-1">Potential Achieved</p>
               <p className="text-3xl font-bold text-gray-800">{totalAchievedPotential}</p>
               <p className="text-xs text-purple-500 mt-1">Across All Routes</p>
             </div>
             <div className="p-3 bg-purple-50 rounded-lg text-purple-600 text-2xl">
+              <FiTrendingUp />
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Route Efficiency</p>
+              <p className="text-3xl font-bold text-gray-800">
+                {totalCustomersAssigned > 0 ? (totalAchievedPotential / totalCustomersAssigned).toFixed(2) : 0}
+              </p>
+              <p className="text-xs text-orange-500 mt-1">Achieved / Total Customers</p>
+            </div>
+            <div className="p-3 bg-orange-50 rounded-lg text-orange-600 text-2xl">
               <FiTrendingUp />
             </div>
           </div>
@@ -401,9 +393,10 @@ export default function CustomerRoutes() {
               <div className="flex-1 text-center">Active</div>
               <div className="flex-1 text-center">Best Potential</div>
               <div className="flex-1 text-center">Achieved</div>
+              <div className="flex-1 text-center">Efficiency</div>
               <div style={{ flex: 1.5 }} className="pl-6">Assigned Agent</div>
             </div>
-            
+
             {/* Rows */}
             <div className="flex flex-col gap-3">
               {loading ? (
@@ -427,7 +420,7 @@ export default function CustomerRoutes() {
                       <div style={{ flex: 1.5 }} className="min-w-0 pr-2">
                         {editingRoute === route.name ? (
                           <div className="flex flex-col gap-1 pr-2">
-                            <input 
+                            <input
                               type="text"
                               value={editRouteValue}
                               onChange={(e) => setEditRouteValue(e.target.value)}
@@ -464,16 +457,19 @@ export default function CustomerRoutes() {
                       <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
                       <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
                       <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
+                      <div className="flex-1 text-center font-bold text-teal-600">
+                        {route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}
+                      </div>
                       <div style={{ flex: 1.5 }} className="pl-6 flex items-center min-w-0">
                         {route.assignedAgent === "Unassigned" ? (
-                           <span className="text-red-500 font-medium">Unassigned</span>
+                          <span className="text-red-500 font-medium">Unassigned</span>
                         ) : (
-                           <div className="flex items-center gap-2">
-                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                               {getInitials(route.assignedAgentName)}
-                             </div>
-                             <span className="text-gray-700 font-medium truncate" title={route.assignedAgentName}>{route.assignedAgentName}</span>
-                           </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                              {getInitials(route.assignedAgentName)}
+                            </div>
+                            <span className="text-gray-700 font-medium truncate" title={route.assignedAgentName}>{route.assignedAgentName}</span>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -484,18 +480,18 @@ export default function CustomerRoutes() {
           </div>
 
           <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-sm font-medium text-gray-700 rounded-b-xl mt-auto">
-             <div className="flex flex-col items-center flex-1">
-                <span className="text-gray-500 text-xs">Total Routes</span>
-                <span className="text-lg">{routeData.length}</span>
-             </div>
-             <div className="flex flex-col items-center flex-1 border-l border-gray-300">
-                <span className="text-gray-500 text-xs">Total Customers</span>
-                <span className="text-lg">{routeData.reduce((sum, r) => sum + r.totalCustomers, 0)}</span>
-             </div>
-             <div className="flex flex-col items-center flex-1 border-l border-gray-300 text-blue-600">
-                <span className="text-gray-500 text-xs text-blue-600/70">Assigned Agents</span>
-                <span className="text-lg">{routeData.filter(r => r.assignedAgent !== "Unassigned").length}/{routeData.length}</span>
-             </div>
+            <div className="flex flex-col items-center flex-1">
+              <span className="text-gray-500 text-xs">Total Routes</span>
+              <span className="text-lg">{routeData.length}</span>
+            </div>
+            <div className="flex flex-col items-center flex-1 border-l border-gray-300">
+              <span className="text-gray-500 text-xs">Total Customers</span>
+              <span className="text-lg">{routeData.reduce((sum, r) => sum + r.totalCustomers, 0)}</span>
+            </div>
+            <div className="flex flex-col items-center flex-1 border-l border-gray-300 text-blue-600">
+              <span className="text-gray-500 text-xs text-blue-600/70">Assigned Agents</span>
+              <span className="text-lg">{routeData.filter(r => r.assignedAgent !== "Unassigned").length}/{routeData.length}</span>
+            </div>
           </div>
         </div>
 
@@ -504,140 +500,140 @@ export default function CustomerRoutes() {
           {/* ASSIGN AGENT PANEL */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col max-h-[800px]">
             <h2 className="text-lg font-bold text-gray-800 mb-6">Assign Agent to Route</h2>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Route</label>
-            <select 
-              className="w-full border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
-              value={assignSelectedRoute}
-              onChange={(e) => setAssignSelectedRoute(e.target.value)}
-            >
-              <option value="">Choose a route</option>
-              {routes.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Agent</label>
-            <select 
-              className="w-full border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
-              value={assignSelectedAgent}
-              onChange={(e) => setAssignSelectedAgent(e.target.value)}
-            >
-              <option value="">Choose an agent</option>
-              {agentStats.map(a => (
-                <option key={a.id} value={a.id}>{a.name || a.display_name}</option>
-              ))}
-            </select>
-          </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Route</label>
+              <select
+                className="w-full border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+                value={assignSelectedRoute}
+                onChange={(e) => setAssignSelectedRoute(e.target.value)}
+              >
+                <option value="">Choose a route</option>
+                {routes.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
 
-          <div className="flex-1 overflow-auto border border-gray-100 rounded-lg p-2 mb-6">
-            <p className="text-sm font-semibold text-gray-800 mb-3 px-2">Agents with Customers ({agentStats.filter(a => a.customersAssigned > 0).length})</p>
-            <div className="flex flex-col gap-2">
-              {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
-                const isSelected = assignSelectedAgent === agent.id;
-                const colors = [
-                   "bg-teal-100 text-teal-700", "bg-orange-100 text-orange-700", 
-                   "bg-red-100 text-red-700", "bg-purple-100 text-purple-700", 
-                   "bg-blue-100 text-blue-700", "bg-pink-100 text-pink-700"
-                ];
-                const colorClass = colors[i % colors.length];
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Agent</label>
+              <select
+                className="w-full border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+                value={assignSelectedAgent}
+                onChange={(e) => setAssignSelectedAgent(e.target.value)}
+              >
+                <option value="">Choose an agent</option>
+                {agentStats.filter(a => a.isActive).map(a => (
+                  <option key={a.id} value={a.id}>{a.name || a.display_name}</option>
+                ))}
+              </select>
+            </div>
 
-                return (
-                  <div 
-                    key={agent.id} 
-                    onClick={() => setAssignSelectedAgent(agent.id)}
-                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${colorClass}`}>
-                        {getInitials(agent.name || agent.display_name)}
+            <div className="flex-1 overflow-auto border border-gray-100 rounded-lg p-2 mb-6">
+              <p className="text-sm font-semibold text-gray-800 mb-3 px-2">Agents with Customers ({agentStats.filter(a => a.customersAssigned > 0).length})</p>
+              <div className="flex flex-col gap-2">
+                {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
+                  const isSelected = assignSelectedAgent === agent.id;
+                  const colors = [
+                    "bg-teal-100 text-teal-700", "bg-orange-100 text-orange-700",
+                    "bg-red-100 text-red-700", "bg-purple-100 text-purple-700",
+                    "bg-blue-100 text-blue-700", "bg-pink-100 text-pink-700"
+                  ];
+                  const colorClass = colors[i % colors.length];
+
+                  return (
+                    <div
+                      key={agent.id}
+                      onClick={() => setAssignSelectedAgent(agent.id)}
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${colorClass}`}>
+                          {getInitials(agent.name || agent.display_name)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">{agent.name || agent.display_name}</p>
+                          <p className="text-xs text-gray-500">{agent.customersAssigned} Customers</p>
+                          {agent.route && (
+                            <p className="text-[10px] text-gray-400 mt-0.5 font-medium truncate max-w-[150px]">
+                              Routes: {agent.route}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-gray-800">{agent.name || agent.display_name}</p>
-                        <p className="text-xs text-gray-500">{agent.customersAssigned} Customers</p>
-                        {agent.route && (
-                          <p className="text-[10px] text-gray-400 mt-0.5 font-medium truncate max-w-[150px]">
-                            Routes: {agent.route}
-                          </p>
+                        {agent.isActive ? (
+                          <span className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-xs font-medium border border-green-200">
+                            Available
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-medium border border-gray-200">
+                            Offline
+                          </span>
                         )}
                       </div>
                     </div>
-                    <div>
-                      {agent.isActive ? (
-                        <span className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-xs font-medium border border-green-200">
-                          Available
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-medium border border-gray-200">
-                          Offline
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
+
+            <button
+              onClick={handleAssignAgent}
+              disabled={isAssigning || !assignSelectedRoute || !assignSelectedAgent}
+              className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isAssigning ? "Assigning..." : "Assign Agent"}
+            </button>
           </div>
 
-          <button 
-            onClick={handleAssignAgent}
-            disabled={isAssigning || !assignSelectedRoute || !assignSelectedAgent}
-            className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isAssigning ? "Assigning..." : "Assign Agent"}
-          </button>
-        </div>
-
-        {/* COMPACT ASSIGNED AGENTS CARDS */}
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col max-h-[800px]">
-          <h2 className="text-base font-bold text-gray-800 mb-4">Assigned Deliverymen</h2>
-          {agentStats.filter(a => a.customersAssigned > 0).length === 0 ? (
-            <p className="text-sm text-gray-500">No deliverymen are currently assigned to any customers.</p>
-          ) : (
-            <div className="flex flex-col gap-3 overflow-y-auto pr-1">
-              {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
-                const colors = [
+          {/* COMPACT ASSIGNED AGENTS CARDS */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col max-h-[800px]">
+            <h2 className="text-base font-bold text-gray-800 mb-4">Assigned Deliverymen</h2>
+            {agentStats.filter(a => a.customersAssigned > 0).length === 0 ? (
+              <p className="text-sm text-gray-500">No deliverymen are currently assigned to any customers.</p>
+            ) : (
+              <div className="flex flex-col gap-3 overflow-y-auto pr-1">
+                {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
+                  const colors = [
                     "bg-blue-50 border-blue-200 text-blue-800",
                     "bg-green-50 border-green-200 text-green-800",
                     "bg-orange-50 border-orange-200 text-orange-800",
                     "bg-purple-50 border-purple-200 text-purple-800",
-                ];
-                const colorClass = colors[i % colors.length];
+                  ];
+                  const colorClass = colors[i % colors.length];
 
-                return (
-                  <div key={agent.id} className={`border rounded-xl p-3 flex flex-col gap-2 shadow-sm ${colorClass}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-xs shadow-sm">
-                        {getInitials(agent.name || agent.display_name)}
+                  return (
+                    <div key={agent.id} className={`border rounded-xl p-3 flex flex-col gap-2 shadow-sm ${colorClass}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-xs shadow-sm">
+                          {getInitials(agent.name || agent.display_name)}
+                        </div>
+                        <div className="overflow-hidden flex-1">
+                          <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
+                          <p className="text-[10px] font-medium opacity-80 break-words whitespace-normal" title={agent.route}>
+                            {agent.route}
+                          </p>
+                        </div>
                       </div>
-                      <div className="overflow-hidden flex-1">
-                        <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
-                        <p className="text-[10px] font-medium opacity-80 break-words whitespace-normal" title={agent.route}>
-                          {agent.route}
-                        </p>
+                      <div className="flex gap-2 text-xs font-semibold">
+                        <div className="flex-1 bg-white/70 px-2 py-1.5 rounded-lg flex justify-between items-center">
+                          <span className="opacity-80">Total</span>
+                          <span>{agent.customersAssigned}</span>
+                        </div>
+                        <div className="flex-1 bg-white/70 px-2 py-1.5 rounded-lg flex justify-between items-center">
+                          <span className="opacity-80">Active</span>
+                          <span className="text-green-700">{agent.activeCustomers}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex gap-2 text-xs font-semibold">
-                      <div className="flex-1 bg-white/70 px-2 py-1.5 rounded-lg flex justify-between items-center">
-                        <span className="opacity-80">Total</span>
-                        <span>{agent.customersAssigned}</span>
-                      </div>
-                      <div className="flex-1 bg-white/70 px-2 py-1.5 rounded-lg flex justify-between items-center">
-                        <span className="opacity-80">Active</span>
-                        <span className="text-green-700">{agent.activeCustomers}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
-  </div>
   );
 }
