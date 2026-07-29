@@ -80,7 +80,7 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
                 suggestionData={item.suggestion}
                 onApplySuggestion={onApplySuggestion}
                 isUpdating={updatingSuggestionId === item.customer.id}
-                customerPattern={rowPatterns[item.customer.id] || "Every Day Buyer"}
+                customerPattern={rowPatterns[item.customer.id] || "UnAssigned"}
                 onPatternChange={onPatternChange}
               />
             ))}
