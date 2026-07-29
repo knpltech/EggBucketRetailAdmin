@@ -234,7 +234,7 @@ const DummyAISuggestionRow = ({
   suggestionData,
   onApplySuggestion,
   isUpdating = false,
-  customerPattern = "Every Day Buyer",
+  customerPattern = "UnAssigned",
   onPatternChange
 }) => {
   const [calendarOpen, setCalendarOpen] = useState(false);
