@@ -175,7 +175,7 @@ const DummyAISuggestions = () => {
 
   const processedData = useMemo(() => {
     const data = customers.map((customer) => {
-      const customerPattern = rowPatterns[customer.id] || "Every Day Buyer";
+      const customerPattern = rowPatterns[customer.id] || "UnAssigned";
       return {
         customer,
         suggestion: generateDummyAISuggestion(customer, customerPattern),
@@ -233,7 +233,7 @@ const DummyAISuggestions = () => {
         String(businessTypeFilter).trim().toLowerCase();
 
       // Pattern filter (Logic Sets)
-      const customerPattern = rowPatterns[item.customer.id] || "Every Day Buyer";
+      const customerPattern = rowPatterns[item.customer.id] || "UnAssigned";
       const matchesPattern = patternFilter === "ALL" || customerPattern === patternFilter;
 
       // Category filter (D1, D2, D3, D4)
