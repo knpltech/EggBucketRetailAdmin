@@ -204,7 +204,7 @@ function computeDeliveryGap(last8Days, todayDate) {
     }
   });
   if (latestDeliveredDayNumber === null) return "G10";
-  return `G${Math.min(todayDayNumber - latestDeliveredDayNumber, 10)}`;
+  return `G${todayDayNumber - latestDeliveredDayNumber}`;
 }
 
 function normalizeDeliveryGap(value) {
@@ -213,13 +213,13 @@ function normalizeDeliveryGap(value) {
   if (!match) return "G10";
   const n = Number(match[1]);
   if (!Number.isFinite(n) || n < 0) return "G10";
-  return `G${Math.min(Math.floor(n), 10)}`;
+  return `G${Math.floor(n)}`;
 }
 
 function getDeliveryGapNumber(value) {
   const gap = normalizeDeliveryGap(value);
   const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 10 ? n : 10;
+  return Number.isFinite(n) && n >= 0 ? n : 10;
 }
 
 function getDeliveryGapColor(value) {

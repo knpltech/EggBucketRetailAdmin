@@ -153,9 +153,9 @@ export default function CustomerManagement() {
   const normaliseRows = (rows) =>
     rows.map((c) => ({
       ...c,
-      peakFrequency: computePeakFrequency(c.last8Days),
-      potential: computePotential(c.last8Days),
-      deliveryGap: computeDeliveryGap(c.last8Days, todayDate),
+      peakFrequency: c.peakFrequency || computePeakFrequency(c.last8Days),
+      potential: c.potential || computePotential(c.last8Days),
+      deliveryGap: c.deliveryGap || computeDeliveryGap(c.last8Days, todayDate),
     }));
 
   // ─── Helper: Sync Prime Customer status for all customers ─────────────────
@@ -1484,13 +1484,13 @@ function normalizeDeliveryGap(value) {
   const n = Number(match[1]);
   if (!Number.isFinite(n) || n < 0) return "G10";
 
-  return `G${Math.min(Math.floor(n), 10)}`;
+  return `G${Math.floor(n)}`;
 }
 
 function getDeliveryGapNumber(value) {
   const gap = normalizeDeliveryGap(value);
   const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 10 ? n : 10;
+  return Number.isFinite(n) && n >= 0 ? n : 10;
 }
 
 function getDeliveryGapColor(value) {
@@ -1531,7 +1531,7 @@ function computeDeliveryGap(last8Days, todayDate) {
 
   if (latestDeliveredDayNumber === null) return "G10";
 
-  return `G${Math.min(todayDayNumber - latestDeliveredDayNumber, 10)}`;
+  return `G${todayDayNumber - latestDeliveredDayNumber}`;
 }
 
 function getDateDayNumber(dateStr) {
