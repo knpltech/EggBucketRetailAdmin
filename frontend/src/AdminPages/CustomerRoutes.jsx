@@ -389,11 +389,11 @@ export default function CustomerRoutes() {
             {/* Header */}
             <div className="flex items-center px-6 py-2 mb-2 text-sm font-semibold text-gray-500 sticky top-0 z-10">
               <div style={{ flex: 1.5 }}>Route Name</div>
-              <div className="flex-1 text-center">Total</div>
-              <div className="flex-1 text-center">Active</div>
+              <div className="flex-1 text-center">Total Customers</div>
+              <div className="flex-1 text-center">Active Customers</div>
               <div className="flex-1 text-center">Best Potential</div>
-              <div className="flex-1 text-center">Achieved</div>
-              <div className="flex-1 text-center">Efficiency</div>
+              <div className="flex-1 text-center">Potential Achieved</div>
+              <div className="flex-1 text-center">Route Efficiency</div>
               <div style={{ flex: 1.5 }} className="pl-6">Assigned Agent</div>
             </div>
 
