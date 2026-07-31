@@ -82,11 +82,30 @@ const DummyAISuggestions = () => {
     }
   });
 
+  const [rowSecondaryPatterns, setRowSecondaryPatterns] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dummyAISecondaryPatterns");
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
   const handlePatternChange = (customerId, newPattern) => {
     setRowPatterns((prev) => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
+      } catch (e) { }
+      return updated;
+    });
+  };
+
+  const handleSecondaryPatternChange = (customerId, newPattern) => {
+    setRowSecondaryPatterns((prev) => {
+      const updated = { ...prev, [customerId]: newPattern };
+      try {
+        localStorage.setItem("dummyAISecondaryPatterns", JSON.stringify(updated));
       } catch (e) { }
       return updated;
     });
@@ -176,9 +195,10 @@ const DummyAISuggestions = () => {
   const processedData = useMemo(() => {
     const data = customers.map((customer) => {
       const customerPattern = rowPatterns[customer.id] || "UnAssigned";
+      const secondaryPattern = rowSecondaryPatterns[customer.id] || "UnAssigned";
       return {
         customer,
-        suggestion: generateDummyAISuggestion(customer, customerPattern),
+        suggestion: generateDummyAISuggestion(customer, customerPattern, secondaryPattern),
       };
     });
 
@@ -190,7 +210,7 @@ const DummyAISuggestions = () => {
     });
 
     return data;
-  }, [customers, rowPatterns]);
+  }, [customers, rowPatterns, rowSecondaryPatterns]);
 
   const filteredData = useMemo(() => {
     return processedData.filter((item) => {
@@ -516,6 +536,8 @@ const DummyAISuggestions = () => {
           updatingSuggestionId={updatingSuggestionId}
           rowPatterns={rowPatterns}
           onPatternChange={handlePatternChange}
+          rowSecondaryPatterns={rowSecondaryPatterns}
+          onSecondaryPatternChange={handleSecondaryPatternChange}
         />
       </div>
 

@@ -231,19 +231,7 @@ export const BUYING_PATTERNS = [
   "All Days Except Saturday"
 ];
 
-export const generateDummyAISuggestion = (customer, pattern = "UnAssigned") => {
-  const skipConfig = customer?.skipConfig || {};
-
-  // RULE: Skip config active (Applies across all patterns)
-  if (skipConfig?.days > 0) {
-    return {
-      suggestion: "KEEP_OFF_TODAY",
-      confidence: 100,
-      score: 0,
-      reason: "Customer currently in skip mode.",
-    };
-  }
-
+const evaluatePattern = (customer, pattern) => {
   switch (pattern) {
     case "UnAssigned":
       return {
@@ -294,5 +282,40 @@ export const generateDummyAISuggestion = (customer, pattern = "UnAssigned") => {
         score: 0,
         reason: "Unknown Buying Pattern selected.",
       };
+  }
+};
+
+export const generateDummyAISuggestion = (customer, primaryPattern = "UnAssigned", secondaryPattern = "UnAssigned") => {
+  const skipConfig = customer?.skipConfig || {};
+
+  // RULE: Skip config active (Applies across all patterns)
+  if (skipConfig?.days > 0) {
+    return {
+      suggestion: "KEEP_OFF_TODAY",
+      confidence: 100,
+      score: 0,
+      reason: "Customer currently in skip mode.",
+    };
+  }
+
+  const primaryResult = evaluatePattern(customer, primaryPattern);
+  const secondaryResult = evaluatePattern(customer, secondaryPattern);
+
+  const isPrimaryOn = primaryResult.suggestion.includes("ON");
+  const isSecondaryOn = secondaryResult.suggestion.includes("ON");
+
+  if (isPrimaryOn && isSecondaryOn) {
+    return {
+      suggestion: "TURN_ON_TODAY",
+      confidence: Math.min(primaryResult.confidence, secondaryResult.confidence),
+      reason: `Primary: ${primaryResult.reason} | Secondary: ${secondaryResult.reason}`,
+    };
+  } else {
+    const offResult = !isPrimaryOn ? primaryResult : secondaryResult;
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: Math.max(primaryResult.confidence, secondaryResult.confidence),
+      reason: `OFF because - ${!isPrimaryOn ? "Primary" : "Secondary"}: ${offResult.reason}`,
+    };
   }
 };

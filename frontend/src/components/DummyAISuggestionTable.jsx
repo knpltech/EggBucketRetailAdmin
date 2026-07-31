@@ -1,7 +1,7 @@
 import React from "react";
 import DummyAISuggestionRow from "./DummyAISuggestionRow";
 
-const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowPatterns, onPatternChange }) => {
+const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowPatterns, onPatternChange, rowSecondaryPatterns, onSecondaryPatternChange }) => {
   if (loading) {
     return (
       <div className="overflow-x-auto bg-white shadow rounded mt-6">
@@ -16,7 +16,8 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
               <th className="p-3 text-left font-semibold text-gray-800">Delivery_Gap</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Category</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
-              <th className="p-3 text-left font-semibold text-gray-800">Assigned Pattern</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Primary Logic</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Secondary Logic</th>
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Apply AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Execution Calendar</th>
@@ -33,6 +34,7 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
                 <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-12 mx-auto"></div></td>
+                <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-20 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-20 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
@@ -66,7 +68,8 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Delivery Gap</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Current Category</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Current Toggle</th>
-              <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Assigned Pattern</th>
+              <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight min-w-[130px]">Primary Logic</th>
+              <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight min-w-[130px]">Secondary Logic</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">AI Suggestion</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Apply AI Suggestion</th>
               <th className="px-1.5 py-3 text-center font-semibold text-gray-800 leading-tight">Execution Calendar</th>
@@ -82,6 +85,8 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
                 isUpdating={updatingSuggestionId === item.customer.id}
                 customerPattern={rowPatterns[item.customer.id] || "UnAssigned"}
                 onPatternChange={onPatternChange}
+                secondaryPattern={rowSecondaryPatterns[item.customer.id] || "UnAssigned"}
+                onSecondaryPatternChange={onSecondaryPatternChange}
               />
             ))}
           </tbody>
