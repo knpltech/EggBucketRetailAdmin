@@ -235,7 +235,9 @@ const DummyAISuggestionRow = ({
   onApplySuggestion,
   isUpdating = false,
   customerPattern = "UnAssigned",
-  onPatternChange
+  onPatternChange,
+  secondaryPattern = "UnAssigned",
+  onSecondaryPatternChange
 }) => {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
@@ -309,10 +311,24 @@ const DummyAISuggestionRow = ({
         <select
           value={customerPattern}
           onChange={(e) => onPatternChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-2 py-1 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50"
+          className="border border-gray-300 px-2 py-1 rounded text-[11px] font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[130px] overflow-hidden text-ellipsis whitespace-nowrap"
+          title={customerPattern}
         >
           {BUYING_PATTERNS.map(pattern => (
             <option key={pattern} value={pattern}>{pattern}</option>
+          ))}
+        </select>
+      </td>
+
+      <td className="px-1.5 py-3">
+        <select
+          value={secondaryPattern}
+          onChange={(e) => onSecondaryPatternChange(customer.id, e.target.value)}
+          className="border border-gray-300 px-2 py-1 rounded text-[11px] font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[130px] overflow-hidden text-ellipsis whitespace-nowrap"
+          title={secondaryPattern}
+        >
+          {BUYING_PATTERNS.map(pattern => (
+            <option key={`sec-${pattern}`} value={pattern}>{pattern}</option>
           ))}
         </select>
       </td>
