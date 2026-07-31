@@ -87,6 +87,7 @@ const CollectionSummary = () => {
     cashHandoverEntries: [],
     foodAllowanceEntries: [],
     incentiveEntries: [],
+    upiHandoverEntries: [],
     loadingEntries: [],
     returnEntries: [],
     damageEntries: [],
@@ -106,6 +107,7 @@ const CollectionSummary = () => {
           cashHandoverEntries: res.data.cashHandoverEntries || [],
           foodAllowanceEntries: res.data.foodAllowanceEntries || [],
           incentiveEntries: res.data.incentiveEntries || [],
+          upiHandoverEntries: res.data.upiHandoverEntries || [],
           loadingEntries: res.data.loadingEntries,
           returnEntries: res.data.returnEntries,
           damageEntries: res.data.damageEntries,
@@ -302,55 +304,11 @@ const CollectionSummary = () => {
       cashHandoverEntries = [],
       foodAllowanceEntries = [],
       incentiveEntries = [],
+      upiHandoverEntries = [],
       loadingEntries,
       returnEntries,
       damageEntries,
     } = inventoryMetrics;
-
-    // Fallback if detailed entries are not yet populated from backend
-    if (!loadingEntries || !returnEntries || !damageEntries) {
-      let cashHandover = 0;
-      let foodAllowance = 0;
-      let incentives = 0;
-      if (selectedAgent === "all") {
-        cashHandover = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
-        foodAllowance = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
-        incentives = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
-      } else {
-        const agentFilter = (item) =>
-          item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim();
-        cashHandover = cashHandoverEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
-        foodAllowance = foodAllowanceEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
-        incentives = incentiveEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
-      }
-      return {
-        totalLoad,
-        totalReturn,
-        totalDamage,
-        nettSales,
-        cashHandover,
-        foodAllowance,
-        incentives,
-      };
-    }
-
-    if (selectedOutlet === "all") {
-      const load = loadingEntries.reduce((sum, item) => sum + item.quantity, 0);
-      const ret = returnEntries.reduce((sum, item) => sum + item.quantity, 0);
-      const dmg = damageEntries.reduce((sum, item) => sum + item.quantity, 0);
-      const cash = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
-      const food = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
-      const inc = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
-      return {
-        totalLoad: load,
-        totalReturn: ret,
-        totalDamage: dmg,
-        nettSales: load - ret,
-        cashHandover: cash,
-        foodAllowance: food,
-        incentives: inc,
-      };
-    }
 
     const isMatchingOutlet = (entryOutlet, entryAgent, entrySupervisor) => {
       const targetOutletLower = selectedOutlet.toLowerCase().trim();
@@ -399,6 +357,107 @@ const CollectionSummary = () => {
       return false;
     };
 
+    const getLatestUpiHandover = (entries) => {
+      if (!entries || entries.length === 0) return 0;
+
+      if (selectedOutlet !== "all") {
+        const matching = entries.filter((item) =>
+          isMatchingOutlet(item.outletName, item.agentName, item.supervisorName)
+        );
+        if (matching.length === 0) return 0;
+
+        matching.sort((a, b) => {
+          const tA = parseTimestamp(a.createdAt)?.getTime() || 0;
+          const tB = parseTimestamp(b.createdAt)?.getTime() || 0;
+          return tB - tA;
+        });
+
+        return matching[0].cash || 0;
+      } else if (selectedAgent !== "all") {
+        const matching = entries.filter((item) =>
+          item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim()
+        );
+        if (matching.length === 0) return 0;
+
+        matching.sort((a, b) => {
+          const tA = parseTimestamp(a.createdAt)?.getTime() || 0;
+          const tB = parseTimestamp(b.createdAt)?.getTime() || 0;
+          return tB - tA;
+        });
+
+        return matching[0].cash || 0;
+      } else {
+        // Group by outlet and pick latest per outlet, then sum
+        const groups = {};
+        entries.forEach((item) => {
+          const key = (item.outletId || item.outletName || item.agentName || "unknown")
+            .toLowerCase()
+            .trim();
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(item);
+        });
+
+        let sum = 0;
+        Object.values(groups).forEach((groupEntries) => {
+          groupEntries.sort((a, b) => {
+            const tA = parseTimestamp(a.createdAt)?.getTime() || 0;
+            const tB = parseTimestamp(b.createdAt)?.getTime() || 0;
+            return tB - tA;
+          });
+          sum += groupEntries[0].cash || 0;
+        });
+
+        return sum;
+      }
+    };
+
+    // Fallback if detailed entries are not yet populated from backend
+    if (!loadingEntries || !returnEntries || !damageEntries) {
+      let cashHandover = 0;
+      let foodAllowance = 0;
+      let incentives = 0;
+      if (selectedAgent === "all") {
+        cashHandover = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+        foodAllowance = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
+        incentives = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
+      } else {
+        const agentFilter = (item) =>
+          item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim();
+        cashHandover = cashHandoverEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        foodAllowance = foodAllowanceEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        incentives = incentiveEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+      }
+      return {
+        totalLoad,
+        totalReturn,
+        totalDamage,
+        nettSales,
+        cashHandover,
+        upiHandover: getLatestUpiHandover(upiHandoverEntries),
+        foodAllowance,
+        incentives,
+      };
+    }
+
+    if (selectedOutlet === "all") {
+      const load = loadingEntries.reduce((sum, item) => sum + item.quantity, 0);
+      const ret = returnEntries.reduce((sum, item) => sum + item.quantity, 0);
+      const dmg = damageEntries.reduce((sum, item) => sum + item.quantity, 0);
+      const cash = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+      const food = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
+      const inc = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
+      return {
+        totalLoad: load,
+        totalReturn: ret,
+        totalDamage: dmg,
+        nettSales: load - ret,
+        cashHandover: cash,
+        upiHandover: getLatestUpiHandover(upiHandoverEntries),
+        foodAllowance: food,
+        incentives: inc,
+      };
+    }
+
     const filteredLoad = loadingEntries
       .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
       .reduce((sum, item) => sum + item.quantity, 0);
@@ -429,6 +488,7 @@ const CollectionSummary = () => {
       totalDamage: filteredDamage,
       nettSales: filteredLoad - filteredReturn,
       cashHandover: filteredCash,
+      upiHandover: getLatestUpiHandover(upiHandoverEntries),
       foodAllowance: filteredFood,
       incentives: filteredIncentive,
     };
@@ -1297,9 +1357,10 @@ const CollectionSummary = () => {
       </div>
 
       {/* Row 2 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {(() => {
           const cash = displayedMetrics.cashHandover || 0;
+          const upiHandover = displayedMetrics.upiHandover || 0;
           const food = displayedMetrics.foodAllowance || 0;
           const inc = displayedMetrics.incentives || 0;
           // difference/balance = Total Cash - Cash Handover - Food Allowance
@@ -1312,6 +1373,13 @@ const CollectionSummary = () => {
               value: cash,
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-blue-500",
+              topRight: "Amt",
+            },
+            {
+              label: "UPI Handover",
+              value: upiHandover,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-indigo-500",
               topRight: "Amt",
             },
             {
