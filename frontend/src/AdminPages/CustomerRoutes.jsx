@@ -142,11 +142,17 @@ export default function CustomerRoutes() {
       const customersAssigned = assigned.length;
       const activeCustomers = assigned.filter(c => getTodayEffectiveStatus(c) === "ON").length;
 
+      // Dynamically compute the routes from the actual assigned customers
+      // to ensure it is always in sync, rather than relying on the DB field
+      // which might not have been cleared from previous agents.
+      const computedRoutes = [...new Set(assigned.map(c => c.route).filter(Boolean))].join(", ");
+
       return {
         ...agent,
         customersAssigned,
         activeCustomers,
-        isActive: agent.active !== false
+        isActive: agent.active !== false,
+        displayRoute: computedRoutes
       };
     });
   }, [agents, customers]);
@@ -556,7 +562,7 @@ export default function CustomerRoutes() {
                           <p className="text-xs text-gray-500">{agent.customersAssigned} Customers</p>
                           {agent.route && (
                             <p className="text-[10px] text-gray-400 mt-0.5 font-medium truncate max-w-[150px]">
-                              Routes: {agent.route}
+                              Routes: {agent.displayRoute}
                             </p>
                           )}
                         </div>
@@ -611,8 +617,8 @@ export default function CustomerRoutes() {
                         </div>
                         <div className="overflow-hidden flex-1">
                           <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
-                          <p className="text-[10px] font-medium opacity-80 break-words whitespace-normal" title={agent.route}>
-                            {agent.route}
+                          <p className="text-[10px] font-medium opacity-80 break-words whitespace-normal" title={agent.displayRoute}>
+                            {agent.displayRoute}
                           </p>
                         </div>
                       </div>

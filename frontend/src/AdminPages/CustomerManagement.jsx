@@ -111,10 +111,12 @@ export default function CustomerManagement() {
   const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
+  const [activeAgentTab, setActiveAgentTab] = useState("ALL AGENTS");
   const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
   const [activeStatusTab, setActiveStatusTab] = useState("ALL STATUS");
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [businessTypes, setBusinessTypes] = useState([]);
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
@@ -250,6 +252,14 @@ export default function CustomerManagement() {
           console.error("Error fetching routes:", err);
         }
 
+        // Fetch agents dynamically
+        try {
+          const agentsRes = await axios.get(`${ADMIN_PATH}/get-del-partner`);
+          setAgents(agentsRes.data || []);
+        } catch (err) {
+          console.error("Error fetching agents:", err);
+        }
+
         // Fetch business types dynamically
         try {
           const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
@@ -268,7 +278,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeWeekdayTab, activeStatusTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -403,6 +413,19 @@ export default function CustomerManagement() {
       }
     }
 
+    if (activeAgentTab !== "ALL AGENTS") {
+      if (activeAgentTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.assignedDeliverymen || String(c.assignedDeliverymen).trim() === "");
+      } else {
+        const selectedAgent = agents.find(a => a.id === activeAgentTab);
+        if (selectedAgent) {
+           list = list.filter(c => c.assignedDeliverymen === selectedAgent.id || c.assignedDeliverymen === selectedAgent.name);
+        } else {
+           list = list.filter(c => c.assignedDeliverymen === activeAgentTab);
+        }
+      }
+    }
+
     if (activeWeekdayTab !== "ALL CUSTOMERS") {
       const dayKeyMap = {
         "Sunday": "sun",
@@ -517,7 +540,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeWeekdayTab, activeStatusTab, sortBy, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -982,6 +1005,33 @@ export default function CustomerManagement() {
               className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === r ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
             >
               {r}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* AGENT FILTERS TABS */}
+      {agents && agents.length > 0 && (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button
+            onClick={() => setActiveAgentTab("ALL AGENTS")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeAgentTab === "ALL AGENTS" ? "bg-pink-600 text-white border-pink-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            ALL AGENTS
+          </button>
+          <button
+            onClick={() => setActiveAgentTab("UNASSIGNED")}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeAgentTab === "UNASSIGNED" ? "bg-pink-600 text-white border-pink-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            UNASSIGNED
+          </button>
+          {agents.filter(a => a.active !== false).map((a) => (
+            <button
+              key={a.id}
+              onClick={() => setActiveAgentTab(a.id)}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeAgentTab === a.id ? "bg-pink-600 text-white border-pink-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+            >
+              {a.name || a.display_name || "Unknown Agent"}
             </button>
           ))}
         </div>
