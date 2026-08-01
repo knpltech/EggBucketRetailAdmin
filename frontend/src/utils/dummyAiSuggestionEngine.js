@@ -49,7 +49,7 @@ const alternateDayBuyer = (customer) => {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
   const yesterdayStatus = getDeliveryStatusForDate(customer, yesterdayStr);
-  
+
   if (yesterdayStatus === "delivered") {
     return {
       suggestion: "TURN_OFF_TODAY",
@@ -112,7 +112,7 @@ const exceptWeekdayBuyer = (targetWeekdayName) => {
 const lastWeekdayBuyer = (customer) => {
   let latestDeliveryReference = null;
   const today = new Date();
-  
+
   // Search from 1 to 14 days ago to find the absolute most recent delivery
   for (let i = 1; i <= 14; i++) {
     const pastDate = new Date();
@@ -136,9 +136,9 @@ const lastWeekdayBuyer = (customer) => {
   const todayDay = today.getDay(); // 0 to 6
 
   // Check if today is lastDeliveredDay, lastDeliveredDay - 1, or lastDeliveredDay + 1 (with wrap around)
-  const isMatch = 
-    todayDay === lastDeliveredDay || 
-    todayDay === (lastDeliveredDay + 1) % 7 || 
+  const isMatch =
+    todayDay === lastDeliveredDay ||
+    todayDay === (lastDeliveredDay + 1) % 7 ||
     todayDay === (lastDeliveredDay + 6) % 7; // +6 is same as -1 with modulo
 
   const weekdayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "Asia/Kolkata" }).format(latestDeliveryReference);
@@ -161,7 +161,7 @@ const lastWeekdayBuyer = (customer) => {
 const lastAlternateWeekdayBuyer = (customer) => {
   let latestDeliveryReference = null;
   const today = new Date();
-  
+
   // Search from 1 to 14 days ago to find the absolute most recent delivery
   for (let i = 1; i <= 14; i++) {
     const pastDate = new Date();
@@ -185,9 +185,9 @@ const lastAlternateWeekdayBuyer = (customer) => {
   const todayDay = today.getDay(); // 0 to 6
 
   // Check if today is lastDeliveredDay, lastDeliveredDay - 2, or lastDeliveredDay + 2
-  const isMatch = 
-    todayDay === lastDeliveredDay || 
-    todayDay === (lastDeliveredDay + 2) % 7 || 
+  const isMatch =
+    todayDay === lastDeliveredDay ||
+    todayDay === (lastDeliveredDay + 2) % 7 ||
     todayDay === (lastDeliveredDay + 5) % 7; // +5 is same as -2 with modulo
 
   const weekdayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "Asia/Kolkata" }).format(latestDeliveryReference);
@@ -205,6 +205,14 @@ const lastAlternateWeekdayBuyer = (customer) => {
       reason: `Customer's latest delivery reference was on ${weekdayName}. Today is not within +/- 2 days of that.`,
     };
   }
+};
+
+const onCallLogicBuyer = (customer) => {
+  return {
+    suggestion: "TURN_ON_TODAY",
+    confidence: 100,
+    reason: "Customer is an On Call Logic Buyer, so always suggest ON.",
+  };
 };
 
 // --- Main Engine Function ---
@@ -228,7 +236,8 @@ export const BUYING_PATTERNS = [
   "All Days Except Wednesday",
   "All Days Except Thursday",
   "All Days Except Friday",
-  "All Days Except Saturday"
+  "All Days Except Saturday",
+  "On Call Logic Buyer"
 ];
 
 const evaluatePattern = (customer, pattern) => {
@@ -275,6 +284,8 @@ const evaluatePattern = (customer, pattern) => {
       return exceptWeekdayBuyer("Friday");
     case "All Days Except Saturday":
       return exceptWeekdayBuyer("Saturday");
+    case "On Call Logic Buyer":
+      return onCallLogicBuyer(customer);
     default:
       return {
         suggestion: "TURN_OFF_TODAY",
