@@ -634,6 +634,11 @@ export default function CustomerManagement() {
     return Math.round((lastWeekdayPotential / totalPeakPotential) * 100);
   }, [lastWeekdayPotential, totalPeakPotential]);
 
+  const wowPercentage = useMemo(() => {
+    if (lastWeekdayPotential === 0) return potentialAchieved > 0 ? 100 : 0;
+    return (((potentialAchieved - lastWeekdayPotential) / lastWeekdayPotential) * 100).toFixed(2);
+  }, [potentialAchieved, lastWeekdayPotential]);
+
   // ─── Toggle delivery (optimistically adjusts totalActive) ─────────────────
   const toggleTodayDelivery = async (customer) => {
     if (!customer?.id || updatingTodayId === customer.id) return;
@@ -872,9 +877,16 @@ export default function CustomerManagement() {
           <p className="text-xs text-gray-500 whitespace-nowrap">
             Potential Achieved
           </p>
-          <p className="text-xl font-bold text-purple-600">
-            {loading ? "…" : potentialAchieved}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xl font-bold text-purple-600">
+              {loading ? "…" : potentialAchieved}
+            </p>
+            {!loading && (
+              <span className={`flex items-center text-sm font-bold ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                {wowPercentage > 0 ? '▲' : wowPercentage < 0 ? '▼' : '▬'} {Math.abs(wowPercentage)}%
+              </span>
+            )}
+          </div>
           {!loading && totalPeakPotential > 0 && (
             <p
               className="text-xs font-semibold mt-1"
