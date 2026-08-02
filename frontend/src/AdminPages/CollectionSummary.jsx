@@ -678,9 +678,10 @@ const CollectionSummary = () => {
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
   const potentialAchieved = filteredTotals.totalTrays;
 
-  // ─── Last Weekday Potential: sum of trays delivered exactly 7 days ago ────
-  const lastWeekdayPotential = useMemo(() => {
-    if (!data?.customers) return 0;
+  // ─── Last Weekday Totals: sum of metrics delivered exactly 7 days ago ────
+  const lastWeekdayTotals = useMemo(() => {
+    let totals = { totalTrays: 0, totalCash: 0, totalUpi: 0, totalAmount: 0, deliveredCount: 0 };
+    if (!data?.customers) return totals;
     
     // Calculate date exactly 7 days ago
     const d = new Date(selectedDate + "T00:00:00");
@@ -704,7 +705,6 @@ const CollectionSummary = () => {
       }
     } catch (e) {}
 
-    let sum = 0;
     data.customers.forEach((customer) => {
       const last8Days = customer.last8Days || {};
       const entry = last8Days[lastWeekDateStr];
@@ -739,11 +739,19 @@ const CollectionSummary = () => {
 
       const trays = entryObj.quantity ?? entryObj.trays ?? 0;
       const numTrays = Number(trays);
-      sum += (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
+      if (Number.isFinite(numTrays) && numTrays > 0) {
+        totals.totalTrays += numTrays;
+      }
+      totals.totalCash += typeof cashAmount === "number" ? cashAmount : 0;
+      totals.totalUpi += typeof upiAmount === "number" ? upiAmount : 0;
+      totals.totalAmount += (typeof cashAmount === "number" ? cashAmount : 0) + (typeof upiAmount === "number" ? upiAmount : 0);
+      totals.deliveredCount += 1;
     });
 
-    return sum;
+    return totals;
   }, [data, selectedDate, selectedAgent, activeTab]);
+
+  const lastWeekdayPotential = lastWeekdayTotals.totalTrays;
 
   // ─── Achievement %: today's trays vs best same-weekday total ──────────────
   const achievementPercentage = useMemo(() => {
@@ -755,6 +763,11 @@ const CollectionSummary = () => {
     if (totalPeakPotential <= 0) return 0;
     return Math.round((lastWeekdayPotential / totalPeakPotential) * 100);
   }, [lastWeekdayPotential, totalPeakPotential]);
+
+  const wowPercentage = useMemo(() => {
+    if (lastWeekdayPotential === 0) return potentialAchieved > 0 ? 100 : 0;
+    return (((potentialAchieved - lastWeekdayPotential) / lastWeekdayPotential) * 100).toFixed(2);
+  }, [potentialAchieved, lastWeekdayPotential]);
 
   // Get unique delivery agents for selected date
   const deliveryAgentOptions = useMemo(() => {
@@ -1017,6 +1030,23 @@ const CollectionSummary = () => {
     );
   }
 
+  const renderWowIndicator = (current, previous) => {
+    if (previous === 0) return current > 0 ? (
+      <span className="flex items-center text-xs font-bold text-green-500 mt-1">▲ 100%</span>
+    ) : (
+      <span className="flex items-center text-xs font-bold text-gray-500 mt-1">▬ 0%</span>
+    );
+    
+    const diff = (((current - previous) / previous) * 100).toFixed(2);
+    const color = diff > 0 ? 'text-green-500' : diff < 0 ? 'text-red-500' : 'text-gray-500';
+    const icon = diff > 0 ? '▲' : diff < 0 ? '▼' : '▬';
+    return (
+      <span className={`flex items-center text-xs font-bold ${color} mt-1`}>
+        {icon} {Math.abs(diff)}%
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
       {/* Header Section */}
@@ -1054,9 +1084,16 @@ const CollectionSummary = () => {
             <p className="text-xs text-gray-500 whitespace-nowrap">
               Potential Achieved
             </p>
-            <p className="text-xl font-bold text-purple-600">
-              {loading ? "…" : potentialAchieved}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xl font-bold text-purple-600">
+                {loading ? "…" : potentialAchieved}
+              </p>
+              {!loading && (
+                <span className={`flex items-center text-sm font-bold ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                  {wowPercentage > 0 ? '▲' : wowPercentage < 0 ? '▼' : '▬'} {Math.abs(wowPercentage)}%
+                </span>
+              )}
+            </div>
             {!loading && totalPeakPotential > 0 && (
               <p
                 className="text-xs font-semibold mt-1"
@@ -1319,40 +1356,71 @@ const CollectionSummary = () => {
         })()}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total Trays</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {filteredTotals.totalTrays}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              {filteredTotals.totalTrays}
+            </p>
+            {renderWowIndicator(filteredTotals.totalTrays, lastWeekdayTotals.totalTrays)}
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-indigo-400 flex flex-col justify-between">
+          <p className="text-sm text-gray-600 mb-2">Avg Order</p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              {filtered.length > 0 ? (filteredTotals.totalTrays / filtered.length).toFixed(2) : "0.00"}
+            </p>
+            {renderWowIndicator(
+              filtered.length > 0 ? (filteredTotals.totalTrays / filtered.length) : 0,
+              lastWeekdayTotals.deliveredCount > 0 ? (lastWeekdayTotals.totalTrays / lastWeekdayTotals.deliveredCount) : 0
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Sales Point</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
+            </p>
+            {renderWowIndicator(
+              filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays) : 0,
+              lastWeekdayTotals.totalTrays > 0 ? (lastWeekdayTotals.totalAmount / lastWeekdayTotals.totalTrays) : 0
+            )}
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-green-500">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-green-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total Cash</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
+            </p>
+            {renderWowIndicator(filteredTotals.totalCash, lastWeekdayTotals.totalCash)}
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-purple-500">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-purple-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total UPI</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
+            </p>
+            {renderWowIndicator(filteredTotals.totalUpi, lastWeekdayTotals.totalUpi)}
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-orange-500">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-orange-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total Amount</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
+            </p>
+            {renderWowIndicator(filteredTotals.totalAmount, lastWeekdayTotals.totalAmount)}
+          </div>
         </div>
       </div>
 

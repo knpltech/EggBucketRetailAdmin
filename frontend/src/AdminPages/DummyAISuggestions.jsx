@@ -67,6 +67,8 @@ const DummyAISuggestions = () => {
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
   const [patternFilter, setPatternFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [routeFilter, setRouteFilter] = useState("ALL");
+  const [routes, setRoutes] = useState([]);
 
 
   // Default sorting: TOGGLE (ON FIRST) as soon as page opens
@@ -137,6 +139,14 @@ const DummyAISuggestions = () => {
         setBusinessTypes(btRes.data || []);
       } catch (err) {
         console.error("Error fetching business types:", err);
+      }
+
+      // Fetch routes dynamically
+      try {
+        const routeRes = await axios.get(`${ADMIN_PATH}/routes`);
+        setRoutes(routeRes.data || []);
+      } catch (err) {
+        console.error("Error fetching routes:", err);
       }
 
       let allCustomers = [];
@@ -260,9 +270,13 @@ const DummyAISuggestions = () => {
       const currentCategory = computeCurrentCategory(item.customer.last8Days);
       const matchesCategory = categoryFilter === "ALL" || currentCategory === categoryFilter;
 
-      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory;
+      // Route filter
+      const customerRoute = String(item.customer?.route || "").trim();
+      const matchesRoute = routeFilter === "ALL" || customerRoute.toLowerCase() === String(routeFilter).trim().toLowerCase();
+
+      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, rowPatterns]);
+  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, rowPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -384,15 +398,15 @@ const DummyAISuggestions = () => {
 
   return (
     <div className="p-6 bg-[#FAFAFA] min-h-screen font-sans">
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Suggestions</h1>
           <p className="text-sm text-gray-500 mt-1 font-medium">Final daily decision: Turn ON or OFF for today</p>
         </div>
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
           <button
             onClick={handleDownloadExcel}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors whitespace-nowrap"
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors whitespace-nowrap self-end"
             title="Download all details as Excel"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -400,7 +414,7 @@ const DummyAISuggestions = () => {
             </svg>
             Download Excel
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 w-full">
             <select
             value={businessTypeFilter}
             onChange={(e) => setBusinessTypeFilter(e.target.value)}
@@ -410,6 +424,19 @@ const DummyAISuggestions = () => {
             {businessTypes.map((bt) => (
               <option key={bt} value={bt}>
                 {bt}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={routeFilter}
+            onChange={(e) => setRouteFilter(e.target.value)}
+            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+          >
+            <option value="ALL">All Routes</option>
+            {routes.map((rt) => (
+              <option key={rt} value={rt}>
+                {rt}
               </option>
             ))}
           </select>

@@ -675,6 +675,9 @@ const Report = () => {
             <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-800 border border-slate-300">
               Total: {selectedAgentStats.total}
             </span>
+            <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800 border border-purple-300 shadow-sm ml-auto">
+              Conversion: {selectedAgentStats.total > 0 ? ((selectedAgentStats.delivered / selectedAgentStats.total) * 100).toFixed(1) : 0}%
+            </span>
           </div>
         )}
 
