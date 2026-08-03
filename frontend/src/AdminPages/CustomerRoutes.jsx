@@ -56,7 +56,6 @@ export default function CustomerRoutes() {
   const routeData = useMemo(() => {
     const routeMap = {};
 
-    // Initialize all routes
     routes.forEach(routeName => {
       routeMap[routeName] = {
         name: routeName,
@@ -64,6 +63,8 @@ export default function CustomerRoutes() {
         activeCustomers: 0,
         bestPotential: Number(categoryPeaks[`ROUTE_${routeName.toUpperCase()}`]) || 0,
         potentialAchieved: 0,
+        yesterdayTotalCustomers: 0,
+        yesterdayPotentialAchieved: 0,
         agentsAssigned: {},
         assignedAgent: "Unassigned",
         assignedAgentName: "Unassigned"
@@ -76,6 +77,18 @@ export default function CustomerRoutes() {
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
+
+    const yesterdayDateObj = new Date();
+    yesterdayDateObj.setDate(yesterdayDateObj.getDate() - 1);
+    const yesterdayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(yesterdayDateObj);
+
+    const todayStart = new Date();
+    todayStart.setHours(0,0,0,0);
 
     // Process customers
     customers.forEach(customer => {
@@ -102,6 +115,23 @@ export default function CustomerRoutes() {
             const numTrays = Number(trays);
             if (Number.isFinite(numTrays) && numTrays > 0) {
               routeMap[route].potentialAchieved += numTrays;
+            }
+          }
+        }
+
+        // Calculate yesterday's stats
+        if (!customer.createdAt || new Date(customer.createdAt) < todayStart) {
+          routeMap[route].yesterdayTotalCustomers += 1;
+        }
+
+        const yesterdayEntry = last8Days[yesterdayDate];
+        if (yesterdayEntry) {
+          const status = String(typeof yesterdayEntry === "string" ? yesterdayEntry : yesterdayEntry?.status || "").trim().toLowerCase();
+          if (status === "delivered") {
+            const trays = yesterdayEntry.traysDelivered ?? yesterdayEntry.trays ?? yesterdayEntry.quantity ?? yesterdayEntry?.deliveredTrays ?? 0;
+            const numTrays = Number(trays);
+            if (Number.isFinite(numTrays) && numTrays > 0) {
+              routeMap[route].yesterdayPotentialAchieved += numTrays;
             }
           }
         }
@@ -161,6 +191,8 @@ export default function CustomerRoutes() {
   const totalActiveCustomers = routeData.reduce((sum, route) => sum + route.activeCustomers, 0);
   const totalBestPotential = routeData.reduce((sum, route) => sum + (route.bestPotential || 0), 0);
   const totalAchievedPotential = routeData.reduce((sum, route) => sum + (route.potentialAchieved || 0), 0);
+  const totalYesterdayCustomers = routeData.reduce((sum, route) => sum + (route.yesterdayTotalCustomers || 0), 0);
+  const totalYesterdayAchieved = routeData.reduce((sum, route) => sum + (route.yesterdayPotentialAchieved || 0), 0);
 
   const getInitials = (name) => {
     if (!name) return "UN";
@@ -313,6 +345,21 @@ export default function CustomerRoutes() {
     }
   };
 
+  const renderEfficiencyDiff = (current, previous) => {
+    if (current === 0) {
+      return <span className="text-sm font-bold text-gray-400 ml-2">▬ 0.00</span>;
+    }
+    if (previous === 0 && current === 0) return null;
+    
+    const diff = (current - previous).toFixed(2);
+    if (diff > 0) {
+      return <span className="text-sm font-bold text-green-500 ml-2">▲ {diff}</span>;
+    } else if (diff < 0) {
+      return <span className="text-sm font-bold text-red-500 ml-2">▼ {Math.abs(diff).toFixed(2)}</span>;
+    }
+    return <span className="text-sm font-bold text-gray-400 ml-2">▬ {diff}</span>;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full font-sans">
       {/* HEADER & STATS */}
@@ -374,9 +421,15 @@ export default function CustomerRoutes() {
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Route Efficiency</p>
-              <p className="text-3xl font-bold text-gray-800">
-                {totalCustomersAssigned > 0 ? (totalAchievedPotential / totalCustomersAssigned).toFixed(2) : 0}
-              </p>
+              <div className="flex items-end">
+                <p className="text-3xl font-bold text-gray-800">
+                  {totalCustomersAssigned > 0 ? (totalAchievedPotential / totalCustomersAssigned).toFixed(2) : 0}
+                </p>
+                {renderEfficiencyDiff(
+                  totalCustomersAssigned > 0 ? (totalAchievedPotential / totalCustomersAssigned) : 0,
+                  totalYesterdayCustomers > 0 ? (totalYesterdayAchieved / totalYesterdayCustomers) : 0
+                )}
+              </div>
               <p className="text-xs text-orange-500 mt-1">Achieved / Total Customers</p>
             </div>
             <div className="p-3 bg-orange-50 rounded-lg text-orange-600 text-2xl">
@@ -463,8 +516,12 @@ export default function CustomerRoutes() {
                       <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
                       <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
                       <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
-                      <div className="flex-1 text-center font-bold text-teal-600">
-                        {route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}
+                      <div className="flex-1 flex justify-center items-center font-bold text-teal-600">
+                        <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
+                        {renderEfficiencyDiff(
+                          route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
+                          route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0
+                        )}
                       </div>
                       <div style={{ flex: 1.5 }} className="pl-6 flex items-center min-w-0">
                         {route.assignedAgent === "Unassigned" ? (

@@ -127,6 +127,30 @@ export default function CustomerManagement() {
   const [assigningRouteId, setAssigningRouteId] = useState(null);
   const [editingRouteId, setEditingRouteId] = useState(null);
 
+  const [assigningZoneId, setAssigningZoneId] = useState(null);
+  const [editingZoneId, setEditingZoneId] = useState(null);
+
+  const assignZone = async (id, zoneName) => {
+    if (!zoneName || assigningZoneId === id) return;
+
+    try {
+      setAssigningZoneId(id);
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        zone: zoneName,
+      });
+
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, zone: zoneName } : c))
+      );
+    } catch (err) {
+      console.error("Error assigning zone:", err);
+      alert("Failed to assign zone");
+    } finally {
+      setAssigningZoneId(null);
+    }
+  };
+
   const assignRoute = async (id, routeName) => {
     if (!routeName || assigningRouteId === id) return;
 
@@ -546,6 +570,130 @@ export default function CustomerManagement() {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
   }, [filtered, todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const yesterdayFilteredCount = useMemo(() => {
+    let list = [...customers];
+    
+    const todayStart = new Date();
+    todayStart.setHours(0,0,0,0);
+    list = list.filter((c) => {
+      if (!c.createdAt) return true;
+      return new Date(c.createdAt) < todayStart;
+    });
+
+    const getYesterdayDeliveredCount = (customer) => {
+      const last8Days = customer.last8Days || {};
+      let count = 0;
+      const today = new Date();
+      for (let i = 2; i <= 7; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+        const entry = last8Days[dateStr];
+        const status = typeof entry === "string" ? entry : entry?.status;
+        if (status === "delivered") count++;
+      }
+      return count;
+    };
+
+    if (activeTab === "PRIME CUSTOMER") {
+      list = list.filter((c) => computePeakPotentialNumber(c.last8Days) >= 10);
+    } else if (activeTab === "ONBOARDING") {
+      const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
+      const yesterday = Date.now() - 24 * 60 * 60 * 1000;
+      list = list.filter((c) => {
+        if (!c.createdAt) return false;
+        const createdTime = new Date(c.createdAt).getTime();
+        return (yesterday - createdTime) <= fortyFiveDaysMs;
+      });
+    } else if (/^D[0-7]$/.test(activeTab)) {
+      const targetDays = Number(activeTab.slice(1));
+      list = list.filter((c) => getYesterdayDeliveredCount(c) === targetDays);
+    }
+
+    if (activeBusinessTab !== "ALL") {
+      if (activeBusinessTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.businessType || String(c.businessType).trim() === "" || String(c.businessType).trim().toUpperCase() === "UNASSIGNED");
+      } else {
+        list = list.filter((c) => String(c.businessType || "").trim().toLowerCase() === activeBusinessTab.toLowerCase());
+      }
+    }
+
+    if (activeZoneTab !== "ALL") {
+      if (activeZoneTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.zone || String(c.zone).trim() === "" || String(c.zone).trim().toUpperCase() === "UNASSIGNED");
+      } else {
+        list = list.filter((c) => String(c.zone || "").trim().toLowerCase() === activeZoneTab.toLowerCase());
+      }
+    }
+
+    if (activeRouteTab !== "ALL") {
+      if (activeRouteTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.route || String(c.route).trim() === "");
+      } else {
+        list = list.filter((c) => String(c.route || "").trim().toLowerCase() === activeRouteTab.toLowerCase());
+      }
+    }
+
+    if (activeAgentTab !== "ALL AGENTS") {
+      if (activeAgentTab === "UNASSIGNED") {
+        list = list.filter((c) => !c.assignedDeliverymen || String(c.assignedDeliverymen).trim() === "");
+      } else {
+        const selectedAgent = agents.find(a => a.id === activeAgentTab);
+        if (selectedAgent) {
+           list = list.filter(c => c.assignedDeliverymen === selectedAgent.id || c.assignedDeliverymen === selectedAgent.name);
+        } else {
+           list = list.filter(c => c.assignedDeliverymen === activeAgentTab);
+        }
+      }
+    }
+
+    if (activeWeekdayTab !== "ALL CUSTOMERS") {
+      const dayKeyMap = { Sunday: "sun", Monday: "mon", Tuesday: "tue", Wednesday: "wed", Thursday: "thu", Friday: "fri", Saturday: "sat" };
+      const dayKey = dayKeyMap[activeWeekdayTab];
+      if (dayKey) {
+        list = list.filter((c) => {
+          const s = c.weeklySchedule || { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true };
+          return s[dayKey] === true;
+        });
+      }
+    }
+
+    if (activeStatusTab !== "ALL STATUS") {
+      const getYesterdayLatestStatus = (customer) => {
+        const last8Days = customer.last8Days || {};
+        const today = new Date();
+        today.setDate(today.getDate() - 1);
+        const dateStr = getDateStringInTimeZone(today, "Asia/Kolkata");
+        const entry = last8Days[dateStr];
+        const st = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
+        if (st === "delivered") return "Delivered";
+        if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(st)) return "Checked";
+        return "Pending";
+      };
+
+      if (activeStatusTab === "Undelivered") {
+        list = list.filter((c) => {
+          const s = getYesterdayLatestStatus(c).toLowerCase();
+          return s === "checked" || s === "pending";
+        });
+      } else {
+        list = list.filter((c) => getYesterdayLatestStatus(c).toLowerCase() === activeStatusTab.toLowerCase());
+      }
+    }
+
+    return list.length;
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, agents]);
+
+  const lastWeekActiveCount = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    const lastWeekDateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
+    return filtered.filter(c => resolveTodayEffectiveStatus(c, lastWeekDateStr) === "ON").length;
+  }, [filtered]);
+
+  const customersDiff = filtered.length - yesterdayFilteredCount;
+  const activeDiff = filteredActiveCount - lastWeekActiveCount;
+
   // ─── Weekday name for display ──────────────────────────────────────────────
   const weekdayName = [
     "Sunday", "Monday", "Tuesday", "Wednesday",
@@ -820,9 +968,16 @@ export default function CustomerManagement() {
             <FiUsers className="text-3xl text-blue-500" />
             <div>
               <p className="text-sm text-gray-600">Total Customers</p>
-              <p className="text-2xl font-bold">
-                {loading ? "…" : filtered.length}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-2xl font-bold">
+                  {loading ? "…" : filtered.length}
+                </p>
+                {!loading && (
+                  <span className={`flex items-center text-sm font-bold ${customersDiff > 0 ? 'text-green-500' : customersDiff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                    {customersDiff > 0 ? '▲' : customersDiff < 0 ? '▼' : '▬'} {Math.abs(customersDiff)}
+                  </span>
+                )}
+              </div>
             </div>
 
             <select
@@ -855,9 +1010,16 @@ export default function CustomerManagement() {
           {/* ⭐ Total Active: dynamic based on selected tab and manual overrides */}
           <div className="bg-white p-4 rounded-xl shadow border-l-4 border-green-500">
             <p className="text-sm text-gray-600">Total Active</p>
-            <p className="text-2xl font-bold text-green-600">
-              {loading ? "…" : filteredActiveCount}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-2xl font-bold text-green-600">
+                {loading ? "…" : filteredActiveCount}
+              </p>
+              {!loading && (
+                <span className={`flex items-center text-sm font-bold ${activeDiff > 0 ? 'text-green-500' : activeDiff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                  {activeDiff > 0 ? '▲' : activeDiff < 0 ? '▼' : '▬'} {Math.abs(activeDiff)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1103,8 +1265,51 @@ export default function CustomerManagement() {
               <tr key={c.id} className={`border-t ${calendarCustomer?.id === c.id ? 'relative z-50' : ''}`}>
                 <td className="px-2 py-3 font-medium">{c.custid || c.id}</td>
                 <td className="px-2 py-3 font-medium">{getName(c)}</td>
-                <td className="px-2 py-3 font-medium text-gray-700">
-                  {c.zone || "UNASSIGNED"}
+                <td
+                  className="px-2 py-3 font-medium text-gray-700"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {!c.zone || c.zone === "UNASSIGNED" ? (
+                    <select
+                      disabled={assigningZoneId === c.id}
+                      onChange={(e) => assignZone(c.id, e.target.value)}
+                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
+                    >
+                      <option value="">Assign Zone</option>
+                      {zones.map((z) => (
+                        <option key={z} value={z}>
+                          {z}
+                        </option>
+                      ))}
+                    </select>
+                  ) : editingZoneId === c.id ? (
+                    <select
+                      autoFocus
+                      defaultValue={c.zone}
+                      onBlur={() => setEditingZoneId(null)}
+                      onChange={async (e) => {
+                        await assignZone(c.id, e.target.value);
+                        setEditingZoneId(null);
+                      }}
+                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
+                    >
+                      {zones.map((z) => (
+                        <option key={z} value={z}>
+                          {z}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2">
+                      <span>{c.zone}</span>
+                      <button
+                        onClick={() => setEditingZoneId(c.id)}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        <FiEdit2 />
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td
                   className="px-2 py-3 font-medium text-gray-700"

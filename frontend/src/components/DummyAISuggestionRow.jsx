@@ -240,6 +240,7 @@ const DummyAISuggestionRow = ({
   onSecondaryPatternChange
 }) => {
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [openSchedule, setOpenSchedule] = useState(false);
   const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
   const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
@@ -260,6 +261,43 @@ const DummyAISuggestionRow = ({
       <td className="px-1.5 py-3 text-[12px] text-gray-600 font-medium">{customer.custid}</td>
       <td className="px-1.5 py-3 text-[12px] text-gray-900 font-bold uppercase leading-tight min-w-[90px]">{customer.name}</td>
       <td className="px-1.5 py-3 text-[11px] text-gray-700 font-medium max-w-[150px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
+
+      <td className="px-1.5 py-3 text-gray-700 font-medium">
+        <div className="relative inline-block">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenSchedule((prev) => !prev);
+            }}
+            className="px-2 py-1 text-[11px] border border-gray-300 rounded bg-white hover:bg-gray-50 transition whitespace-nowrap"
+          >
+            {Object.values(customer?.weeklySchedule || {mon:1,tue:1,wed:1,thu:1,fri:1,sat:1,sun:1}).filter(Boolean).length} Days {openSchedule ? "▲" : "▼"}
+          </button>
+          {openSchedule && (
+            <div
+              className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 p-2 min-w-[100px]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((day) => {
+                const schedule = customer?.weeklySchedule || {mon:true,tue:true,wed:true,thu:true,fri:true,sat:true,sun:true};
+                const labels = {mon:"MON",tue:"TUE",wed:"WED",thu:"THU",fri:"FRI",sat:"SAT",sun:"SUN"};
+                return (
+                  <div
+                    key={day}
+                    className={`block w-full text-center px-2 py-1 rounded mb-1 last:mb-0 font-medium text-[10px] ${
+                      schedule[day]
+                        ? "bg-green-500 text-white border border-green-600"
+                        : "bg-red-500 text-white border border-red-600"
+                    }`}
+                  >
+                    {labels[day]}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </td>
 
       <td className="px-1.5 py-3 text-gray-700 font-medium">
         <span

@@ -1032,16 +1032,16 @@ const CollectionSummary = () => {
 
   const renderWowIndicator = (current, previous) => {
     if (previous === 0) return current > 0 ? (
-      <span className="flex items-center text-xs font-bold text-green-500 mt-1">▲ 100%</span>
+      <span className="flex items-center text-sm font-bold text-green-500 mt-1">▲ 100%</span>
     ) : (
-      <span className="flex items-center text-xs font-bold text-gray-500 mt-1">▬ 0%</span>
+      <span className="flex items-center text-sm font-bold text-gray-500 mt-1">▬ 0%</span>
     );
     
     const diff = (((current - previous) / previous) * 100).toFixed(2);
     const color = diff > 0 ? 'text-green-500' : diff < 0 ? 'text-red-500' : 'text-gray-500';
     const icon = diff > 0 ? '▲' : diff < 0 ? '▼' : '▬';
     return (
-      <span className={`flex items-center text-xs font-bold ${color} mt-1`}>
+      <span className={`flex items-center text-sm font-bold ${color} mt-1`}>
         {icon} {Math.abs(diff)}%
       </span>
     );
@@ -1386,10 +1386,6 @@ const CollectionSummary = () => {
             <p className="text-3xl font-bold text-gray-900">
               {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
             </p>
-            {renderWowIndicator(
-              filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays) : 0,
-              lastWeekdayTotals.totalTrays > 0 ? (lastWeekdayTotals.totalAmount / lastWeekdayTotals.totalTrays) : 0
-            )}
           </div>
         </div>
 
@@ -1399,7 +1395,6 @@ const CollectionSummary = () => {
             <p className="text-3xl font-bold text-gray-900">
               ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
             </p>
-            {renderWowIndicator(filteredTotals.totalCash, lastWeekdayTotals.totalCash)}
           </div>
         </div>
 
@@ -1409,7 +1404,6 @@ const CollectionSummary = () => {
             <p className="text-3xl font-bold text-gray-900">
               ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
             </p>
-            {renderWowIndicator(filteredTotals.totalUpi, lastWeekdayTotals.totalUpi)}
           </div>
         </div>
 
@@ -1419,7 +1413,6 @@ const CollectionSummary = () => {
             <p className="text-3xl font-bold text-gray-900">
               ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
             </p>
-            {renderWowIndicator(filteredTotals.totalAmount, lastWeekdayTotals.totalAmount)}
           </div>
         </div>
       </div>
