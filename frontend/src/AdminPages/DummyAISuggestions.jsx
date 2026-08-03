@@ -416,80 +416,80 @@ const DummyAISuggestions = () => {
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2 w-full">
             <select
-            value={businessTypeFilter}
-            onChange={(e) => setBusinessTypeFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Customer Types</option>
-            {businessTypes.map((bt) => (
-              <option key={bt} value={bt}>
-                {bt}
-              </option>
-            ))}
-          </select>
+              value={businessTypeFilter}
+              onChange={(e) => setBusinessTypeFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Customer Types</option>
+              {businessTypes.map((bt) => (
+                <option key={bt} value={bt}>
+                  {bt}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={routeFilter}
-            onChange={(e) => setRouteFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Routes</option>
-            {routes.map((rt) => (
-              <option key={rt} value={rt}>
-                {rt}
-              </option>
-            ))}
-          </select>
+            <select
+              value={routeFilter}
+              onChange={(e) => setRouteFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Routes</option>
+              {routes.map((rt) => (
+                <option key={rt} value={rt}>
+                  {rt}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={patternFilter}
-            onChange={(e) => setPatternFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Logic Sets</option>
-            {BUYING_PATTERNS.map((pattern) => (
-              <option key={pattern} value={pattern}>
-                {pattern}
-              </option>
-            ))}
-          </select>
+            <select
+              value={patternFilter}
+              onChange={(e) => setPatternFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Logic Sets</option>
+              {BUYING_PATTERNS.map((pattern) => (
+                <option key={pattern} value={pattern}>
+                  {pattern}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Current Category</option>
-            <option value="D1">D1</option>
-            <option value="D2">D2</option>
-            <option value="D3">D3</option>
-            <option value="D4">D4</option>
-          </select>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Current Category</option>
+              <option value="D1">D1</option>
+              <option value="D2">D2</option>
+              <option value="D3">D3</option>
+              <option value="D4">D4</option>
+            </select>
 
-          <select
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="DEFAULT">Sort: Default (AI Confidence)</option>
-            <option value="NAME_ASC">Name (A-Z)</option>
-            <option value="NAME_DESC">Name (Z-A)</option>
-            <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
-            <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
-            <option value="PEAK_FREQUENCY">Peak Frequency</option>
-            <option value="PEAK_POTENTIAL">Peak Potential</option>
-            <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
-          </select>
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="DEFAULT">Sort: Default (AI Confidence)</option>
+              <option value="NAME_ASC">Name (A-Z)</option>
+              <option value="NAME_DESC">Name (Z-A)</option>
+              <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
+              <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
+              <option value="PEAK_FREQUENCY">Peak Frequency</option>
+              <option value="PEAK_POTENTIAL">Peak Potential</option>
+              <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
+            </select>
 
-          <select
-            value={suggestionFilterOption}
-            onChange={(e) => setSuggestionFilterOption(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Suggestions</option>
-            <option value="TURN_ON_TODAY">Turn ON Today</option>
-            <option value="TURN_OFF_TODAY">Turn OFF Today</option>
-          </select>
+            <select
+              value={suggestionFilterOption}
+              onChange={(e) => setSuggestionFilterOption(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Suggestions</option>
+              <option value="TURN_ON_TODAY">Turn ON Today</option>
+              <option value="TURN_OFF_TODAY">Turn OFF Today</option>
+            </select>
           </div>
         </div>
       </div>
