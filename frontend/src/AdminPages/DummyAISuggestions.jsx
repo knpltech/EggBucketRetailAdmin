@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import {
@@ -67,8 +67,20 @@ const DummyAISuggestions = () => {
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
   const [patternFilter, setPatternFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const [routeFilter, setRouteFilter] = useState("ALL");
+  const [routeFilter, setRouteFilter] = useState([]);
+  const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
+  const routeDropdownRef = useRef(null);
   const [routes, setRoutes] = useState([]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (routeDropdownRef.current && !routeDropdownRef.current.contains(event.target)) {
+        setIsRouteDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
 
   // Default sorting: TOGGLE (ON FIRST) as soon as page opens
@@ -159,16 +171,19 @@ const DummyAISuggestions = () => {
       }
 
       // 1. Filter out customers with missing todayOverride.
-      // 2. Filter for D1 to D4 customers.
+      // 2. Filter for D0 to D7 customers.
       // 3. Exclude onboarding customers (<= 45 days old).
       // 4. Filter to show only PENDING status for today.
+      // 5. Exclude specific routes
       const validCustomers = allCustomers.filter((c) => {
         if (!c || !c.todayOverride) return false;
 
         const currentCategoryNumber = getCurrentCategoryNumber(
           computeCurrentCategory(c.last8Days),
         );
-        if (currentCategoryNumber < 1 || currentCategoryNumber > 4) return false;
+        if (currentCategoryNumber < 0 || currentCategoryNumber > 7) return false;
+
+        if (c.route && (c.route.startsWith("R005") || c.route.startsWith("R018") || c.route.startsWith("R019"))) return false;
 
         // Exclude onboarding customers (<= 45 days)
         if (c.createdAt) {
@@ -266,13 +281,22 @@ const DummyAISuggestions = () => {
       const customerPattern = rowPatterns[item.customer.id] || "UnAssigned";
       const matchesPattern = patternFilter === "ALL" || customerPattern === patternFilter;
 
-      // Category filter (D1, D2, D3, D4)
+      // Category filter (D0, D1 TO D4, D5 TO D7)
       const currentCategory = computeCurrentCategory(item.customer.last8Days);
-      const matchesCategory = categoryFilter === "ALL" || currentCategory === categoryFilter;
+      let matchesCategory = false;
+      if (categoryFilter === "ALL") {
+        matchesCategory = true;
+      } else if (categoryFilter === "D0" && currentCategory === "D0") {
+        matchesCategory = true;
+      } else if (categoryFilter === "D1_TO_D4" && ["D1", "D2", "D3", "D4"].includes(currentCategory)) {
+        matchesCategory = true;
+      } else if (categoryFilter === "D5_TO_D7" && ["D5", "D6", "D7"].includes(currentCategory)) {
+        matchesCategory = true;
+      }
 
-      // Route filter
+      // Route filter (multi-select)
       const customerRoute = String(item.customer?.route || "").trim();
-      const matchesRoute = routeFilter === "ALL" || customerRoute.toLowerCase() === String(routeFilter).trim().toLowerCase();
+      const matchesRoute = routeFilter.length === 0 || routeFilter.includes(customerRoute);
 
       return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute;
     });
@@ -428,18 +452,55 @@ const DummyAISuggestions = () => {
               ))}
             </select>
 
-            <select
-              value={routeFilter}
-              onChange={(e) => setRouteFilter(e.target.value)}
-              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-            >
-              <option value="ALL">All Routes</option>
-              {routes.map((rt) => (
-                <option key={rt} value={rt}>
-                  {rt}
-                </option>
-              ))}
-            </select>
+            <div className="relative" ref={routeDropdownRef}>
+              <button
+                onClick={() => setIsRouteDropdownOpen(!isRouteDropdownOpen)}
+                className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm flex items-center justify-between min-w-[150px]"
+              >
+                <span className="truncate max-w-[120px]">
+                  {routeFilter.length === 0 ? "All Routes" : `${routeFilter.length} Selected`}
+                </span>
+                <svg className="w-4 h-4 ml-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </button>
+              
+              {isRouteDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto right-0">
+                  <div className="p-2 flex gap-2 border-b border-gray-100 sticky top-0 bg-white z-20">
+                    <button 
+                      onClick={() => setRouteFilter([...routes])}
+                      className="flex-1 text-xs bg-blue-50 text-blue-600 font-semibold py-1.5 rounded hover:bg-blue-100"
+                    >
+                      Check All
+                    </button>
+                    <button 
+                      onClick={() => setRouteFilter([])}
+                      className="flex-1 text-xs bg-gray-50 text-gray-600 font-semibold py-1.5 rounded hover:bg-gray-100"
+                    >
+                      Uncheck All
+                    </button>
+                  </div>
+                  <div className="p-1">
+                    {routes.map((rt) => (
+                      <label key={rt} className="flex items-center px-3 py-2 hover:bg-gray-50 rounded cursor-pointer text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          checked={routeFilter.includes(rt)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setRouteFilter([...routeFilter, rt]);
+                            } else {
+                              setRouteFilter(routeFilter.filter(r => r !== rt));
+                            }
+                          }}
+                        />
+                        <span className="truncate" title={rt}>{rt}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <select
               value={patternFilter}
@@ -460,10 +521,9 @@ const DummyAISuggestions = () => {
               className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
             >
               <option value="ALL">All Current Category</option>
-              <option value="D1">D1</option>
-              <option value="D2">D2</option>
-              <option value="D3">D3</option>
-              <option value="D4">D4</option>
+              <option value="D0">D0</option>
+              <option value="D1_TO_D4">D1 TO D4</option>
+              <option value="D5_TO_D7">D5 TO D7</option>
             </select>
 
             <select
