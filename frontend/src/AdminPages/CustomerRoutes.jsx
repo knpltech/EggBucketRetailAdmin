@@ -347,17 +347,17 @@ export default function CustomerRoutes() {
 
   const renderEfficiencyDiff = (current, previous) => {
     if (current === 0) {
-      return <span className="text-sm font-bold text-gray-400 ml-2">▬ 0.00</span>;
+      return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap">▬ 0.00</span>;
     }
     if (previous === 0 && current === 0) return null;
     
     const diff = (current - previous).toFixed(2);
     if (diff > 0) {
-      return <span className="text-sm font-bold text-green-500 ml-2">▲ {diff}</span>;
+      return <span className="text-sm font-bold text-green-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▲</span> <span>{diff}</span></span>;
     } else if (diff < 0) {
-      return <span className="text-sm font-bold text-red-500 ml-2">▼ {Math.abs(diff).toFixed(2)}</span>;
+      return <span className="text-sm font-bold text-red-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▼</span> <span>{Math.abs(diff).toFixed(2)}</span></span>;
     }
-    return <span className="text-sm font-bold text-gray-400 ml-2">▬ {diff}</span>;
+    return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▬</span> <span>{diff}</span></span>;
   };
 
   return (

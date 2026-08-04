@@ -1,7 +1,7 @@
 import React from "react";
 import DummyAISuggestionRow from "./DummyAISuggestionRow";
 
-const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowPatterns, onPatternChange, rowSecondaryPatterns, onSecondaryPatternChange }) => {
+const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowPatterns, onPatternChange, rowSecondaryPatterns, onSecondaryPatternChange, updatingScheduleId, onUpdateSchedule }) => {
   if (loading) {
     return (
       <div className="overflow-x-auto bg-white shadow rounded mt-6">
@@ -90,6 +90,8 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
                 onPatternChange={onPatternChange}
                 secondaryPattern={rowSecondaryPatterns[item.customer.id] || "UnAssigned"}
                 onSecondaryPatternChange={onSecondaryPatternChange}
+                updatingScheduleId={updatingScheduleId}
+                onUpdateSchedule={onUpdateSchedule}
               />
             ))}
           </tbody>

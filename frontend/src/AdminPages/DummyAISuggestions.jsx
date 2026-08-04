@@ -127,6 +127,7 @@ const DummyAISuggestions = () => {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
+  const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
@@ -406,6 +407,53 @@ const DummyAISuggestions = () => {
     }
   };
 
+  const handleUpdateWeeklySchedule = async (customer, day) => {
+    if (!customer?.id || updatingScheduleId === customer.id) return;
+
+    const current = customer.weeklySchedule || {
+      mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true,
+    };
+    const updated = { ...current, [day]: !current[day] };
+    const previousSchedule = customer.weeklySchedule;
+
+    // Optimistically update the schedule in local state
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customer.id ? { ...c, weeklySchedule: updated } : c
+      )
+    );
+
+    try {
+      setUpdatingScheduleId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer/weekly-schedule`, {
+        id: customer.id,
+        weeklySchedule: updated,
+      });
+      const saved = res?.data?.weeklySchedule;
+      if (saved && typeof saved === "object") {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          weeklySchedule: saved,
+        }));
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customer.id ? { ...c, weeklySchedule: saved } : c
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Weekly schedule update error:", err);
+      // Revert if error
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === customer.id ? { ...c, weeklySchedule: previousSchedule } : c
+        )
+      );
+    } finally {
+      setUpdatingScheduleId(null);
+    }
+  };
+
   const handleDownloadExcel = () => {
     exportToExcel(sortedData, "Multiple Patterns (Dummy)");
   };
@@ -625,6 +673,8 @@ const DummyAISuggestions = () => {
           onPatternChange={handlePatternChange}
           rowSecondaryPatterns={rowSecondaryPatterns}
           onSecondaryPatternChange={handleSecondaryPatternChange}
+          updatingScheduleId={updatingScheduleId}
+          onUpdateSchedule={handleUpdateWeeklySchedule}
         />
       </div>
 

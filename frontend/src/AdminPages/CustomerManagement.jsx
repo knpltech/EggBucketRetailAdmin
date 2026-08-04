@@ -973,8 +973,9 @@ export default function CustomerManagement() {
                   {loading ? "…" : filtered.length}
                 </p>
                 {!loading && (
-                  <span className={`flex items-center text-sm font-bold ${customersDiff > 0 ? 'text-green-500' : customersDiff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                    {customersDiff > 0 ? '▲' : customersDiff < 0 ? '▼' : '▬'} {Math.abs(customersDiff)}
+                  <span className={`inline-flex items-center gap-1 text-sm font-bold whitespace-nowrap ${customersDiff > 0 ? 'text-green-500' : customersDiff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                    <span>{customersDiff > 0 ? '▲' : customersDiff < 0 ? '▼' : '▬'}</span>
+                    <span>{Math.abs(customersDiff)}</span>
                   </span>
                 )}
               </div>
@@ -1015,8 +1016,9 @@ export default function CustomerManagement() {
                 {loading ? "…" : filteredActiveCount}
               </p>
               {!loading && (
-                <span className={`flex items-center text-sm font-bold ${activeDiff > 0 ? 'text-green-500' : activeDiff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                  {activeDiff > 0 ? '▲' : activeDiff < 0 ? '▼' : '▬'} {Math.abs(activeDiff)}
+                <span className={`inline-flex items-center gap-1 text-sm font-bold whitespace-nowrap ${activeDiff > 0 ? 'text-green-500' : activeDiff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                  <span>{activeDiff > 0 ? '▲' : activeDiff < 0 ? '▼' : '▬'}</span>
+                  <span>{Math.abs(activeDiff)}</span>
                 </span>
               )}
             </div>
@@ -1044,8 +1046,9 @@ export default function CustomerManagement() {
               {loading ? "…" : potentialAchieved}
             </p>
             {!loading && (
-              <span className={`flex items-center text-sm font-bold ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                {wowPercentage > 0 ? '▲' : wowPercentage < 0 ? '▼' : '▬'} {Math.abs(wowPercentage)}%
+              <span className={`inline-flex items-center gap-1 text-sm font-bold whitespace-nowrap ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                <span>{wowPercentage > 0 ? '▲' : wowPercentage < 0 ? '▼' : '▬'}</span>
+                <span>{Math.abs(wowPercentage)}%</span>
               </span>
             )}
           </div>
