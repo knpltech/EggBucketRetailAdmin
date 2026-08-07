@@ -130,6 +130,51 @@ export default function PrimeCustomers() {
   const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [editingZoneId, setEditingZoneId] = useState(null);
 
+  const [editingPhoneId, setEditingPhoneId] = useState(null);
+  const [editPhoneValue, setEditPhoneValue] = useState("");
+  const [updatingCallStatusId, setUpdatingCallStatusId] = useState(null);
+
+  const updateCallStatus = async (id) => {
+    if (updatingCallStatusId === id) return;
+    try {
+      setUpdatingCallStatusId(id);
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        callStatus: "Called",
+      });
+
+      patchCachedUserInfoCustomer(id, (c) => ({ ...c, callStatus: "Called" }));
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, callStatus: "Called" } : c))
+      );
+    } catch (err) {
+      console.error("Error updating call status:", err);
+      alert("Failed to update call status");
+    } finally {
+      setUpdatingCallStatusId(null);
+    }
+  };
+
+  const updatePhone = async (id, newPhone) => {
+    if (editingPhoneId !== id) return;
+    try {
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        phone: newPhone,
+      });
+
+      patchCachedUserInfoCustomer(id, (c) => ({ ...c, phone: newPhone }));
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, phone: newPhone } : c))
+      );
+    } catch (err) {
+      console.error("Error updating phone:", err);
+      alert("Failed to update phone");
+    } finally {
+      setEditingPhoneId(null);
+    }
+  };
+
   const assignZone = async (id, zoneName) => {
     if (!zoneName || assigningZoneId === id) return;
 
@@ -1245,7 +1290,7 @@ export default function PrimeCustomers() {
               <th className="px-2 py-3">Peak_Potential</th>
               
               
-              
+              <th className="px-2 py-3">Call Status</th>
               <th className="px-2 py-3">Status</th>
               <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
             </tr>
@@ -1256,7 +1301,38 @@ export default function PrimeCustomers() {
               <tr key={c.id} className={`border-t ${calendarCustomer?.id === c.id ? 'relative z-50' : ''}`}>
                 
                 <td className="px-2 py-3 font-medium">{getName(c)}</td>
-                <td className="px-2 py-3">{c.phone || "-"}</td>
+                <td className="px-2 py-3">
+                  {editingPhoneId === c.id ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      className="border rounded px-2 py-1 w-28 text-xs text-center"
+                      value={editPhoneValue}
+                      onChange={(e) => setEditPhoneValue(e.target.value)}
+                      onBlur={() => updatePhone(c.id, editPhoneValue)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          updatePhone(c.id, editPhoneValue);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center gap-2">
+                      <span>{c.phone || "-"}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPhoneId(c.id);
+                          setEditPhoneValue(c.phone || "");
+                        }}
+                        className="text-gray-500 hover:text-gray-700"
+                        title="Edit Phone"
+                      >
+                        <FiEdit2 />
+                      </button>
+                    </div>
+                  )}
+                </td>
                 <td
                   className="px-2 py-3 font-medium text-gray-700"
                   onClick={(e) => e.stopPropagation()}
@@ -1490,9 +1566,24 @@ export default function PrimeCustomers() {
 
                 
 
-                
-
-                
+                <td className="px-2 py-3">
+                  {c.callStatus === "Called" ? (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-500 text-white cursor-default">
+                      Called
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateCallStatus(c.id);
+                      }}
+                      disabled={updatingCallStatusId === c.id}
+                      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+                    >
+                      {updatingCallStatusId === c.id ? "..." : "To Call"}
+                    </button>
+                  )}
+                </td>
 
                 <td className="px-2 py-3">
                   <div className="flex flex-col items-center gap-1">

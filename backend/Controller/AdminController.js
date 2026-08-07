@@ -1170,7 +1170,8 @@ const getCustomerMapStatus = async (req, res) => {
 
 const updateCustomerMeta = async (req, res) => {
   try {
-    const { id, remarks, zone, customerType, businessType } = req.body;
+    const { id, remarks, zone, customerType, businessType, phone, callStatus } = req.body;
+    console.log("updateCustomerMeta called with:", req.body);
 
     if (!id) {
       return res.status(400).json({ message: "Customer ID is required" });
@@ -1214,6 +1215,14 @@ const updateCustomerMeta = async (req, res) => {
 
     // ✅ REMARKS
     if (remarks !== undefined) updateData.remarks = remarks;
+
+    // ✅ PHONE
+    if (phone !== undefined) updateData.phone = phone;
+
+    // ✅ CALL STATUS
+    if (callStatus !== undefined) updateData.callStatus = callStatus;
+
+    console.log("updateCustomerMeta updateData:", updateData);
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ message: "Nothing to update" });
