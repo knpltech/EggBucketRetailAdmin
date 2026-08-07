@@ -339,6 +339,65 @@ const Report = () => {
     );
   }, [filteredDeliveries]);
 
+  const lastWeekDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  }, [selectedDate]);
+
+  const lastWeekStats = useMemo(() => {
+    let stats = { checked: 0, delivered: 0, total: 0, agents: {} };
+    allCustomers.forEach((customer) => {
+      const last8Days = customer.last8Days || {};
+      const entry = last8Days[lastWeekDate];
+      if (!entry) return;
+      
+      const entryObj = typeof entry === "string" ? { status: entry } : entry;
+      const status = String(entryObj.status || "").toLowerCase();
+      
+      if (status !== "pending" && status !== "") {
+        let agentName = "Not Assigned";
+        if (entryObj.agentName) {
+            agentName = getDeliveryAgentName({ name: entryObj.agentName }) || "Not Assigned";
+        }
+        
+        if (!stats.agents[agentName]) {
+          stats.agents[agentName] = { checked: 0, delivered: 0, total: 0 };
+        }
+
+        if (status === "delivered") {
+          stats.delivered += 1;
+          stats.agents[agentName].delivered += 1;
+        } else if (status === "checked") {
+          stats.checked += 1;
+          stats.agents[agentName].checked += 1;
+        }
+
+        if (status === "checked" || status === "delivered") {
+          stats.total += 1;
+          stats.agents[agentName].total += 1;
+        }
+      }
+    });
+    return stats;
+  }, [allCustomers, lastWeekDate]);
+
+  const renderConversionDiff = (currentTotal, currentDelivered, prevTotal, prevDelivered) => {
+    const currentConv = currentTotal > 0 ? (currentDelivered / currentTotal) * 100 : 0;
+    const prevConv = prevTotal > 0 ? (prevDelivered / prevTotal) * 100 : 0;
+    
+    if (currentTotal === 0 && prevTotal === 0) return null;
+    
+    const diff = currentConv - prevConv;
+    if (Math.abs(diff) < 0.1) {
+      return null;
+    } else if (diff > 0) {
+      return <span className="ml-1 font-bold text-green-600" title={`Prev: ${prevConv.toFixed(1)}%`}>▲ {diff.toFixed(1)}%</span>;
+    } else {
+      return <span className="ml-1 font-bold text-red-600" title={`Prev: ${prevConv.toFixed(1)}%`}>▼ {Math.abs(diff).toFixed(1)}%</span>;
+    }
+  };
+
   // ⭐ OPTIMIZED: Generate Excel from frontend data (no API call)
   const downloadSummaryExcel = () => {
     if (!startRange || !endRange) {
@@ -677,6 +736,10 @@ const Report = () => {
             </span>
             <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800 border border-purple-300 shadow-sm ml-auto">
               Conversion: {selectedAgentStats.total > 0 ? ((selectedAgentStats.delivered / selectedAgentStats.total) * 100).toFixed(1) : 0}%
+              {selectedAgent === "all" ? 
+                renderConversionDiff(selectedAgentStats.total, selectedAgentStats.delivered, lastWeekStats.total, lastWeekStats.delivered) : 
+                (lastWeekStats.agents[selectedAgent] ? renderConversionDiff(selectedAgentStats.total, selectedAgentStats.delivered, lastWeekStats.agents[selectedAgent].total, lastWeekStats.agents[selectedAgent].delivered) : null)
+              }
             </span>
           </div>
         )}
@@ -704,6 +767,7 @@ const Report = () => {
                     </span>
                     <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800 border border-purple-300 shadow-sm">
                       Conversion: {agent.total > 0 ? ((agent.delivered / agent.total) * 100).toFixed(1) : 0}%
+                      {lastWeekStats.agents[agent.name] ? renderConversionDiff(agent.total, agent.delivered, lastWeekStats.agents[agent.name].total, lastWeekStats.agents[agent.name].delivered) : null}
                     </span>
                   </div>
                 </div>

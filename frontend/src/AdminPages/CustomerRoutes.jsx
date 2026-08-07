@@ -79,7 +79,7 @@ export default function CustomerRoutes() {
     }).format(new Date());
 
     const yesterdayDateObj = new Date();
-    yesterdayDateObj.setDate(yesterdayDateObj.getDate() - 1);
+    yesterdayDateObj.setDate(yesterdayDateObj.getDate() - 7);
     const yesterdayDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Kolkata",
       year: "numeric",
@@ -360,6 +360,18 @@ export default function CustomerRoutes() {
     return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▬</span> <span>{diff}</span></span>;
   };
 
+  const renderCountDiff = (current, previous) => {
+    if (current === 0 && previous === 0) return null;
+    const diff = current - previous;
+    if (diff === 0) {
+      return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▬</span> <span>0</span></span>;
+    } else if (diff > 0) {
+      return <span className="text-sm font-bold text-green-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▲</span> <span>{diff}</span></span>;
+    } else {
+      return <span className="text-sm font-bold text-red-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▼</span> <span>{Math.abs(diff)}</span></span>;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full font-sans">
       {/* HEADER & STATS */}
@@ -391,7 +403,10 @@ export default function CustomerRoutes() {
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Total Customers</p>
-              <p className="text-3xl font-bold text-gray-800">{totalCustomersAssigned}</p>
+              <div className="flex items-end">
+                <p className="text-3xl font-bold text-gray-800">{totalCustomersAssigned}</p>
+                {renderCountDiff(totalCustomersAssigned, totalYesterdayCustomers)}
+              </div>
               <p className="text-xs text-blue-500 mt-1">Across All Routes</p>
             </div>
             <div className="p-3 bg-blue-50 rounded-lg text-blue-600 text-2xl">
@@ -512,7 +527,10 @@ export default function CustomerRoutes() {
                           </>
                         )}
                       </div>
-                      <div className="flex-1 text-center font-medium text-gray-800">{route.totalCustomers}</div>
+                      <div className="flex-1 flex justify-center items-center font-medium text-gray-800">
+                        <span>{route.totalCustomers}</span>
+                        {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers)}
+                      </div>
                       <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
                       <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
                       <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
