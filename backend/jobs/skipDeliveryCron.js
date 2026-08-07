@@ -4,6 +4,7 @@ import cache from "../Controller/cache.js";
 import { invalidateActiveCountCache } from "../Controller/CustomerInfoController.js";
 import { calculateAndSavePeakPotentials } from "./categoryPeakCron.js";
 import { generateGenuineAnalytics } from "./businessAnalyticsCron.js";
+import { runCallStatusResetJobOnce } from "./callStatusCron.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -82,7 +83,7 @@ const invalidateSkipRelatedCaches = () => {
   }
 };
 
-export const runSkipDeliveryJobOnce = async () => {
+export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
   const today = getTodayDateStringIST();
 
   // Get current weekday (mon, tue, wed, etc.)
@@ -302,6 +303,16 @@ export const runSkipDeliveryJobOnce = async () => {
   } catch (err) {
     console.error("[skipDeliveryCron] Error running midnight analytics:", err);
   }
+
+  // ⭐ Reset call status using the SAME customer snapshot, but only at midnight
+  try {
+    if (isMidnightCron) {
+      console.log("[skipDeliveryCron] Running callStatus reset with shared snapshot...");
+      await runCallStatusResetJobOnce(customersSnap, true);
+    }
+  } catch (err) {
+    console.error("[skipDeliveryCron] Error running callStatus reset:", err);
+  }
 };
 
 let cronTask = null;
@@ -320,7 +331,7 @@ export const startSkipDeliveryCron = () => {
     cronExpr,
     async () => {
       try {
-        await runSkipDeliveryJobOnce();
+        await runSkipDeliveryJobOnce(true);
       } catch (err) {
         console.error("[skipDeliveryCron] Job error:", err);
       }
