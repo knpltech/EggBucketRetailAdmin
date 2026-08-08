@@ -4,7 +4,7 @@ import { ADMIN_PATH } from '../constant';
 import { Eye, EyeOff, Loader2 } from 'lucide-react'; // Added Loader2 for the spinner
 
 const AddSalesPerson = () => {
-  const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', password: '', confirmPassword: '', outlet: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState('');
@@ -39,6 +39,7 @@ const AddSalesPerson = () => {
       const name = formData.name.trim();
       const phone = formData.phone.trim();
       const password = formData.password;
+      const outlet = formData.outlet.trim();
 
       if (!name || !phone || !password) {
         setMessage('Name, phone number, and password are required.');
@@ -47,10 +48,10 @@ const AddSalesPerson = () => {
         return;
       }
 
-      const res = await axios.post(`${ADMIN_PATH}/add-sales-partner`, { name, phone, password });
+      const res = await axios.post(`${ADMIN_PATH}/add-sales-partner`, { name, phone, password, outlet });
       setMessage(res.data.message);
       setMessageType('success');
-      setFormData({ name: '', phone: '', password: '', confirmPassword: '' });
+      setFormData({ name: '', phone: '', password: '', confirmPassword: '', outlet: '' });
     } catch (err) {
       console.error(err);
       setMessage(err.response?.data?.message || 'Failed to add sales partner.');
@@ -93,6 +94,18 @@ const AddSalesPerson = () => {
                 onChange={handleChange}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Outlet</label>
+              <input
+                type="text"
+                name="outlet"
+                value={formData.outlet}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                placeholder="Outlet Name (Optional)"
               />
             </div>
 

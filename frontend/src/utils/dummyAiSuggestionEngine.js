@@ -209,9 +209,9 @@ const lastAlternateWeekdayBuyer = (customer) => {
 
 const onCallLogicBuyer = (customer) => {
   return {
-    suggestion: "TURN_ON_TODAY",
+    suggestion: "TURN_OFF_TODAY",
     confidence: 100,
-    reason: "Customer is an On Call Logic Buyer, so always suggest ON.",
+    reason: "Customer is an On Call Logic Buyer, so always suggest OFF.",
   };
 };
 

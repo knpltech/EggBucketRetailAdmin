@@ -133,6 +133,31 @@ const resolvePeakFrequency = (customer) => {
     : currentPeak;
 };
 
+const computePeakPotential = (last8Days) => {
+  if (!last8Days || typeof last8Days !== "object") return "T1";
+  let maxTrays = 0;
+  Object.values(last8Days).forEach((entry) => {
+    if (!entry) return;
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (status !== "delivered") return;
+    const trays =
+      entry.traysDelivered ??
+      entry.trays ??
+      entry.quantity ??
+      entry?.deliveredTrays ??
+      0;
+    const numTrays = Number(trays);
+    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
+      maxTrays = numTrays;
+    }
+  });
+  return maxTrays > 0 ? `T${maxTrays}` : "T1";
+};
+
 const normalizePotential = (value) => {
   const raw = String(value ?? "")
     .trim()
@@ -248,7 +273,8 @@ const DummyAISuggestionRow = ({
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
   const peakFrequency = resolvePeakFrequency(customer);
   const currentCategory = computeCurrentCategory(customer?.last8Days);
-  const peakPotential = normalizePotential(customer?.potential);
+  const computedPotential = customer?.potential || computePeakPotential(customer?.last8Days);
+  const peakPotential = normalizePotential(computedPotential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
   const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);

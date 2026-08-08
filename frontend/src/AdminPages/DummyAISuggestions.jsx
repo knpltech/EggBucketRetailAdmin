@@ -468,6 +468,12 @@ const DummyAISuggestions = () => {
   const suggestOnPercentage = totalCustomers > 0 ? ((suggestOnCount / totalCustomers) * 100).toFixed(1) : 0;
   const suggestOffPercentage = totalCustomers > 0 ? ((suggestOffCount / totalCustomers) * 100).toFixed(1) : 0;
 
+  const currentOnCount = filteredData.filter((item) => getTodayEffectiveStatus(item.customer) === "ON").length;
+  const currentOffCount = totalCustomers - currentOnCount;
+
+  const currentOnPercentage = totalCustomers > 0 ? ((currentOnCount / totalCustomers) * 100).toFixed(1) : 0;
+  const currentOffPercentage = totalCustomers > 0 ? ((currentOffCount / totalCustomers) * 100).toFixed(1) : 0;
+
   return (
     <div className="p-6 bg-[#FAFAFA] min-h-screen font-sans">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
@@ -602,7 +608,7 @@ const DummyAISuggestions = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {/* Card 1 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
@@ -644,6 +650,38 @@ const DummyAISuggestions = () => {
             <div className="flex items-center gap-2 mt-1">
               <span className="text-3xl font-extrabold text-gray-900">{suggestOffCount}</span>
               <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">{suggestOffPercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4 - Current Toggle ON */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">Current Toggle ON</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{currentOnCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700">{currentOnPercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5 - Current Toggle OFF */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 border border-gray-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-12.728 12.728M5.636 5.636l12.728 12.728" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">Current Toggle OFF</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{currentOffCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-700">{currentOffPercentage}%</span>
             </div>
           </div>
         </div>

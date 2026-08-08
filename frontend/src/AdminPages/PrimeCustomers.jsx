@@ -1288,8 +1288,14 @@ export default function PrimeCustomers() {
               <th className="px-2 py-3">Delivery Plan</th>
               <th className="px-2 py-3">Weekly Schedule</th>
               <th className="px-2 py-3">Peak_Potential</th>
-              
-              
+              <th
+                className="px-2 py-3 cursor-pointer hover:bg-gray-200 transition-colors group"
+                onClick={() => setSortBy("deliveryGap")}
+                title="Sort by Delivery Gap"
+              >
+                Delivery Gap
+                {sortBy === "deliveryGap" && " ▼"}
+              </th>
               <th className="px-2 py-3">Call Status</th>
               <th className="px-2 py-3">Status</th>
               <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
@@ -1564,7 +1570,14 @@ export default function PrimeCustomers() {
                   </span>
                 </td>
 
-                
+                <td className="px-2 py-3">
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getDeliveryGapColor(c.deliveryGap) }}
+                  >
+                    {normalizeDeliveryGap(c.deliveryGap)}
+                  </span>
+                </td>
 
                 <td className="px-2 py-3">
                   {c.callStatus === "Called" ? (
