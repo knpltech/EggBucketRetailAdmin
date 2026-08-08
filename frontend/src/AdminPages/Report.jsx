@@ -392,9 +392,9 @@ const Report = () => {
     if (Math.abs(diff) < 0.1) {
       return null;
     } else if (diff > 0) {
-      return <span className="ml-1 font-bold text-green-600" title={`Prev: ${prevConv.toFixed(1)}%`}>▲ {diff.toFixed(1)}%</span>;
+      return <span className="ml-1 font-bold text-green-600" title={`Last Week: ${prevConv.toFixed(1)}%`}>▲ {diff.toFixed(1)}%</span>;
     } else {
-      return <span className="ml-1 font-bold text-red-600" title={`Prev: ${prevConv.toFixed(1)}%`}>▼ {Math.abs(diff).toFixed(1)}%</span>;
+      return <span className="ml-1 font-bold text-red-600" title={`Last Week: ${prevConv.toFixed(1)}%`}>▼ {Math.abs(diff).toFixed(1)}%</span>;
     }
   };
 
