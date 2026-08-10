@@ -215,6 +215,61 @@ const onCallLogicBuyer = (customer) => {
   };
 };
 
+const mondayException = (customer) => {
+  const today = new Date();
+  const todayWeekdayName = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    timeZone: "Asia/Kolkata",
+  }).format(today);
+
+  if (todayWeekdayName === "Monday") {
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: 100,
+      reason: "Monday Exception: Today is Monday, skipping delivery.",
+    };
+  }
+
+  return {
+    suggestion: "TURN_ON_TODAY",
+    confidence: 100,
+    reason: "Monday Exception: Today is not Monday, proceeding with delivery.",
+  };
+};
+
+const monthEndException = (customer) => {
+  const todayStr = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+  const parts = todayStr.split("-");
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  const lastDayOfThisMonth = new Date(year, month, 0).getDate();
+  const isMonthEnd = day === lastDayOfThisMonth;
+
+  if (isMonthEnd) {
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: 100,
+      reason: `Month-End Exception: Today is the last day of the month (${todayStr}), skipping delivery.`,
+    };
+  }
+
+  return {
+    suggestion: "TURN_ON_TODAY",
+    confidence: 100,
+    reason: `Month-End Exception: Today is not the last day of the month, proceeding with delivery.`,
+  };
+};
+
+const churnBuyer = (customer) => {
+  return {
+    suggestion: "TURN_OFF_TODAY",
+    confidence: 100,
+    reason: "Customer is flagged as Churn, so always suggest OFF.",
+  };
+};
+
 // --- Main Engine Function ---
 
 export const BUYING_PATTERNS = [
@@ -237,7 +292,10 @@ export const BUYING_PATTERNS = [
   "All Days Except Thursday",
   "All Days Except Friday",
   "All Days Except Saturday",
-  "On Call Logic Buyer"
+  "On Call Logic Buyer",
+  "Monday Exception",
+  "Month-End Exception",
+  "Churn"
 ];
 
 const evaluatePattern = (customer, pattern) => {
@@ -286,6 +344,12 @@ const evaluatePattern = (customer, pattern) => {
       return exceptWeekdayBuyer("Saturday");
     case "On Call Logic Buyer":
       return onCallLogicBuyer(customer);
+    case "Monday Exception":
+      return mondayException(customer);
+    case "Month-End Exception":
+      return monthEndException(customer);
+    case "Churn":
+      return churnBuyer(customer);
     default:
       return {
         suggestion: "TURN_OFF_TODAY",

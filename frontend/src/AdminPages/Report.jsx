@@ -355,7 +355,8 @@ const Report = () => {
       const entryObj = typeof entry === "string" ? { status: entry } : entry;
       const status = String(entryObj.status || "").toLowerCase();
       
-      if (status !== "pending" && status !== "") {
+      if (status && status !== "pending") {
+        const statusKey = status === "delivered" ? "delivered" : "checked";
         let agentName = "Not Assigned";
         if (entryObj.agentName) {
             agentName = getDeliveryAgentName({ name: entryObj.agentName }) || "Not Assigned";
@@ -365,36 +366,46 @@ const Report = () => {
           stats.agents[agentName] = { checked: 0, delivered: 0, total: 0 };
         }
 
-        if (status === "delivered") {
+        if (statusKey === "delivered") {
           stats.delivered += 1;
           stats.agents[agentName].delivered += 1;
-        } else if (status === "checked") {
+        } else {
           stats.checked += 1;
           stats.agents[agentName].checked += 1;
         }
 
-        if (status === "checked" || status === "delivered") {
-          stats.total += 1;
-          stats.agents[agentName].total += 1;
-        }
+        stats.total += 1;
+        stats.agents[agentName].total += 1;
       }
     });
     return stats;
   }, [allCustomers, lastWeekDate]);
 
   const renderConversionDiff = (currentTotal, currentDelivered, prevTotal, prevDelivered) => {
+    if (!prevTotal || prevTotal === 0) return null;
+
     const currentConv = currentTotal > 0 ? (currentDelivered / currentTotal) * 100 : 0;
-    const prevConv = prevTotal > 0 ? (prevDelivered / prevTotal) * 100 : 0;
-    
-    if (currentTotal === 0 && prevTotal === 0) return null;
+    const prevConv = (prevDelivered / prevTotal) * 100;
     
     const diff = currentConv - prevConv;
+    const prevText = `(Last Week: ${prevConv.toFixed(1)}%)`;
+    
     if (Math.abs(diff) < 0.1) {
-      return null;
+      return <span className="ml-1.5 text-slate-500 font-normal">{prevText}</span>;
     } else if (diff > 0) {
-      return <span className="ml-1 font-bold text-green-600" title={`Last Week: ${prevConv.toFixed(1)}%`}>▲ {diff.toFixed(1)}%</span>;
+      return (
+        <span className="ml-1.5 inline-flex items-center gap-1 font-normal text-slate-500">
+          <span>{prevText}</span>
+          <span className="font-bold text-green-600">▲ {diff.toFixed(1)}%</span>
+        </span>
+      );
     } else {
-      return <span className="ml-1 font-bold text-red-600" title={`Last Week: ${prevConv.toFixed(1)}%`}>▼ {Math.abs(diff).toFixed(1)}%</span>;
+      return (
+        <span className="ml-1.5 inline-flex items-center gap-1 font-normal text-slate-500">
+          <span>{prevText}</span>
+          <span className="font-bold text-red-600">▼ {Math.abs(diff).toFixed(1)}%</span>
+        </span>
+      );
     }
   };
 
