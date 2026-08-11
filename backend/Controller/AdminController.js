@@ -98,8 +98,8 @@ const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(last8Days);
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
-      customerData.peakFrequency ||
-      customerData.peak_frequency,
+    customerData.peakFrequency ||
+    customerData.peak_frequency,
   );
 
   return getPeakFrequencyNumber(savedPeak) >=
@@ -187,8 +187,8 @@ const updateLast8Days = async (
     const peakFrequency = resolvePeakFrequency(customerData, last8Days);
     const savedPeak = normalizePeakFrequency(
       customerData.Peak_Frequency ||
-        customerData.peakFrequency ||
-        customerData.peak_frequency,
+      customerData.peakFrequency ||
+      customerData.peak_frequency,
     );
 
     // ⭐ COMPUTE CURRENT CATEGORY FROM last8Days
@@ -592,9 +592,9 @@ const getRetentionCustomers = async (req, res) => {
         if (typeof nestedAgent === "object") {
           const nestedName = String(
             nestedAgent.name ||
-              nestedAgent.display_name ||
-              nestedAgent.agentName ||
-              "",
+            nestedAgent.display_name ||
+            nestedAgent.agentName ||
+            "",
           ).trim();
           if (nestedName) return nestedName;
         }
@@ -1329,7 +1329,7 @@ const updateRoute = async (req, res) => {
       if (!customersSnap.empty) {
         const batch = db.batch();
         customersSnap.forEach(doc => {
-           batch.update(doc.ref, { route: newName });
+          batch.update(doc.ref, { route: newName });
         });
         await batch.commit();
       }
@@ -1385,7 +1385,7 @@ const deleteRoute = async (req, res) => {
     if (!customersSnap.empty) {
       const batch = db.batch();
       customersSnap.forEach(doc => {
-         batch.update(doc.ref, { route: "" });
+        batch.update(doc.ref, { route: "" });
       });
       await batch.commit();
     }
@@ -1903,10 +1903,10 @@ const saveWeeklySchedule = async (req, res) => {
         const patchRows = (rows) =>
           Array.isArray(rows)
             ? rows.map((row) =>
-                row.id === customerId
-                  ? { ...row, weeklySchedule: normalizedSchedule }
-                  : row,
-              )
+              row.id === customerId
+                ? { ...row, weeklySchedule: normalizedSchedule }
+                : row,
+            )
             : rows;
 
         if (Array.isArray(cachedPayload)) {
@@ -2004,8 +2004,8 @@ const toggleTodayDelivery = async (req, res) => {
         const patchRows = (rows) =>
           Array.isArray(rows)
             ? rows.map((row) =>
-                row.id === id ? { ...row, todayOverride } : row,
-              )
+              row.id === id ? { ...row, todayOverride } : row,
+            )
             : rows;
 
         if (Array.isArray(cachedPayload)) {

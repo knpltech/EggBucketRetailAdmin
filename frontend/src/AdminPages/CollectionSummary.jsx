@@ -1171,8 +1171,8 @@ const CollectionSummary = () => {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 rounded-xl border font-medium transition ${activeTab === tab
-                ? "bg-black text-white border-black"
-                : "bg-white text-gray-900 border-gray-200 hover:border-gray-300"
+              ? "bg-black text-white border-black"
+              : "bg-white text-gray-900 border-gray-200 hover:border-gray-300"
               }`}
           >
             {tab}
@@ -1307,12 +1307,13 @@ const CollectionSummary = () => {
 
       {/* Summary Stats Cards */}
       {/* Row 1 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {(() => {
           const sales = displayedMetrics.nettSales;
           const load = displayedMetrics.totalLoad;
           const ret = displayedMetrics.totalReturn;
           const dmg = displayedMetrics.totalDamage;
+          const inc = displayedMetrics.incentives || 0;
 
           const cards = [
             {
@@ -1346,6 +1347,13 @@ const CollectionSummary = () => {
               color: "border-t-orange-500",
               unit: "Pcs",
               topRight: "Qty",
+            },
+            {
+              label: "Incentives",
+              value: inc,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-purple-500",
+              topRight: "Amt",
             },
           ];
 
@@ -1425,7 +1433,8 @@ const CollectionSummary = () => {
           const cash = displayedMetrics.cashHandover || 0;
           const upiHandover = displayedMetrics.upiHandover || 0;
           const food = displayedMetrics.foodAllowance || 0;
-          const inc = displayedMetrics.incentives || 0;
+          const totalUpi = filteredTotals.totalUpi || 0;
+          const upiBalance = totalUpi - upiHandover;
           // difference/balance = Total Cash - Cash Handover - Food Allowance
           const totalCash = filteredTotals.totalCash || 0;
           const diff = totalCash - cash - food;
@@ -1453,14 +1462,19 @@ const CollectionSummary = () => {
               topRight: "Amt",
             },
             {
-              label: "Incentives",
-              value: inc,
-              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              label: "UPI Balance",
+              value: upiBalance,
+              format: (v) => {
+                if (v < 0) {
+                  return `-₹${Math.abs(v).toLocaleString("en-IN")}`;
+                }
+                return `₹${v.toLocaleString("en-IN")}`;
+              },
               color: "border-t-purple-500",
               topRight: "Amt",
             },
             {
-              label: "Difference/Balance",
+              label: "Cash Balance",
               value: diff,
               format: (v) => {
                 if (v < 0) {
@@ -1614,8 +1628,8 @@ const CollectionSummary = () => {
                 <td className="p-3 text-center">
                   <span
                     className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${item.paymentMethod === "CASH"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-purple-100 text-purple-800"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-purple-100 text-purple-800"
                       }`}
                   >
                     {item.paymentMethod}
