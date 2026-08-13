@@ -71,6 +71,7 @@ const CollectionSummary = () => {
   const [selectedAgent, setSelectedAgent] = useState("all");
   const [selectedOutlet, setSelectedOutlet] = useState("all");
   const [deliveryPartners, setDeliveryPartners] = useState([]);
+  const [salesPartners, setSalesPartners] = useState([]);
   const [sortBy] = useState("delivery-time");
   const [todaysPrice, setTodaysPrice] = useState("");
   const [minusAmounts, setMinusAmounts] = useState({});
@@ -262,18 +263,24 @@ const CollectionSummary = () => {
     }
   };
 
-  // Helper to match delivery partner names fuzzily (handles case variations, first-name matches, and common spelling differences like Bishal/Vishal)
+  // Helper to match partner names fuzzily (handles case variations, first-name matches, and common spelling differences like Bishal/Vishal)
   const findPartnerByName = useCallback((name) => {
     if (!name) return null;
     const clean = name.toLowerCase().replace(/[^a-z]/g, "");
 
-    // 1. Try exact match first
+    // 1. Try exact match first in delivery partners
     let found = deliveryPartners.find(
       (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
     );
     if (found) return found;
 
-    // 2. Try matching first word / substring
+    // 2. Try exact match in sales partners
+    found = salesPartners.find(
+      (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
+    );
+    if (found) return found;
+
+    // 3. Try matching first word / substring in delivery partners
     const firstWord = name.toLowerCase().trim().split(/\s+/)[0];
     found = deliveryPartners.find((p) => {
       const pName = p.name?.toLowerCase().trim();
@@ -283,16 +290,32 @@ const CollectionSummary = () => {
     });
     if (found) return found;
 
-    // 3. Try matching Bishal / Vishal similarity
+    // 4. Try matching first word / substring in sales partners
+    found = salesPartners.find((p) => {
+      const pName = p.name?.toLowerCase().trim();
+      if (!pName) return false;
+      const pFirstWord = pName.split(/\s+/)[0];
+      return pFirstWord === firstWord || pName.includes(firstWord) || firstWord.includes(pName);
+    });
+    if (found) return found;
+
+    // 5. Try matching Bishal / Vishal similarity
     if (clean.includes("bishal") || clean.includes("vishal")) {
-      return deliveryPartners.find((p) => {
+      found = deliveryPartners.find((p) => {
         const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
         return pClean.includes("vishal") || pClean.includes("bishal");
       });
+      if (found) return found;
+
+      found = salesPartners.find((p) => {
+        const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
+        return pClean.includes("vishal") || pClean.includes("bishal");
+      });
+      if (found) return found;
     }
 
     return null;
-  }, [deliveryPartners]);
+  }, [deliveryPartners, salesPartners]);
 
   // Calculate metrics based on selected outlet and agent filters
   const displayedMetrics = useMemo(() => {
@@ -492,7 +515,7 @@ const CollectionSummary = () => {
       foodAllowance: filteredFood,
       incentives: filteredIncentive,
     };
-  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners, findPartnerByName]);
+  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners, salesPartners, findPartnerByName]);
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -793,10 +816,11 @@ const CollectionSummary = () => {
     setRefreshing(true);
     setError("");
     try {
-      // Fetch full customer data and delivery partners
-      const [res, delPartnersRes, peakRes] = await Promise.all([
+      // Fetch full customer data, delivery partners, and sales partners
+      const [res, delPartnersRes, salesPartnersRes, peakRes] = await Promise.all([
         axios.get(`${ADMIN_PATH}/user-info`),
         axios.get(`${ADMIN_PATH}/get-del-partner`),
+        axios.get(`${ADMIN_PATH}/get-sales-partner`).catch(() => ({ data: [] })),
         axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} }))
       ]);
       if (Array.isArray(res.data)) {
@@ -808,6 +832,7 @@ const CollectionSummary = () => {
         setError("Failed to fetch collection summary");
       }
       setDeliveryPartners(delPartnersRes.data || []);
+      setSalesPartners(salesPartnersRes.data || []);
       setCategoryPeaks(peakRes.data || {});
 
       // Also fetch inventory metrics for the selected date
@@ -1220,7 +1245,7 @@ const CollectionSummary = () => {
               if (newOutlet === "all") {
                 setSelectedAgent("all");
               } else {
-                const partner = deliveryPartners.find(p => p.outlet === newOutlet);
+                const partner = deliveryPartners.find(p => p.outlet === newOutlet) || salesPartners.find(p => p.outlet === newOutlet);
                 if (partner && partner.name) {
                   setSelectedAgent(partner.name);
                 } else {
@@ -1231,11 +1256,18 @@ const CollectionSummary = () => {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
           >
             <option value="all">All Outlets</option>
-            {Array.from(new Set(deliveryPartners.map(p => p.outlet).filter(Boolean))).sort().map((outlet) => (
-              <option key={outlet} value={outlet}>
-                {outlet}
-              </option>
-            ))}
+            {Array.from(
+              new Set([
+                ...deliveryPartners.map((p) => p.outlet),
+                ...salesPartners.map((p) => p.outlet),
+              ].filter(Boolean))
+            )
+              .sort()
+              .map((outlet) => (
+                <option key={outlet} value={outlet}>
+                  {outlet}
+                </option>
+              ))}
           </select>
         </div>
 
