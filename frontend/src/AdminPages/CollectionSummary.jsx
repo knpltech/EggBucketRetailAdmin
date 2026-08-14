@@ -268,50 +268,64 @@ const CollectionSummary = () => {
     if (!name) return null;
     const clean = name.toLowerCase().replace(/[^a-z]/g, "");
 
-    // 1. Try exact match first in delivery partners
-    let found = deliveryPartners.find(
+    // --- Tier 1 & 2: Exact Match ---
+    const exactDel = deliveryPartners.find(
       (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
     );
-    if (found) return found;
-
-    // 2. Try exact match in sales partners
-    found = salesPartners.find(
+    const exactSales = salesPartners.find(
       (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
     );
-    if (found) return found;
 
-    // 3. Try matching first word / substring in delivery partners
+    if (exactDel && exactDel.outlet) return exactDel;
+    if (exactSales && exactSales.outlet) return exactSales;
+    if (exactDel) return exactDel;
+    if (exactSales) return exactSales;
+
+    // --- Tier 3 & 4: Substring / First Word Match ---
     const firstWord = name.toLowerCase().trim().split(/\s+/)[0];
-    found = deliveryPartners.find((p) => {
+    const subMatchesDel = deliveryPartners.filter((p) => {
       const pName = p.name?.toLowerCase().trim();
       if (!pName) return false;
       const pFirstWord = pName.split(/\s+/)[0];
       return pFirstWord === firstWord || pName.includes(firstWord) || firstWord.includes(pName);
     });
-    if (found) return found;
 
-    // 4. Try matching first word / substring in sales partners
-    found = salesPartners.find((p) => {
+    const subMatchesSales = salesPartners.filter((p) => {
       const pName = p.name?.toLowerCase().trim();
       if (!pName) return false;
       const pFirstWord = pName.split(/\s+/)[0];
       return pFirstWord === firstWord || pName.includes(firstWord) || firstWord.includes(pName);
     });
-    if (found) return found;
 
-    // 5. Try matching Bishal / Vishal similarity
+    const subWithOutletDel = subMatchesDel.find((p) => p.outlet);
+    if (subWithOutletDel) return subWithOutletDel;
+
+    const subWithOutletSales = subMatchesSales.find((p) => p.outlet);
+    if (subWithOutletSales) return subWithOutletSales;
+
+    if (subMatchesDel.length > 0) return subMatchesDel[0];
+    if (subMatchesSales.length > 0) return subMatchesSales[0];
+
+    // --- Tier 5 & 6: Similarity Match (Bishal/Vishal) ---
     if (clean.includes("bishal") || clean.includes("vishal")) {
-      found = deliveryPartners.find((p) => {
+      const simMatchesDel = deliveryPartners.filter((p) => {
         const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
         return pClean.includes("vishal") || pClean.includes("bishal");
       });
-      if (found) return found;
 
-      found = salesPartners.find((p) => {
+      const simMatchesSales = salesPartners.filter((p) => {
         const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
         return pClean.includes("vishal") || pClean.includes("bishal");
       });
-      if (found) return found;
+
+      const simWithOutletDel = simMatchesDel.find((p) => p.outlet);
+      if (simWithOutletDel) return simWithOutletDel;
+
+      const simWithOutletSales = simMatchesSales.find((p) => p.outlet);
+      if (simWithOutletSales) return simWithOutletSales;
+
+      if (simMatchesDel.length > 0) return simMatchesDel[0];
+      if (simMatchesSales.length > 0) return simMatchesSales[0];
     }
 
     return null;
