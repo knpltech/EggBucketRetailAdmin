@@ -104,7 +104,8 @@ const AnalyticsView = () => {
       normalizedType === "price_mismatch" ||
       normalizedType === "shop_closed" ||
       normalizedType === "stock_available" ||
-      normalizedType === "other_vendor"
+      normalizedType === "other_vendor" ||
+      normalizedType === "confirmed_tomorrow"
     ) {
       // All checked types (reached + reason codes)
       bg = "#FB8C00"; // orange-yellow

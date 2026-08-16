@@ -175,7 +175,8 @@ const Analytics = () => {
       normalizedType === "price_mismatch" ||
       normalizedType === "shop_closed" ||
       normalizedType === "stock_available" ||
-      normalizedType === "other_vendor"
+      normalizedType === "other_vendor" ||
+      normalizedType === "confirmed_tomorrow"
     ) {
       // All "checked" variants
       bg = "#F59E0B"; // softer orange
@@ -284,7 +285,8 @@ const Analytics = () => {
       s === "price_mismatch" ||
       s === "shop_closed" ||
       s === "stock_available" ||
-      s === "other_vendor"
+      s === "other_vendor" ||
+      s === "confirmed_tomorrow"
     ) {
       return "CHECKED ";
     }
@@ -895,6 +897,7 @@ function getDayRemarkText(day = {}) {
       "shop_closed",
       "stock_available",
       "other_vendor",
+      "confirmed_tomorrow",
     ].includes(type)
   ) {
     return normalizeReasonLabel(day.reason) || "Checked";

@@ -9,6 +9,7 @@ const CATEGORY_OPTIONS = [
   { value: "stock_available", label: "Stock Available" },
   { value: "shop_closed", label: "Shop Closed" },
   { value: "other_vendor", label: "Other Vendor" },
+  { value: "confirmed_tomorrow", label: "Confirmed Tomorrow" },
 ];
 const SORT_OPTIONS = [
   { value: "name", label: "Name" },
@@ -22,6 +23,7 @@ const CHECKED_TYPES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 const ROWS_PER_PAGE = 25;
 const RETENTION_CACHE_TTL_MS = 60 * 60 * 1000; // 1 HOUR - super aggressive caching to minimize API calls
@@ -107,6 +109,14 @@ const getCurrentCategoryClasses = (category) => {
   if (!Number.isFinite(num) || num <= 2) return "bg-[#FF3B30] text-white";
   if (num <= 4) return "bg-[#FB8C00] text-white";
   return "bg-[#0F9D58] text-white";
+};
+
+const getDeliveryGapColor = (gap) => {
+  const match = String(gap || "").match(/^G?(\d+)$/);
+  const n = match ? Number(match[1]) : 10;
+  if (n === 0) return "#0F9D58";
+  if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
 };
 
 const getDeliveredTrayCount = (status) => {
@@ -225,6 +235,7 @@ const getStatusFromDelivery = (delivery) => {
     "stock_available",
     "shop_closed",
     "other_vendor",
+    "confirmed_tomorrow",
   ];
   const normalizedType = type === "price_mismatch" ? "shop_closed" : type;
   const normalizedReasonLabel = normalizedReason === "price_mismatch" ? "shop_closed" : normalizedReason;
@@ -255,7 +266,9 @@ const getStatusFromDelivery = (delivery) => {
           ? "Shop Closed"
           : finalCategory === "other_vendor"
             ? "Other Vendor"
-            : "";
+            : finalCategory === "confirmed_tomorrow"
+              ? "Confirmed Tomorrow"
+              : "";
 
     return {
       key: "checked",
@@ -286,6 +299,14 @@ const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
       <td className="px-2 py-2 text-center align-middle">
         <span className={`inline-flex min-w-[42px] items-center justify-center rounded-full px-2 py-1 text-[10px] font-semibold ${getCurrentCategoryClasses(customer.currentCategory)}`}>
           {customer.currentCategory || "-"}
+        </span>
+      </td>
+      <td className="px-2 py-2 text-center align-middle">
+        <span
+          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2 py-1 text-[10px] font-semibold text-white"
+          style={{ backgroundColor: getDeliveryGapColor(customer.deliveryGap) }}
+        >
+          {customer.deliveryGap || "-"}
         </span>
       </td>
 
@@ -337,6 +358,7 @@ const CustomerRetention = () => {
     stockAvailable: 0,
     shopClosed: 0,
     otherVendor: 0,
+    confirmedTomorrow: 0,
     totalShops: 0,
   });
   const [startRange, setStartRange] = useState("");
@@ -348,6 +370,7 @@ const CustomerRetention = () => {
     stock_available: 0,
     shop_closed: 0,
     other_vendor: 0,
+    confirmed_tomorrow: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -370,9 +393,9 @@ const CustomerRetention = () => {
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
         setCustomers(cached.customers || []);
-        setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0 });
+        setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0, confirmed_tomorrow: 0 });
         setComputedAgentStats(cached.agentStats || []);
-        setComputedOverallStats(cached.overallStats || { stockAvailable: 0, shopClosed: 0, otherVendor: 0, totalShops: 0 });
+        setComputedOverallStats(cached.overallStats || { stockAvailable: 0, shopClosed: 0, otherVendor: 0, confirmedTomorrow: 0, totalShops: 0 });
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
         setError("");
@@ -415,6 +438,7 @@ const CustomerRetention = () => {
           stock_available: 0,
           shop_closed: 0,
           other_vendor: 0,
+          confirmed_tomorrow: 0,
           ...(payload.counts || {}),
         };
         newCounts.shop_closed =
@@ -428,6 +452,7 @@ const CustomerRetention = () => {
           stockAvailable: 0,
           shopClosed: 0,
           otherVendor: 0,
+          confirmedTomorrow: 0,
           totalShops: 0,
         };
 
@@ -743,11 +768,11 @@ const CustomerRetention = () => {
               className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">
-                {`All Delivery Agents | Stock Available: ${computedOverallStats.stockAvailable} | Shop Closed: ${computedOverallStats.shopClosed} | Other Vendor: ${computedOverallStats.otherVendor} | Total Shops: ${computedOverallStats.totalShops}`}
+                {`All Delivery Agents | Stock Available: ${computedOverallStats.stockAvailable} | Shop Closed: ${computedOverallStats.shopClosed} | Other Vendor: ${computedOverallStats.otherVendor} | Confirmed Tomorrow: ${computedOverallStats.confirmedTomorrow || 0} | Total Shops: ${computedOverallStats.totalShops}`}
               </option>
               {computedAgentStats.map((agent) => (
                 <option key={agent.name} value={agent.name}>
-                  {`${agent.name} | Stock Available: ${agent.stockAvailable} | Shop Closed: ${agent.shopClosed} | Other Vendor: ${agent.otherVendor} | Total Shops: ${agent.totalShops}`}
+                  {`${agent.name} | Stock Available: ${agent.stockAvailable} | Shop Closed: ${agent.shopClosed} | Other Vendor: ${agent.otherVendor} | Confirmed Tomorrow: ${agent.confirmedTomorrow || 0} | Total Shops: ${agent.totalShops}`}
                 </option>
               ))}
             </select>
@@ -860,6 +885,7 @@ const CustomerRetention = () => {
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Current Category</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Delivery Gap</th>
               {dates.map((date, index) => {
                 const label = formatDayHeader(date);
                 const isTodayColumn = index === dates.length - 1;
@@ -879,7 +905,7 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={7 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -895,7 +921,7 @@ const CustomerRetention = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={6 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={7 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>

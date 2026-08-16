@@ -349,6 +349,7 @@ export default function CustomerManagement() {
         "price_mismatch",
         "stock_available",
         "other_vendor",
+        "confirmed_tomorrow",
       ].includes(todayStatus)
     )
       return "Checked";
@@ -667,7 +668,7 @@ export default function CustomerManagement() {
         const entry = last8Days[dateStr];
         const st = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
         if (st === "delivered") return "Delivered";
-        if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor"].includes(st)) return "Checked";
+        if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "confirmed_tomorrow"].includes(st)) return "Checked";
         return "Pending";
       };
 
@@ -809,6 +810,7 @@ export default function CustomerManagement() {
       "stock_available",
       "other_vendor",
       "shop_closed",
+      "confirmed_tomorrow",
     ];
 
     if (completedStatuses.includes(todayStatus)) {
@@ -1386,6 +1388,7 @@ export default function CustomerManagement() {
                       "stock_available",
                       "other_vendor",
                       "shop_closed",
+                      "confirmed_tomorrow",
                     ];
 
                     const isCompleted = completedStatuses.includes(todayStatus);

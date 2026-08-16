@@ -94,6 +94,42 @@ const getCurrentCategoryFromLast8Days = (last8Days = {}, baseDate = new Date()) 
   return `D${Math.min(count, 7)}`;
 };
 
+const getDateDayNumber = (dateStr) => {
+  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const time = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(time)) return null;
+  return Math.floor(time / 86400000);
+};
+
+const computeDeliveryGap = (last8Days, todayDate) => {
+  if (!last8Days || typeof last8Days !== "object") return "G10";
+  const todayDayNumber = getDateDayNumber(todayDate);
+  if (todayDayNumber === null) return "G10";
+  let latestDeliveredDayNumber = null;
+  Object.entries(last8Days).forEach(([dateStr, entry]) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (status !== "delivered") return;
+    const dayNumber = getDateDayNumber(dateStr);
+    if (dayNumber === null || dayNumber > todayDayNumber) return;
+    if (
+      latestDeliveredDayNumber === null ||
+      dayNumber > latestDeliveredDayNumber
+    ) {
+      latestDeliveredDayNumber = dayNumber;
+    }
+  });
+  if (latestDeliveredDayNumber === null) return "G10";
+  return `G${todayDayNumber - latestDeliveredDayNumber}`;
+};
+
 const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(last8Days);
   const savedPeak = normalizePeakFrequency(
@@ -148,6 +184,7 @@ const updateLast8Days = async (
         "shop_closed",
         "stock_available",
         "other_vendor",
+        "confirmed_tomorrow",
       ].includes(normalizedType)
     ) {
       status = normalizedType;
@@ -319,7 +356,8 @@ const getStatusAndReasonFromType = (type, checkReason) => {
     normalizedType === "price_mismatch" ||
     normalizedType === "shop_closed" ||
     normalizedType === "stock_available" ||
-    normalizedType === "other_vendor"
+    normalizedType === "other_vendor" ||
+    normalizedType === "confirmed_tomorrow"
   ) {
     return { status: "Checked", reason: checkReason || null };
   } else {
@@ -332,6 +370,7 @@ const RETENTION_CATEGORIES = [
   "price_mismatch",
   "shop_closed",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const normalizeRetentionCategory = (value) => {
@@ -373,6 +412,7 @@ const getRetentionCategoryLabel = (category) => {
     return "Shop Closed";
   if (category === "stock_available") return "Stock Available";
   if (category === "other_vendor") return "Other Vendor";
+  if (category === "confirmed_tomorrow") return "Confirmed Tomorrow";
   return "-";
 };
 
@@ -489,6 +529,7 @@ const RETENTION_CHECKED_STATUSES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const getRetentionCheckedCustomerDocsCached = async (db, todayKey) => {
@@ -644,6 +685,7 @@ const getRetentionCustomers = async (req, res) => {
         "shop_closed",
         "stock_available",
         "other_vendor",
+        "confirmed_tomorrow",
       ];
       if (checkedStatuses.includes(status)) {
         return "checked";
@@ -716,6 +758,7 @@ const getRetentionCustomers = async (req, res) => {
       price_mismatch: 0,
       shop_closed: 0,
       other_vendor: 0,
+      confirmed_tomorrow: 0,
     };
     const todayDeliveriesMap = {};
     const customerCategories = {};
@@ -769,6 +812,7 @@ const getRetentionCustomers = async (req, res) => {
       stockAvailable: 0,
       shopClosed: 0,
       otherVendor: 0,
+      confirmedTomorrow: 0,
       totalShops: 0,
     });
     const addCategoryToStats = (stats, category) => {
@@ -778,6 +822,8 @@ const getRetentionCustomers = async (req, res) => {
         stats.shopClosed += 1;
       } else if (category === "other_vendor") {
         stats.otherVendor += 1;
+      } else if (category === "confirmed_tomorrow") {
+        stats.confirmedTomorrow += 1;
       }
       stats.totalShops += 1;
     };
@@ -948,6 +994,7 @@ const getRetentionCustomers = async (req, res) => {
             customer.last8Days,
             new Date(`${todayKey}T00:00:00`),
           ),
+          deliveryGap: computeDeliveryGap(customer.last8Days, todayKey),
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
@@ -977,6 +1024,7 @@ const getRetentionCustomers = async (req, res) => {
         { value: "price_mismatch", label: "Shop Closed" },
         { value: "shop_closed", label: "Shop Closed" },
         { value: "other_vendor", label: "Other Vendor" },
+        { value: "confirmed_tomorrow", label: "Confirmed Tomorrow" },
       ],
       counts,
       deliveryAgentOptions,

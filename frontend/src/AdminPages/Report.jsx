@@ -8,7 +8,7 @@ import { saveAs } from "file-saver";
 
 import { ADMIN_PATH } from "../constant";
 
-const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR"];
+const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR", "CONFIRMED TOMORROW"];
 const TRAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100];
 const CHECKED_TYPES = [
   "reached",
@@ -16,6 +16,7 @@ const CHECKED_TYPES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const Report = () => {
