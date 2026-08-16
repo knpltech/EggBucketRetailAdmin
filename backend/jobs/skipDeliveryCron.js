@@ -202,6 +202,7 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
       "shop_closed",
       "stock_available",
       "other_vendor",
+      "confirmed_tomorrow",
     ];
 
     const isCompleted = completedStatuses.includes(todayStatus);

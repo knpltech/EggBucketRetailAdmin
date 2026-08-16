@@ -452,6 +452,7 @@ export const getTodayDeliveryStatus = (
     "shop_closed",
     "stock_available",
     "other_vendor",
+    "confirmed_tomorrow",
   ];
 
   if (checkedStatuses.includes(apiStatus)) {

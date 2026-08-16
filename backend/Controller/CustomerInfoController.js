@@ -233,6 +233,7 @@ const getStatusAndReasonFromType = (type, checkReason = "") => {
     price_mismatch: "Price Mismatch",
     stock_available: "Stock Available",
     other_vendor: "Other Vendor",
+    confirmed_tomorrow: "Confirmed Tomorrow",
   };
 
   const normalizeReasonLabel = (value = "") => {

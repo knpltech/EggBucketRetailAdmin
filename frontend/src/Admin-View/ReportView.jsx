@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ADMIN_PATH } from "../constant";
 
-const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR"];
+const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR", "CONFIRMED TOMORROW"];
 const TRAY_OPTIONS = [...Array.from({ length: 9 }, (_, idx) => idx + 1), 10];
 const CHECKED_TYPES = [
   "reached",
@@ -9,6 +9,7 @@ const CHECKED_TYPES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const ReportV = () => {
