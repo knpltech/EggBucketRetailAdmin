@@ -325,6 +325,8 @@ const Analytics = () => {
       "Customer ID",
       "Name",
       "Zone",
+      "Peak Freq",
+      "Current Category",
       ...dateList.map(
         (d) =>
           `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}`,
@@ -339,6 +341,8 @@ const Analytics = () => {
         c.custid || "",
         c.name || "",
         c.zone || "UNASSIGNED",
+        getPeakFrequencyLabel(c),
+        getCurrentCategory(c),
       ];
 
       dateList.forEach((day) => {
@@ -364,6 +368,8 @@ const Analytics = () => {
       { wch: 14 }, // Customer ID
       { wch: 36 }, // Name - made wider for long names
       { wch: 18 }, // zone
+      { wch: 12 }, // Peak Freq
+      { wch: 18 }, // Current Category
       ...dateList.map(() => ({ wch: 12 })),
     ];
     ws["!cols"] = cols;

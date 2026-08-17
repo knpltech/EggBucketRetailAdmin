@@ -219,12 +219,35 @@ const DummyAISuggestions = () => {
   };
 
   const processedData = useMemo(() => {
+    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+
     const data = customers.map((customer) => {
       const customerPattern = rowPatterns[customer.id] || "UnAssigned";
       const secondaryPattern = rowSecondaryPatterns[customer.id] || "UnAssigned";
+
+      // Precompute expensive values for sorting & filtering
+      const currentCategory = computeCurrentCategory(customer.last8Days);
+      const currentCategoryNumber = getCurrentCategoryNumber(currentCategory);
+
+      const peakFrequencyStr = resolvePeakFrequency(customer);
+      const peakFrequencyNumber = getPeakFrequencyNumber(peakFrequencyStr);
+
+      const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+      const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+      const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
+
+      const potentialNumber = getPotentialNumber(customer.potential);
+
       return {
         customer,
         suggestion: generateDummyAISuggestion(customer, customerPattern, secondaryPattern),
+        currentCategory,
+        currentCategoryNumber,
+        peakFrequencyStr,
+        peakFrequencyNumber,
+        deliveryGapStr,
+        deliveryGapNumber,
+        potentialNumber,
       };
     });
 
@@ -283,7 +306,7 @@ const DummyAISuggestions = () => {
       const matchesPattern = patternFilter === "ALL" || customerPattern === patternFilter;
 
       // Category filter (D0, D1 TO D4, D5 TO D7)
-      const currentCategory = computeCurrentCategory(item.customer.last8Days);
+      const currentCategory = item.currentCategory;
       let matchesCategory = false;
       if (categoryFilter === "ALL") {
         matchesCategory = true;
@@ -326,24 +349,19 @@ const DummyAISuggestions = () => {
         });
       case "PEAK_FREQUENCY":
         return dataToSort.sort((a, b) => {
-          const diff =
-            getPeakFrequencyNumber(resolvePeakFrequency(b.customer)) -
-            getPeakFrequencyNumber(resolvePeakFrequency(a.customer));
-          return diff || compareByName(a, b);
+          return b.peakFrequencyNumber - a.peakFrequencyNumber || compareByName(a, b);
+        });
+      case "CURRENT_CATEGORY":
+        return dataToSort.sort((a, b) => {
+          return b.currentCategoryNumber - a.currentCategoryNumber || compareByName(a, b);
         });
       case "PEAK_POTENTIAL":
         return dataToSort.sort((a, b) => {
-          const diff =
-            getPotentialNumber(b.customer.potential) -
-            getPotentialNumber(a.customer.potential);
-          return diff || compareByName(a, b);
+          return b.potentialNumber - a.potentialNumber || compareByName(a, b);
         });
       case "DELIVERY_GAP":
         return dataToSort.sort((a, b) => {
-          const diff =
-            getCustomerDeliveryGapNumber(a.customer) -
-            getCustomerDeliveryGapNumber(b.customer);
-          return diff || compareByName(a, b);
+          return a.deliveryGapNumber - b.deliveryGapNumber || compareByName(a, b);
         });
       case "DEFAULT":
       default:
@@ -591,6 +609,7 @@ const DummyAISuggestions = () => {
               <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
               <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
               <option value="PEAK_FREQUENCY">Peak Frequency</option>
+              <option value="CURRENT_CATEGORY">Current Category (D7 to D0)</option>
               <option value="PEAK_POTENTIAL">Peak Potential</option>
               <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
             </select>
