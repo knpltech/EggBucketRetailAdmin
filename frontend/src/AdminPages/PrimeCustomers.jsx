@@ -67,10 +67,9 @@ function computePeakPotentialNumber(last8Days = {}) {
  * Prime Customer: Peak_Potential >= T10 (i.e., >= 10 trays)
  * Regular Customer: Peak_Potential < T10 (i.e., < 10 trays)
  */
-function getPrimeCustomerType(peakPotentialNumber = 0) {
-  const num = Number(peakPotentialNumber);
-  if (!Number.isFinite(num)) return "REGULAR";
-  return num >= 10 ? "PRIME" : "REGULAR";
+function getPrimeCustomerType(customer = {}) {
+  const bt = String(customer?.businessType || "").trim().toLowerCase();
+  return (bt === "calling customer" || bt === "calling customers") ? "PRIME" : "REGULAR";
 }
 
 /**
@@ -83,8 +82,7 @@ function syncPrimeCustomer(customer = {}) {
     return { customerType: "REGULAR", needsUpdate: false };
   }
 
-  const peakPotential = computePeakPotentialNumber(customer.last8Days);
-  const calculatedType = getPrimeCustomerType(peakPotential);
+  const calculatedType = getPrimeCustomerType(customer);
 
   const storedType = String(customer.customerType || "").trim().toUpperCase();
   const normalizedStoredType =
@@ -96,7 +94,7 @@ function syncPrimeCustomer(customer = {}) {
   return {
     customerType: calculatedType,
     needsUpdate,
-    peakPotential,
+    peakPotential: computePeakPotentialNumber(customer.last8Days),
   };
 }
 
@@ -435,10 +433,9 @@ export default function PrimeCustomers() {
   const filtered = useMemo(() => {
     let list = [...customers];
     if (activeTab === "PRIME CUSTOMER") {
-      // Filter by calculated Peak Potential >= 10 from last8Days
       list = list.filter((c) => {
-        const peakPotential = computePeakPotentialNumber(c.last8Days);
-        return peakPotential >= 10;
+        const bt = String(c.businessType || "").trim().toLowerCase();
+        return bt === "calling customer" || bt === "calling customers";
       });
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
@@ -642,7 +639,10 @@ export default function PrimeCustomers() {
     };
 
     if (activeTab === "PRIME CUSTOMER") {
-      list = list.filter((c) => computePeakPotentialNumber(c.last8Days) >= 10);
+      list = list.filter((c) => {
+        const bt = String(c.businessType || "").trim().toLowerCase();
+        return bt === "calling customer" || bt === "calling customers";
+      });
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
       const yesterday = Date.now() - 24 * 60 * 60 * 1000;

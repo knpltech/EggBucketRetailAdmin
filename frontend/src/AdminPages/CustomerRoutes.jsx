@@ -65,6 +65,7 @@ export default function CustomerRoutes() {
         potentialAchieved: 0,
         yesterdayTotalCustomers: 0,
         yesterdayPotentialAchieved: 0,
+        yesterdayActiveCustomers: 0,
         agentsAssigned: {},
         assignedAgent: "Unassigned",
         assignedAgentName: "Unassigned"
@@ -79,7 +80,7 @@ export default function CustomerRoutes() {
     }).format(new Date());
 
     const yesterdayDateObj = new Date();
-    yesterdayDateObj.setDate(yesterdayDateObj.getDate() - 7);
+    yesterdayDateObj.setDate(yesterdayDateObj.getDate() - 1);
     const yesterdayDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Kolkata",
       year: "numeric",
@@ -98,6 +99,10 @@ export default function CustomerRoutes() {
 
         if (getTodayEffectiveStatus(customer) === "ON") {
           routeMap[route].activeCustomers += 1;
+        }
+
+        if (getTodayEffectiveStatus(customer, yesterdayDate) === "ON") {
+          routeMap[route].yesterdayActiveCustomers += 1;
         }
 
         const agentId = customer.assignedDeliverymen;
@@ -193,6 +198,7 @@ export default function CustomerRoutes() {
   const totalAchievedPotential = routeData.reduce((sum, route) => sum + (route.potentialAchieved || 0), 0);
   const totalYesterdayCustomers = routeData.reduce((sum, route) => sum + (route.yesterdayTotalCustomers || 0), 0);
   const totalYesterdayAchieved = routeData.reduce((sum, route) => sum + (route.yesterdayPotentialAchieved || 0), 0);
+  const totalYesterdayActive = routeData.reduce((sum, route) => sum + (route.yesterdayActiveCustomers || 0), 0);
 
   const getInitials = (name) => {
     if (!name) return "UN";
@@ -416,7 +422,10 @@ export default function CustomerRoutes() {
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Active Customers</p>
-              <p className="text-3xl font-bold text-gray-800">{totalActiveCustomers}</p>
+              <div className="flex items-end">
+                <p className="text-3xl font-bold text-gray-800">{totalActiveCustomers}</p>
+                {renderCountDiff(totalActiveCustomers, totalYesterdayActive)}
+              </div>
               <p className="text-xs text-green-500 mt-1">Ready for Delivery</p>
             </div>
             <div className="p-3 bg-green-50 rounded-lg text-green-600 text-2xl">
@@ -426,7 +435,10 @@ export default function CustomerRoutes() {
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Potential Achieved</p>
-              <p className="text-3xl font-bold text-gray-800">{totalAchievedPotential}</p>
+              <div className="flex items-end">
+                <p className="text-3xl font-bold text-gray-800">{totalAchievedPotential}</p>
+                {totalAchievedPotential > 0 && renderCountDiff(totalAchievedPotential, totalYesterdayAchieved)}
+              </div>
               <p className="text-xs text-purple-500 mt-1">Across All Routes</p>
             </div>
             <div className="p-3 bg-purple-50 rounded-lg text-purple-600 text-2xl">
@@ -531,9 +543,15 @@ export default function CustomerRoutes() {
                         <span>{route.totalCustomers}</span>
                         {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers)}
                       </div>
-                      <div className="flex-1 text-center font-bold text-green-600">{route.activeCustomers}</div>
+                      <div className="flex-1 flex justify-center items-center gap-1 font-bold text-green-600">
+                        <span>{route.activeCustomers}</span>
+                        {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers)}
+                      </div>
                       <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
-                      <div className="flex-1 text-center font-bold text-purple-600">{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</div>
+                      <div className="flex-1 flex justify-center items-center gap-1 font-bold text-purple-600">
+                        <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
+                        {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved)}
+                      </div>
                       <div className="flex-1 flex justify-center items-center font-bold text-teal-600">
                         <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
                         {renderEfficiencyDiff(

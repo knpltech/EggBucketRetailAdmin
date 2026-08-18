@@ -16,6 +16,7 @@ const TABS = [
   "ALL",
   "PRIME CUSTOMER",
   "ONBOARDING",
+  "CALLING CUSTOMER",
   "D0",
   "D1",
   "D2",
@@ -67,10 +68,9 @@ function computePeakPotentialNumber(last8Days = {}) {
  * Prime Customer: Peak_Potential >= T10 (i.e., >= 10 trays)
  * Regular Customer: Peak_Potential < T10 (i.e., < 10 trays)
  */
-function getPrimeCustomerType(peakPotentialNumber = 0) {
-  const num = Number(peakPotentialNumber);
-  if (!Number.isFinite(num)) return "REGULAR";
-  return num >= 10 ? "PRIME" : "REGULAR";
+function getPrimeCustomerType(customer = {}) {
+  const bt = String(customer?.businessType || "").trim().toLowerCase();
+  return (bt === "calling customer" || bt === "calling customers") ? "PRIME" : "REGULAR";
 }
 
 /**
@@ -83,8 +83,7 @@ function syncPrimeCustomer(customer = {}) {
     return { customerType: "REGULAR", needsUpdate: false };
   }
 
-  const peakPotential = computePeakPotentialNumber(customer.last8Days);
-  const calculatedType = getPrimeCustomerType(peakPotential);
+  const calculatedType = getPrimeCustomerType(customer);
 
   const storedType = String(customer.customerType || "").trim().toUpperCase();
   const normalizedStoredType =
@@ -96,7 +95,7 @@ function syncPrimeCustomer(customer = {}) {
   return {
     customerType: calculatedType,
     needsUpdate,
-    peakPotential,
+    peakPotential: computePeakPotentialNumber(customer.last8Days),
   };
 }
 
@@ -182,6 +181,7 @@ export default function CustomerManagement() {
       peakFrequency: c.peakFrequency || computePeakFrequency(c.last8Days),
       potential: c.potential || computePotential(c.last8Days),
       deliveryGap: c.deliveryGap || computeDeliveryGap(c.last8Days, todayDate),
+      deliveredCount: getDeliveredCountForCustomer(c),
     }));
 
   // ─── Helper: Sync Prime Customer status for all customers ─────────────────
@@ -390,10 +390,9 @@ export default function CustomerManagement() {
   const filtered = useMemo(() => {
     let list = [...customers];
     if (activeTab === "PRIME CUSTOMER") {
-      // Filter by calculated Peak Potential >= 10 from last8Days
       list = list.filter((c) => {
-        const peakPotential = computePeakPotentialNumber(c.last8Days);
-        return peakPotential >= 10;
+        const bt = String(c.businessType || "").trim().toLowerCase();
+        return bt === "calling customer" || bt === "calling customers";
       });
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
@@ -403,9 +402,17 @@ export default function CustomerManagement() {
         const createdTime = new Date(c.createdAt).getTime();
         return (now - createdTime) <= fortyFiveDaysMs;
       });
+    } else if (activeTab === "CALLING CUSTOMER") {
+      list = list.filter((c) => {
+        const bt = String(c.businessType || "").trim().toLowerCase();
+        return bt === "calling customer" || bt === "calling customers";
+      });
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
-      list = list.filter((c) => getDeliveredCount(c) === targetDays);
+      list = list.filter((c) => {
+        const count = c.deliveredCount ?? getDeliveredCount(c);
+        return count === targetDays;
+      });
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -531,6 +538,14 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
+    } else if (sortBy === "currentCategory") {
+      list.sort((a, b) => {
+        const aCount = a.deliveredCount ?? getDeliveredCountForCustomer(a);
+        const bCount = b.deliveredCount ?? getDeliveredCountForCustomer(b);
+        const diff = bCount - aCount;
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "remarks") {
       const withR = list.filter((c) => getRemarkDisplay(c) !== "");
       const noR = list.filter((c) => getRemarkDisplay(c) === "");
@@ -597,7 +612,10 @@ export default function CustomerManagement() {
     };
 
     if (activeTab === "PRIME CUSTOMER") {
-      list = list.filter((c) => computePeakPotentialNumber(c.last8Days) >= 10);
+      list = list.filter((c) => {
+        const bt = String(c.businessType || "").trim().toLowerCase();
+        return bt === "calling customer" || bt === "calling customers";
+      });
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
       const yesterday = Date.now() - 24 * 60 * 60 * 1000;
@@ -605,6 +623,11 @@ export default function CustomerManagement() {
         if (!c.createdAt) return false;
         const createdTime = new Date(c.createdAt).getTime();
         return (yesterday - createdTime) <= fortyFiveDaysMs;
+      });
+    } else if (activeTab === "CALLING CUSTOMER") {
+      list = list.filter((c) => {
+        const bt = String(c.businessType || "").trim().toLowerCase();
+        return bt === "calling customer" || bt === "calling customers";
       });
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
@@ -720,6 +743,8 @@ export default function CustomerManagement() {
       key = "PRIME";
     } else if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
+    } else if (activeTab === "CALLING CUSTOMER") {
+      key = "CALLING_CUSTOMER";
     } else if (activeTab !== "ALL") {
       key = activeTab; // "D0", "D1", etc.
     }
@@ -938,8 +963,8 @@ export default function CustomerManagement() {
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER and ONBOARDING tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") {
+      // Add Current_Category for ALL, PRIME CUSTOMER, ONBOARDING and CALLING CUSTOMER tabs
+      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData.Status = getLatestStatus(c);
@@ -993,6 +1018,7 @@ export default function CustomerManagement() {
               <option value="peakPotential">Peak_Potential</option>
               <option value="peakFrequency">Peak_Frequency</option>
               <option value="deliveryGap">Delivery_Gap</option>
+              <option value="currentCategory">Current Category</option>
               <option value="zone">Zone</option>
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
@@ -1257,7 +1283,7 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Peak_Potential</th>
               <th className="px-2 py-3">Peak_Frequency</th>
               <th className="px-2 py-3">Delivery_Gap</th>
-              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") && (
+              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
                 <th className="px-2 py-3">Current Category</th>
               )}
               <th className="px-2 py-3">Status</th>
@@ -1522,7 +1548,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") && (
+                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
                   <td className="px-2 py-3">
                     <span
                       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
@@ -1662,7 +1688,7 @@ function normalizePotential(value) {
 }
 
 function resolvePeakFrequency(customer) {
-  const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
+  const currentPeak = `D${customer.deliveredCount ?? getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
     customer?.Peak_Frequency ||
     customer?.peakFrequency ||
@@ -1877,7 +1903,7 @@ function computePotential(last8Days) {
 }
 
 function getCurrentCategory(customer) {
-  return `D${getDeliveredCountForCustomer(customer)}`;
+  return `D${customer.deliveredCount ?? getDeliveredCountForCustomer(customer)}`;
 }
 
 function getCurrentCategoryColor(category) {

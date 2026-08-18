@@ -174,11 +174,19 @@ export const getTodayEffectiveStatus = (
   // Fallback: Weekly schedule
   const weeklySchedule = customer?.weeklySchedule || {};
 
+  let dateObj = new Date();
+  if (todayDate) {
+    const match = todayDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      dateObj = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    }
+  }
+
   const weekday = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     timeZone: "Asia/Kolkata",
   })
-    .format(new Date())
+    .format(dateObj)
     .toLowerCase()
     .substring(0, 3);
 

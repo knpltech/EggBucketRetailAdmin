@@ -305,16 +305,16 @@ const DummyAISuggestions = () => {
       const customerPattern = rowPatterns[item.customer.id] || "UnAssigned";
       const matchesPattern = patternFilter === "ALL" || customerPattern === patternFilter;
 
-      // Category filter (D0, D1 TO D4, D5 TO D7)
+      // Category filter (All Current Category, D0-D7, D1 to D3, D5 to D7)
       const currentCategory = item.currentCategory;
       let matchesCategory = false;
       if (categoryFilter === "ALL") {
         matchesCategory = true;
-      } else if (categoryFilter === "D0" && currentCategory === "D0") {
-        matchesCategory = true;
-      } else if (categoryFilter === "D1_TO_D4" && ["D1", "D2", "D3", "D4"].includes(currentCategory)) {
+      } else if (categoryFilter === "D1_TO_D3" && ["D1", "D2", "D3"].includes(currentCategory)) {
         matchesCategory = true;
       } else if (categoryFilter === "D5_TO_D7" && ["D5", "D6", "D7"].includes(currentCategory)) {
+        matchesCategory = true;
+      } else if (categoryFilter === currentCategory) {
         matchesCategory = true;
       }
 
@@ -594,8 +594,15 @@ const DummyAISuggestions = () => {
             >
               <option value="ALL">All Current Category</option>
               <option value="D0">D0</option>
-              <option value="D1_TO_D4">D1 TO D4</option>
-              <option value="D5_TO_D7">D5 TO D7</option>
+              <option value="D1">D1</option>
+              <option value="D2">D2</option>
+              <option value="D3">D3</option>
+              <option value="D1_TO_D3">D1 to D3</option>
+              <option value="D4">D4</option>
+              <option value="D5_TO_D7">D5 to D7</option>
+              <option value="D5">D5</option>
+              <option value="D6">D6</option>
+              <option value="D7">D7</option>
             </select>
 
             <select
