@@ -14,7 +14,7 @@ import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 // TABS
 const TABS = [
   "ALL",
-  "PRIME CUSTOMER",
+  "CALLING CUSTOMER",
   "ONBOARDING",
   "D0",
   "D1",
@@ -98,15 +98,15 @@ function syncPrimeCustomer(customer = {}) {
   };
 }
 
-export default function PrimeCustomers() {
+export default function CallingCustomers() {
   const [customers, setCustomers] = useState([]);
   const [categoryPeaks, setCategoryPeaks] = useState({});
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
-  const [activeTab, setActiveTab] = useState("PRIME CUSTOMER");
-  const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
+  const activeTab = "CALLING CUSTOMER";
+  const activeBusinessTab = "ALL";
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
   const [activeAgentTab, setActiveAgentTab] = useState("ALL AGENTS");
@@ -115,7 +115,6 @@ export default function PrimeCustomers() {
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [businessTypes, setBusinessTypes] = useState([]);
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -327,13 +326,7 @@ export default function PrimeCustomers() {
           console.error("Error fetching agents:", err);
         }
 
-        // Fetch business types dynamically
-        try {
-          const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
-          setBusinessTypes(btRes.data || []);
-        } catch (err) {
-          console.error("Error fetching business types:", err);
-        }
+
       } catch (err) {
         console.error("CustomerManagement init error:", err);
       } finally {
@@ -432,7 +425,7 @@ export default function PrimeCustomers() {
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-    if (activeTab === "PRIME CUSTOMER") {
+    if (activeTab === "CALLING CUSTOMER") {
       list = list.filter((c) => {
         const bt = String(c.businessType || "").trim().toLowerCase();
         return bt === "calling customer" || bt === "calling customers";
@@ -638,7 +631,7 @@ export default function PrimeCustomers() {
       return count;
     };
 
-    if (activeTab === "PRIME CUSTOMER") {
+    if (activeTab === "CALLING CUSTOMER") {
       list = list.filter((c) => {
         const bt = String(c.businessType || "").trim().toLowerCase();
         return bt === "calling customer" || bt === "calling customers";
@@ -761,7 +754,7 @@ export default function PrimeCustomers() {
     }
 
     let key = "ALL";
-    if (activeTab === "PRIME CUSTOMER") {
+    if (activeTab === "CALLING CUSTOMER") {
       key = "PRIME";
     } else if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
@@ -984,8 +977,8 @@ export default function PrimeCustomers() {
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER and ONBOARDING tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING") {
+      // Add Current_Category for ALL, CALLING CUSTOMER and ONBOARDING tabs
+      if (activeTab === "ALL" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData.Status = getLatestStatus(c);
@@ -1009,7 +1002,7 @@ export default function PrimeCustomers() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">Prime Customers</h1>
+        <h1 className="text-3xl font-bold">Calling Customers</h1>
 
         <div className="flex items-center gap-4">
           <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
@@ -1143,32 +1136,7 @@ export default function PrimeCustomers() {
 
       
 
-      {/* BUSINESS CATEGORIES TABS */}
-      {businessTypes && businessTypes.length > 0 && (
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <button
-            onClick={() => setActiveBusinessTab("ALL")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "ALL" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            ALL CATEGORIES
-          </button>
-          <button
-            onClick={() => setActiveBusinessTab("UNASSIGNED")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "UNASSIGNED" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            UNASSIGNED
-          </button>
-          {businessTypes.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActiveBusinessTab(t)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === t ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      )}
+
 
       {/* ZONE FILTERS TABS */}
       {zones && zones.length > 0 && (
@@ -1787,13 +1755,7 @@ function getDeliveredCountForCustomer(customer) {
   return count;
 }
 
-function getPeakFrequencyColor(customer) {
-  const n = getPeakFrequencyNumber(customer);
 
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-}
 
 function getPotentialColor(value) {
   const potential = normalizePotential(value);
@@ -1945,14 +1907,4 @@ function getCurrentCategory(customer) {
   return `D${getDeliveredCountForCustomer(customer)}`;
 }
 
-function getCurrentCategoryColor(category) {
-  const match = String(category || "").match(/^D(\d+)$/);
-  if (!match) return "#FF3B30";
 
-  const num = Number(match[1]);
-  if (!Number.isFinite(num)) return "#FF3B30";
-
-  if (num <= 2) return "#FF3B30"; // red: D0-D2
-  if (num <= 4) return "#FB8C00"; // orange: D3-D4
-  return "#0F9D58"; // green: D5-D7
-}

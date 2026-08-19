@@ -27,7 +27,7 @@ export default function AdminDashboard() {
     { label: "Collections", path: "/admin/collections" },
     { label: "Business Statistics", path: "/admin/business-statistics" },
     { label: "Customer Management", path: "/admin/customer-management" },
-    { label: "Prime Customers", path: "/admin/prime-customers" },
+    { label: "Calling Customers", path: "/admin/prime-customers" },
     { label: "Route Management", path: "/admin/routes" },
     { label: "Customer Map ", path: "/admin/customer-map-for-delivery" },
   ];
