@@ -109,6 +109,7 @@ export default function CustomerManagement() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
+  const [activeGapTab, setActiveGapTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
   const [activeAgentTab, setActiveAgentTab] = useState("ALL AGENTS");
   const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
@@ -302,7 +303,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -488,6 +489,26 @@ export default function CustomerManagement() {
       }
     }
 
+    if (activeGapTab !== "ALL") {
+      list = list.filter((c) => {
+        const gapNum = getDeliveryGapNumber(c.deliveryGap);
+        if (activeGapTab === "G0") return gapNum === 0;
+        if (activeGapTab === "G1") return gapNum === 1;
+        if (activeGapTab === "G2") return gapNum === 2;
+        if (activeGapTab === "G3") return gapNum === 3;
+        if (activeGapTab === "G4") return gapNum === 4;
+        if (activeGapTab === "G5") return gapNum === 5;
+        if (activeGapTab === "G6") return gapNum === 6;
+        if (activeGapTab === "G7") return gapNum === 7;
+        if (activeGapTab === "G7 to G10") return gapNum >= 7 && gapNum <= 10;
+        if (activeGapTab === "G11 to G15") return gapNum >= 11 && gapNum <= 15;
+        if (activeGapTab === "G16 to G20") return gapNum >= 16 && gapNum <= 20;
+        if (activeGapTab === "G20 to G30") return gapNum >= 20 && gapNum <= 30;
+        if (activeGapTab === "G30+") return gapNum > 30;
+        return true;
+      });
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -580,7 +601,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -705,8 +726,28 @@ export default function CustomerManagement() {
       }
     }
 
+    if (activeGapTab !== "ALL") {
+      list = list.filter((c) => {
+        const gapNum = getDeliveryGapNumber(c.deliveryGap);
+        if (activeGapTab === "G0") return gapNum === 0;
+        if (activeGapTab === "G1") return gapNum === 1;
+        if (activeGapTab === "G2") return gapNum === 2;
+        if (activeGapTab === "G3") return gapNum === 3;
+        if (activeGapTab === "G4") return gapNum === 4;
+        if (activeGapTab === "G5") return gapNum === 5;
+        if (activeGapTab === "G6") return gapNum === 6;
+        if (activeGapTab === "G7") return gapNum === 7;
+        if (activeGapTab === "G7 to G10") return gapNum >= 7 && gapNum <= 10;
+        if (activeGapTab === "G11 to G15") return gapNum >= 11 && gapNum <= 15;
+        if (activeGapTab === "G16 to G20") return gapNum >= 16 && gapNum <= 20;
+        if (activeGapTab === "G20 to G30") return gapNum >= 20 && gapNum <= 30;
+        if (activeGapTab === "G30+") return gapNum > 30;
+        return true;
+      });
+    }
+
     return list.length;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, agents]);
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, agents]);
 
   const lastWeekActiveCount = useMemo(() => {
     const d = new Date();
@@ -1130,6 +1171,19 @@ export default function CustomerManagement() {
             className={`px-4 py-2 rounded-xl border ${activeTab === t ? "bg-black text-white" : "bg-white"}`}
           >
             {t}
+          </button>
+        ))}
+      </div>
+
+      {/* DELIVERY GAP FILTERS TABS */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7 to G10", "G11 to G15", "G16 to G20", "G20 to G30", "G30+"].map((gap) => (
+          <button
+            key={gap}
+            onClick={() => setActiveGapTab(gap)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {gap}
           </button>
         ))}
       </div>

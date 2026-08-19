@@ -25,7 +25,7 @@ import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
 import CustomerManagement from "./AdminPages/CustomerManagement";
-import PrimeCustomers from "./AdminPages/PrimeCustomers";
+import CallingCustomers from "./AdminPages/CallingCustomers";
 import CustomerRoutes from "./AdminPages/CustomerRoutes";
 import CustomerManagementV from "./Admin-View/cutM";
 import CustomerMapV from "./Admin-View/customerMapV";
@@ -96,7 +96,7 @@ function App() {
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
         <Route path="customer-management" element={<CustomerManagement />} />
-        <Route path="prime-customers" element={<PrimeCustomers />} />
+        <Route path="prime-customers" element={<CallingCustomers />} />
         <Route path="routes" element={<CustomerRoutes />} />
         <Route
           path="customer-map-for-delivery"

@@ -194,7 +194,6 @@ export default function CustomerRoutes() {
 
   const totalCustomersAssigned = routeData.reduce((sum, route) => sum + route.totalCustomers, 0);
   const totalActiveCustomers = routeData.reduce((sum, route) => sum + route.activeCustomers, 0);
-  const totalBestPotential = routeData.reduce((sum, route) => sum + (route.bestPotential || 0), 0);
   const totalAchievedPotential = routeData.reduce((sum, route) => sum + (route.potentialAchieved || 0), 0);
   const totalYesterdayCustomers = routeData.reduce((sum, route) => sum + (route.yesterdayTotalCustomers || 0), 0);
   const totalYesterdayAchieved = routeData.reduce((sum, route) => sum + (route.yesterdayPotentialAchieved || 0), 0);
@@ -351,30 +350,82 @@ export default function CustomerRoutes() {
     }
   };
 
-  const renderEfficiencyDiff = (current, previous) => {
+  const renderEfficiencyDiff = (current, previous, asPill = false) => {
     if (current === 0) {
+      if (asPill) {
+        return (
+          <span className="text-[11px] font-semibold text-gray-500 bg-gray-50 border border-gray-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+            <span>─</span> <span>0.00</span>
+          </span>
+        );
+      }
       return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap">▬ 0.00</span>;
     }
     if (previous === 0 && current === 0) return null;
     
     const diff = (current - previous).toFixed(2);
-    if (diff > 0) {
+    const numDiff = parseFloat(diff);
+    if (numDiff > 0) {
+      if (asPill) {
+        return (
+          <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+            <span>↑</span> <span>{diff}</span>
+          </span>
+        );
+      }
       return <span className="text-sm font-bold text-green-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▲</span> <span>{diff}</span></span>;
-    } else if (diff < 0) {
-      return <span className="text-sm font-bold text-red-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▼</span> <span>{Math.abs(diff).toFixed(2)}</span></span>;
+    } else if (numDiff < 0) {
+      const absDiff = Math.abs(numDiff).toFixed(2);
+      if (asPill) {
+        return (
+          <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+            <span>↓</span> <span>{absDiff}</span>
+          </span>
+        );
+      }
+      return <span className="text-sm font-bold text-red-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▼</span> <span>{absDiff}</span></span>;
+    }
+    if (asPill) {
+      return (
+        <span className="text-[11px] font-semibold text-gray-500 bg-gray-50 border border-gray-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+          <span>─</span> <span>{diff}</span>
+        </span>
+      );
     }
     return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▬</span> <span>{diff}</span></span>;
   };
 
-  const renderCountDiff = (current, previous) => {
+  const renderCountDiff = (current, previous, asPill = false) => {
     if (current === 0 && previous === 0) return null;
     const diff = current - previous;
     if (diff === 0) {
+      if (asPill) {
+        return (
+          <span className="text-[11px] font-semibold text-gray-500 bg-gray-50 border border-gray-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+            <span>─</span> <span>0</span>
+          </span>
+        );
+      }
       return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▬</span> <span>0</span></span>;
     } else if (diff > 0) {
+      if (asPill) {
+        return (
+          <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+            <span>↑</span> <span>{diff}</span>
+          </span>
+        );
+      }
       return <span className="text-sm font-bold text-green-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▲</span> <span>{diff}</span></span>;
     } else {
-      return <span className="text-sm font-bold text-red-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▼</span> <span>{Math.abs(diff)}</span></span>;
+      const absDiff = Math.abs(diff);
+      if (asPill) {
+        return (
+          <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
+            <span>↓</span> <span>{absDiff}</span>
+          </span>
+        );
+      }
+      return <span className="text-sm font-bold text-red-500 ml-2 inline-flex items-center gap-1 whitespace-nowrap"><span>▼</span> <span>{absDiff}</span></span>;
     }
   };
 
@@ -539,24 +590,27 @@ export default function CustomerRoutes() {
                           </>
                         )}
                       </div>
-                      <div className="flex-1 flex justify-center items-center font-medium text-gray-800">
+                      <div className="flex-1 flex flex-col justify-center items-center font-medium text-gray-800">
                         <span>{route.totalCustomers}</span>
-                        {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers)}
+                        {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
                       </div>
-                      <div className="flex-1 flex justify-center items-center gap-1 font-bold text-green-600">
+                      <div className="flex-1 flex flex-col justify-center items-center font-bold text-green-600">
                         <span>{route.activeCustomers}</span>
-                        {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers)}
+                        {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
                       </div>
-                      <div className="flex-1 text-center font-bold text-orange-500">{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</div>
-                      <div className="flex-1 flex justify-center items-center gap-1 font-bold text-purple-600">
+                      <div className="flex-1 flex flex-col justify-center items-center font-bold text-orange-500">
+                        <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
+                      </div>
+                      <div className="flex-1 flex flex-col justify-center items-center font-bold text-purple-600">
                         <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
-                        {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved)}
+                        {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
                       </div>
-                      <div className="flex-1 flex justify-center items-center font-bold text-teal-600">
+                      <div className="flex-1 flex flex-col justify-center items-center font-bold text-teal-600">
                         <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
                         {renderEfficiencyDiff(
                           route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
-                          route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0
+                          route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
+                          true
                         )}
                       </div>
                       <div style={{ flex: 1.5 }} className="pl-6 flex items-center min-w-0">
