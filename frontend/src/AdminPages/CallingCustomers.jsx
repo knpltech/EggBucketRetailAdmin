@@ -105,13 +105,14 @@ export default function CallingCustomers() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
-  const activeTab = "CALLING CUSTOMER";
+  const [activeTab, setActiveTab] = useState("CALLING CUSTOMER");
   const activeBusinessTab = "ALL";
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
   const [activeAgentTab, setActiveAgentTab] = useState("ALL AGENTS");
   const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
   const [activeStatusTab, setActiveStatusTab] = useState("ALL STATUS");
+  const [activeGapTab, setActiveGapTab] = useState("ALL");
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -338,7 +339,7 @@ export default function CallingCustomers() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -516,6 +517,26 @@ export default function CallingCustomers() {
       }
     }
 
+    if (activeGapTab !== "ALL") {
+      list = list.filter((c) => {
+        const gapNum = getDeliveryGapNumber(c.deliveryGap);
+        if (activeGapTab === "G0") return gapNum === 0;
+        if (activeGapTab === "G1") return gapNum === 1;
+        if (activeGapTab === "G2") return gapNum === 2;
+        if (activeGapTab === "G3") return gapNum === 3;
+        if (activeGapTab === "G4") return gapNum === 4;
+        if (activeGapTab === "G5") return gapNum === 5;
+        if (activeGapTab === "G6") return gapNum === 6;
+        if (activeGapTab === "G7") return gapNum === 7;
+        if (activeGapTab === "G7+") return gapNum >= 7;
+        if (activeGapTab === "G10+") return gapNum >= 10;
+        if (activeGapTab === "G15+") return gapNum >= 15;
+        if (activeGapTab === "G20+") return gapNum >= 20;
+        if (activeGapTab === "G30+") return gapNum >= 30;
+        return true;
+      });
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -600,7 +621,7 @@ export default function CallingCustomers() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -720,8 +741,28 @@ export default function CallingCustomers() {
       }
     }
 
+    if (activeGapTab !== "ALL") {
+      list = list.filter((c) => {
+        const gapNum = getDeliveryGapNumber(c.deliveryGap);
+        if (activeGapTab === "G0") return gapNum === 0;
+        if (activeGapTab === "G1") return gapNum === 1;
+        if (activeGapTab === "G2") return gapNum === 2;
+        if (activeGapTab === "G3") return gapNum === 3;
+        if (activeGapTab === "G4") return gapNum === 4;
+        if (activeGapTab === "G5") return gapNum === 5;
+        if (activeGapTab === "G6") return gapNum === 6;
+        if (activeGapTab === "G7") return gapNum === 7;
+        if (activeGapTab === "G7+") return gapNum >= 7;
+        if (activeGapTab === "G10+") return gapNum >= 10;
+        if (activeGapTab === "G15+") return gapNum >= 15;
+        if (activeGapTab === "G20+") return gapNum >= 20;
+        if (activeGapTab === "G30+") return gapNum >= 30;
+        return true;
+      });
+    }
+
     return list.length;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, agents]);
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, agents]);
 
   const lastWeekActiveCount = useMemo(() => {
     const d = new Date();
@@ -1134,9 +1175,18 @@ export default function CallingCustomers() {
         </div>
       </div>
 
-      
-
-
+      {/* TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setActiveTab(t)}
+            className={`px-4 py-2 rounded-xl border ${activeTab === t ? "bg-black text-white border-black shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
 
       {/* ZONE FILTERS TABS */}
       {zones && zones.length > 0 && (
@@ -1241,6 +1291,19 @@ export default function CallingCustomers() {
             className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeStatusTab === status ? "bg-orange-600 text-white border-orange-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             {status}
+          </button>
+        ))}
+      </div>
+
+      {/* DELIVERY GAP FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
+          <button
+            key={gap}
+            onClick={() => setActiveGapTab(gap)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {gap}
           </button>
         ))}
       </div>

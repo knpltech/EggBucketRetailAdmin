@@ -500,11 +500,11 @@ export default function CustomerManagement() {
         if (activeGapTab === "G5") return gapNum === 5;
         if (activeGapTab === "G6") return gapNum === 6;
         if (activeGapTab === "G7") return gapNum === 7;
-        if (activeGapTab === "G7 to G10") return gapNum >= 7 && gapNum <= 10;
-        if (activeGapTab === "G11 to G15") return gapNum >= 11 && gapNum <= 15;
-        if (activeGapTab === "G16 to G20") return gapNum >= 16 && gapNum <= 20;
-        if (activeGapTab === "G20 to G30") return gapNum >= 20 && gapNum <= 30;
-        if (activeGapTab === "G30+") return gapNum > 30;
+        if (activeGapTab === "G7+") return gapNum >= 7;
+        if (activeGapTab === "G10+") return gapNum >= 10;
+        if (activeGapTab === "G15+") return gapNum >= 15;
+        if (activeGapTab === "G20+") return gapNum >= 20;
+        if (activeGapTab === "G30+") return gapNum >= 30;
         return true;
       });
     }
@@ -737,11 +737,11 @@ export default function CustomerManagement() {
         if (activeGapTab === "G5") return gapNum === 5;
         if (activeGapTab === "G6") return gapNum === 6;
         if (activeGapTab === "G7") return gapNum === 7;
-        if (activeGapTab === "G7 to G10") return gapNum >= 7 && gapNum <= 10;
-        if (activeGapTab === "G11 to G15") return gapNum >= 11 && gapNum <= 15;
-        if (activeGapTab === "G16 to G20") return gapNum >= 16 && gapNum <= 20;
-        if (activeGapTab === "G20 to G30") return gapNum >= 20 && gapNum <= 30;
-        if (activeGapTab === "G30+") return gapNum > 30;
+        if (activeGapTab === "G7+") return gapNum >= 7;
+        if (activeGapTab === "G10+") return gapNum >= 10;
+        if (activeGapTab === "G15+") return gapNum >= 15;
+        if (activeGapTab === "G20+") return gapNum >= 20;
+        if (activeGapTab === "G30+") return gapNum >= 30;
         return true;
       });
     }
@@ -1177,7 +1177,7 @@ export default function CustomerManagement() {
 
       {/* DELIVERY GAP FILTERS TABS */}
       <div className="flex gap-2 mb-4 flex-wrap">
-        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7 to G10", "G11 to G15", "G16 to G20", "G20 to G30", "G30+"].map((gap) => (
+        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
           <button
             key={gap}
             onClick={() => setActiveGapTab(gap)}

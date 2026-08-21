@@ -60,6 +60,7 @@ const DummyAISuggestions = () => {
   const [patternFilter, setPatternFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [routeFilter, setRouteFilter] = useState([]);
+  const [activeGapTab, setActiveGapTab] = useState("ALL");
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
   const routeDropdownRef = useRef(null);
   const [routes, setRoutes] = useState([]);
@@ -128,7 +129,7 @@ const DummyAISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [businessTypeFilter, suggestionFilterOption, sortOption]);
+  }, [businessTypeFilter, suggestionFilterOption, sortOption, activeGapTab, patternFilter, categoryFilter, routeFilter]);
 
   useEffect(() => {
     fetchData();
@@ -287,9 +288,30 @@ const DummyAISuggestions = () => {
       const customerRoute = String(item.customer?.route || "").trim();
       const matchesRoute = routeFilter.length === 0 || routeFilter.includes(customerRoute);
 
-      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute;
+      // Delivery Gap filter
+      let matchesGap = false;
+      if (activeGapTab === "ALL") {
+        matchesGap = true;
+      } else {
+        const gapNum = item.deliveryGapNumber;
+        if (activeGapTab === "G0") matchesGap = gapNum === 0;
+        else if (activeGapTab === "G1") matchesGap = gapNum === 1;
+        else if (activeGapTab === "G2") matchesGap = gapNum === 2;
+        else if (activeGapTab === "G3") matchesGap = gapNum === 3;
+        else if (activeGapTab === "G4") matchesGap = gapNum === 4;
+        else if (activeGapTab === "G5") matchesGap = gapNum === 5;
+        else if (activeGapTab === "G6") matchesGap = gapNum === 6;
+        else if (activeGapTab === "G7") matchesGap = gapNum === 7;
+        else if (activeGapTab === "G7+") matchesGap = gapNum >= 7;
+        else if (activeGapTab === "G10+") matchesGap = gapNum >= 10;
+        else if (activeGapTab === "G15+") matchesGap = gapNum >= 15;
+        else if (activeGapTab === "G20+") matchesGap = gapNum >= 20;
+        else if (activeGapTab === "G30+") matchesGap = gapNum >= 30;
+      }
+
+      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, rowPatterns, rowSecondaryPatterns]);
+  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -552,23 +574,7 @@ const DummyAISuggestions = () => {
               ))}
             </select>
 
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-            >
-              <option value="ALL">All Current Category</option>
-              <option value="D0">D0</option>
-              <option value="D1">D1</option>
-              <option value="D2">D2</option>
-              <option value="D3">D3</option>
-              <option value="D1_TO_D3">D1 to D3</option>
-              <option value="D4">D4</option>
-              <option value="D5_TO_D7">D5 to D7</option>
-              <option value="D5">D5</option>
-              <option value="D6">D6</option>
-              <option value="D7">D7</option>
-            </select>
+
 
             <select
               value={sortOption}
@@ -595,6 +601,8 @@ const DummyAISuggestions = () => {
               <option value="TURN_ON_TODAY">Turn ON Today</option>
               <option value="TURN_OFF_TODAY">Turn OFF Today</option>
             </select>
+
+
           </div>
         </div>
       </div>
@@ -678,6 +686,31 @@ const DummyAISuggestions = () => {
         </div>
       </div>
 
+      {/* CATEGORY FILTERS TABS */}
+      <div className="flex gap-2 mb-4 flex-wrap mt-4">
+        {["ALL", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"].map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategoryFilter(cat)}
+            className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${categoryFilter === cat ? "bg-black text-white border-black shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* DELIVERY GAP FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
+          <button
+            key={gap}
+            onClick={() => setActiveGapTab(gap)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {gap}
+          </button>
+        ))}
+      </div>
 
       {error && (
         <div className="bg-red-50 text-red-600 p-4 rounded-md mb-6 border border-red-200">
