@@ -368,8 +368,8 @@ export default function CustomerRoutes() {
     if (numDiff > 0) {
       if (asPill) {
         return (
-          <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
-            <span>↑</span> <span>{diff}</span>
+          <span className="text-[13px] font-bold text-green-500 mt-1 block whitespace-nowrap">
+            <span>▲</span> <span>{diff}</span>
           </span>
         );
       }
@@ -378,8 +378,8 @@ export default function CustomerRoutes() {
       const absDiff = Math.abs(numDiff).toFixed(2);
       if (asPill) {
         return (
-          <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
-            <span>↓</span> <span>{absDiff}</span>
+          <span className="text-[13px] font-bold text-red-500 mt-1 block whitespace-nowrap">
+            <span>▼</span> <span>{absDiff}</span>
           </span>
         );
       }
@@ -387,8 +387,8 @@ export default function CustomerRoutes() {
     }
     if (asPill) {
       return (
-        <span className="text-[11px] font-semibold text-gray-500 bg-gray-50 border border-gray-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
-          <span>─</span> <span>{diff}</span>
+        <span className="text-[13px] font-bold text-gray-400 mt-1 block whitespace-nowrap">
+          <span>▬</span> <span>{diff}</span>
         </span>
       );
     }
@@ -401,8 +401,8 @@ export default function CustomerRoutes() {
     if (diff === 0) {
       if (asPill) {
         return (
-          <span className="text-[11px] font-semibold text-gray-500 bg-gray-50 border border-gray-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
-            <span>─</span> <span>0</span>
+          <span className="text-[13px] font-bold text-gray-400 mt-1 block whitespace-nowrap">
+            <span>▬</span> <span>0</span>
           </span>
         );
       }
@@ -410,8 +410,8 @@ export default function CustomerRoutes() {
     } else if (diff > 0) {
       if (asPill) {
         return (
-          <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
-            <span>↑</span> <span>{diff}</span>
+          <span className="text-[13px] font-bold text-green-500 mt-1 block whitespace-nowrap">
+            <span>▲</span> <span>{diff}</span>
           </span>
         );
       }
@@ -420,8 +420,8 @@ export default function CustomerRoutes() {
       const absDiff = Math.abs(diff);
       if (asPill) {
         return (
-          <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200/60 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 mt-1.5 whitespace-nowrap">
-            <span>↓</span> <span>{absDiff}</span>
+          <span className="text-[13px] font-bold text-red-500 mt-1 block whitespace-nowrap">
+            <span>▼</span> <span>{absDiff}</span>
           </span>
         );
       }
