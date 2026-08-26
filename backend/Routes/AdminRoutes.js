@@ -70,6 +70,11 @@ import {
   addBusinessType,
   getBusinessTypes,
   getInventoryMetrics,
+  getPriorities,
+  addPriority,
+  updatePriority,
+  deletePriority,
+  getPriorityDashboard,
 } from "../Controller/AdminController.js";
 
 import {
@@ -107,6 +112,13 @@ router.put("/routes/update", updateRoute);
 router.get("/routes", getRoutes);
 router.post("/business-types/add", addBusinessType);
 router.get("/business-types", getBusinessTypes);
+
+// Priority management routes
+router.get("/priorities", getPriorities);
+router.post("/priorities/add", addPriority);
+router.put("/priorities/update", updatePriority);
+router.delete("/priorities/delete", deletePriority);
+router.get("/priority-dashboard", getPriorityDashboard);
 
 router.get("/analytics/customer", getCustomerAnalytics);
 router.get("/analytics/sales", getSalesAnalytics);

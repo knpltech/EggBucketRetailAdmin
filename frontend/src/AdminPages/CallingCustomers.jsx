@@ -314,7 +314,8 @@ export default function CallingCustomers() {
         // Fetch routes dynamically
         try {
           const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
-          setRoutes(routesRes.data || []);
+          const routeNames = (routesRes.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
+          setRoutes(routeNames);
         } catch (err) {
           console.error("Error fetching routes:", err);
         }
@@ -1230,15 +1231,19 @@ export default function CallingCustomers() {
           >
             UNASSIGNED
           </button>
-          {routes.map((r) => (
-            <button
-              key={r}
-              onClick={() => setActiveRouteTab(r)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === r ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-            >
-              {r}
-            </button>
-          ))}
+          {routes.map((r) => {
+            const rName = typeof r === "string" ? r : r?.name;
+            if (!rName) return null;
+            return (
+              <button
+                key={rName}
+                onClick={() => setActiveRouteTab(rName)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === rName ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+              >
+                {rName}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -1430,11 +1435,15 @@ export default function CallingCustomers() {
                       className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
                     >
                       <option value="">Assign</option>
-                      {routes.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : editingRouteId === c.id ? (
                     <select
@@ -1447,11 +1456,15 @@ export default function CallingCustomers() {
                       }}
                       className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
                     >
-                      {routes.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     <div className="flex items-center justify-center gap-2">

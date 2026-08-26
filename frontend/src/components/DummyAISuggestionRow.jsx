@@ -263,6 +263,8 @@ const DummyAISuggestionRow = ({
   onPatternChange,
   secondaryPattern = "UnAssigned",
   onSecondaryPatternChange,
+  tertiaryPattern = "UnAssigned",
+  onTertiaryPatternChange,
   updatingScheduleId,
   onUpdateSchedule
 }) => {
@@ -286,11 +288,11 @@ const DummyAISuggestionRow = ({
 
   return (
     <tr className={`border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors ${calendarOpen ? 'relative z-50' : ''}`}>
-      <td className="px-1.5 py-3 text-[12px] text-gray-600 font-medium">{customer.custid}</td>
-      <td className="px-1.5 py-3 text-[12px] text-gray-900 font-bold uppercase leading-tight min-w-[90px]">{customer.name}</td>
-      <td className="px-1.5 py-3 text-[11px] text-gray-700 font-medium max-w-[150px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
+      <td className="px-1.5 py-2 text-xs text-gray-600 font-medium">{customer.custid}</td>
+      <td className="px-1.5 py-2 text-xs text-gray-900 font-bold uppercase leading-tight min-w-[80px]">{customer.name}</td>
+      <td className="px-1.5 py-2 text-[10.5px] text-gray-700 font-medium max-w-[110px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
 
-      <td className="px-1.5 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-2 text-gray-700 font-medium">
         {(() => {
           const isOpen = openSchedule;
           const isUpdating = updatingScheduleId === customer.id;
@@ -309,14 +311,14 @@ const DummyAISuggestionRow = ({
                   e.stopPropagation();
                   setOpenSchedule((prev) => !prev);
                 }}
-                className="px-2 py-1 text-[11px] border border-gray-300 rounded bg-white hover:bg-gray-50 transition whitespace-nowrap"
+                className="px-1.5 py-0.5 text-xs border border-gray-300 rounded bg-white hover:bg-gray-50 transition whitespace-nowrap"
                 disabled={isUpdating}
               >
                 {activeDaysCount} Days {isOpen ? "▲" : "▼"}
               </button>
               {isOpen && (
                 <div
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 p-2 min-w-[100px]"
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 p-1.5 min-w-[80px]"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {days.map((day) => (
@@ -329,7 +331,7 @@ const DummyAISuggestionRow = ({
                         }
                       }}
                       disabled={isUpdating}
-                      className={`block w-full text-center px-2 py-1 rounded mb-1 last:mb-0 font-medium text-[10px] transition ${schedule[day]
+                      className={`block w-full text-center px-1.5 py-0.5 rounded mb-1 last:mb-0 font-medium text-[11px] transition ${schedule[day]
                         ? "bg-green-500 text-white border border-green-600"
                         : "bg-red-500 text-white border border-red-600"
                         } ${isUpdating
@@ -347,36 +349,36 @@ const DummyAISuggestionRow = ({
         })()}
       </td>
 
-      <td className="px-1.5 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-2 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
           style={{ backgroundColor: getPotentialColor(peakPotential) }}
         >
           {peakPotential}
         </span>
       </td>
 
-      <td className="px-1.5 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-2 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
           style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
           {peakFrequency}
         </span>
       </td>
 
-      <td className="px-1.5 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-2 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
           style={{ backgroundColor: getDeliveryGapColor(deliveryGap) }}
         >
           {deliveryGap}
         </span>
       </td>
 
-      <td className="px-1.5 py-3 text-gray-700 font-medium">
+      <td className="px-1.5 py-2 text-gray-700 font-medium">
         <span
-          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-sm"
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
           style={{ backgroundColor: getCurrentCategoryColor(currentCategory) }}
         >
           {currentCategory}
@@ -384,20 +386,20 @@ const DummyAISuggestionRow = ({
       </td>
 
       {/* Current Toggle Column */}
-      <td className="px-1.5 py-3">
-        <div className="flex items-center justify-center space-x-1.5">
-          <div className={`w-2.5 h-2.5 rounded-full ${isTodayOn ? "bg-green-500" : "bg-gray-400"} shadow-sm`}></div>
-          <span className="text-[13px] text-gray-700 font-medium">
+      <td className="px-1.5 py-2">
+        <div className="flex items-center justify-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${isTodayOn ? "bg-green-500" : "bg-gray-400"} shadow-sm`}></div>
+          <span className="text-xs text-gray-700 font-medium">
             {isTodayOn ? "ON" : "OFF"}
           </span>
         </div>
       </td>
 
-      <td className="px-1.5 py-3">
+      <td className="px-1.5 py-2">
         <select
           value={customerPattern}
           onChange={(e) => onPatternChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-2 py-1 rounded text-[11px] font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[130px] overflow-hidden text-ellipsis whitespace-nowrap"
+          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
           title={customerPattern}
         >
           {BUYING_PATTERNS.map(pattern => (
@@ -406,11 +408,11 @@ const DummyAISuggestionRow = ({
         </select>
       </td>
 
-      <td className="px-1.5 py-3">
+      <td className="px-1.5 py-2">
         <select
           value={secondaryPattern}
           onChange={(e) => onSecondaryPatternChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-2 py-1 rounded text-[11px] font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[130px] overflow-hidden text-ellipsis whitespace-nowrap"
+          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
           title={secondaryPattern}
         >
           {BUYING_PATTERNS.map(pattern => (
@@ -419,31 +421,38 @@ const DummyAISuggestionRow = ({
         </select>
       </td>
 
+      <td className="px-1.5 py-2">
+        <select
+          value={tertiaryPattern}
+          onChange={(e) => onTertiaryPatternChange(customer.id, e.target.value)}
+          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
+          title={tertiaryPattern}
+        >
+          {BUYING_PATTERNS.map(pattern => (
+            <option key={`ter-${pattern}`} value={pattern}>{pattern}</option>
+          ))}
+        </select>
+      </td>
+
       {/* AI Suggestion Badge */}
-      <td className="px-1.5 py-3">
+      <td className="px-1.5 py-2">
         {suggestedStatus === "ON" ? (
-          <div className="inline-flex items-center justify-center border border-green-500 text-green-700 rounded-full px-3 py-1 font-bold bg-green-50/80 min-w-[70px] shadow-sm">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
-               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-             </svg>
+          <div className="inline-flex items-center justify-center border border-green-500 text-green-700 rounded-full px-2 py-0.5 font-bold bg-green-50/80 min-w-[46px] text-xs shadow-sm">
              ON
           </div>
         ) : suggestedStatus === "OFF" ? (
-          <div className="inline-flex items-center justify-center border border-red-300 text-red-600 rounded-full px-3 py-1 font-bold bg-red-50/80 min-w-[70px] shadow-sm">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
-               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-             </svg>
+          <div className="inline-flex items-center justify-center border border-red-300 text-red-600 rounded-full px-2 py-0.5 font-bold bg-red-50/80 min-w-[46px] text-xs shadow-sm">
              OFF
           </div>
         ) : (
-          <div className="inline-flex items-center justify-center border border-gray-300 text-gray-500 rounded-full px-3 py-1 font-bold bg-gray-50 min-w-[70px]">
+          <div className="inline-flex items-center justify-center border border-gray-300 text-gray-500 rounded-full px-2 py-0.5 font-bold bg-gray-50 min-w-[46px] text-xs">
              --
           </div>
         )}
       </td>
 
-      <td className="px-1.5 py-3">
-        <div className="flex items-center justify-center gap-2">
+      <td className="px-1.5 py-2">
+        <div className="flex items-center justify-center">
           <label
             className={`relative inline-flex items-center ${
               isUpdating ? "opacity-70 cursor-not-allowed" : "cursor-pointer"
@@ -457,27 +466,24 @@ const DummyAISuggestionRow = ({
               onChange={() => onApplySuggestion?.(customer, isTodayOn ? "OFF" : "ON")}
               aria-label="Toggle Delivery"
             />
-            <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:bg-green-500 transition-colors shadow-inner" />
-            <div className="absolute left-[2px] top-[2px] w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4 shadow-sm" />
+            <div className="w-8 h-4.5 bg-gray-200 rounded-full peer peer-checked:bg-green-500 transition-colors shadow-inner" />
+            <div className="absolute left-[2px] top-[2px].5 w-3.5 h-3.5 bg-white rounded-full transition-transform peer-checked:translate-x-3.5 shadow-sm" />
           </label>
-          <span className="text-[12px] font-bold text-gray-600 w-6 text-left">
-            {isTodayOn ? "ON" : "OFF"}
-          </span>
         </div>
       </td>
 
       {/* Execution Calendar */}
-      <td className="px-1.5 py-3">
+      <td className="px-1.5 py-2">
         <div className={`relative inline-block ${calendarOpen ? 'z-50' : ''}`}>
           <button
-            className="flex justify-center items-center cursor-pointer p-1.5 rounded transition-colors mx-auto text-blue-500 hover:text-blue-700"
+            className="flex justify-center items-center cursor-pointer p-1 rounded transition-colors mx-auto text-blue-500 hover:text-blue-700"
             onClick={(e) => {
               e.stopPropagation();
               setCalendarOpen((prev) => !prev);
             }}
             title="Click to view full calendar"
           >
-            <FiCalendar className="w-5 h-5" />
+            <FiCalendar className="w-4.5 h-4.5" />
           </button>
           {calendarOpen && (
             <ExecutionCalendarModal
