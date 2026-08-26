@@ -9,6 +9,7 @@ import {
   getDeliveryGapNumber,
   getPeakFrequencyNumber,
   getTodayEffectiveStatus,
+  getTodayDeliveryStatus,
   normalizeDeliveryGap,
   resolvePeakFrequency,
 } from "../utils/aiSuggestionEngine";
@@ -122,6 +123,27 @@ const DummyAISuggestions = () => {
     });
   };
 
+  const [rowTertiaryPatterns, setRowTertiaryPatterns] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dummyAITertiaryPatterns");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleTertiaryPatternChange = (customerId, newPattern) => {
+    setRowTertiaryPatterns((prev) => {
+      const updated = { ...prev, [customerId]: newPattern };
+      try {
+        localStorage.setItem("dummyAITertiaryPatterns", JSON.stringify(updated));
+      } catch {
+        // ignore storage write errors
+      }
+      return updated;
+    });
+  };
+
   const [currentPage, setCurrentPage] = useState(1);
   const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -154,7 +176,8 @@ const DummyAISuggestions = () => {
       // Fetch routes dynamically
       try {
         const routeRes = await axios.get(`${ADMIN_PATH}/routes`);
-        setRoutes(routeRes.data || []);
+        const routeNames = (routeRes.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
+        setRoutes(routeNames);
       } catch (err) {
         console.error("Error fetching routes:", err);
       }
@@ -184,9 +207,15 @@ const DummyAISuggestions = () => {
   const processedData = useMemo(() => {
     const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
-    const data = customers.map((customer) => {
+    const activeCustomers = customers.filter((customer) => {
+      const todayStatus = getTodayDeliveryStatus(customer, todayDate);
+      return todayStatus !== "delivered" && todayStatus !== "checked";
+    });
+
+    const data = activeCustomers.map((customer) => {
       const customerPattern = rowPatterns[customer.id] || "UnAssigned";
       const secondaryPattern = rowSecondaryPatterns[customer.id] || "UnAssigned";
+      const tertiaryPattern = rowTertiaryPatterns[customer.id] || "UnAssigned";
 
       // Precompute expensive values for sorting & filtering
       const currentCategory = computeCurrentCategory(customer.last8Days);
@@ -203,7 +232,7 @@ const DummyAISuggestions = () => {
 
       return {
         customer,
-        suggestion: generateDummyAISuggestion(customer, customerPattern, secondaryPattern),
+        suggestion: generateDummyAISuggestion(customer, customerPattern, secondaryPattern, tertiaryPattern),
         currentCategory,
         currentCategoryNumber,
         peakFrequencyStr,
@@ -222,7 +251,7 @@ const DummyAISuggestions = () => {
     });
 
     return data;
-  }, [customers, rowPatterns, rowSecondaryPatterns]);
+  }, [customers, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
   const filteredData = useMemo(() => {
     return processedData.filter((item) => {
@@ -267,9 +296,10 @@ const DummyAISuggestions = () => {
       // Pattern filter (Logic Sets)
       const customerPattern = rowPatterns[item.customer.id] || "UnAssigned";
       const secondaryPattern = rowSecondaryPatterns[item.customer.id] || "UnAssigned";
+      const tertiaryPattern = rowTertiaryPatterns[item.customer.id] || "UnAssigned";
       const matchesPattern =
         patternFilter === "ALL" ||
-        (customerPattern === patternFilter && secondaryPattern === patternFilter);
+        (customerPattern === patternFilter && secondaryPattern === patternFilter && tertiaryPattern === patternFilter);
 
       // Category filter (All Current Category, D0-D7, D1 to D3, D5 to D7)
       const currentCategory = item.currentCategory;
@@ -311,7 +341,7 @@ const DummyAISuggestions = () => {
 
       return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns]);
+  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -480,7 +510,7 @@ const DummyAISuggestions = () => {
   const currentOffPercentage = totalCustomers > 0 ? ((currentOffCount / totalCustomers) * 100).toFixed(1) : 0;
 
   return (
-    <div className="p-6 bg-[#FAFAFA] min-h-screen font-sans">
+    <div className="px-2 py-6 bg-[#FAFAFA] min-h-screen font-sans">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Suggestions</h1>
@@ -539,23 +569,27 @@ const DummyAISuggestions = () => {
                     </button>
                   </div>
                   <div className="p-1">
-                    {routes.map((rt) => (
-                      <label key={rt} className="flex items-center px-3 py-2 hover:bg-gray-50 rounded cursor-pointer text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          checked={routeFilter.includes(rt)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setRouteFilter([...routeFilter, rt]);
-                            } else {
-                              setRouteFilter(routeFilter.filter(r => r !== rt));
-                            }
-                          }}
-                        />
-                        <span className="truncate" title={rt}>{rt}</span>
-                      </label>
-                    ))}
+                    {routes.map((r) => {
+                      const rt = typeof r === "string" ? r : r?.name;
+                      if (!rt) return null;
+                      return (
+                        <label key={rt} className="flex items-center px-3 py-2 hover:bg-gray-50 rounded cursor-pointer text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={routeFilter.includes(rt)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setRouteFilter([...routeFilter, rt]);
+                              } else {
+                                setRouteFilter(routeFilter.filter(r => r !== rt));
+                              }
+                            }}
+                          />
+                          <span className="truncate" title={rt}>{rt}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -735,6 +769,8 @@ const DummyAISuggestions = () => {
           onPatternChange={handlePatternChange}
           rowSecondaryPatterns={rowSecondaryPatterns}
           onSecondaryPatternChange={handleSecondaryPatternChange}
+          rowTertiaryPatterns={rowTertiaryPatterns}
+          onTertiaryPatternChange={handleTertiaryPatternChange}
           updatingScheduleId={updatingScheduleId}
           onUpdateSchedule={handleUpdateWeeklySchedule}
         />

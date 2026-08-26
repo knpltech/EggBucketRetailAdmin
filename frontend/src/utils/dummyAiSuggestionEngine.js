@@ -361,7 +361,7 @@ const evaluatePattern = (customer, pattern) => {
   }
 };
 
-export const generateDummyAISuggestion = (customer, primaryPattern = "UnAssigned", secondaryPattern = "UnAssigned") => {
+export const generateDummyAISuggestion = (customer, primaryPattern = "UnAssigned", secondaryPattern = "UnAssigned", tertiaryPattern = "UnAssigned") => {
   const skipConfig = customer?.skipConfig || {};
 
   // RULE: Skip config active (Applies across all patterns)
@@ -376,22 +376,27 @@ export const generateDummyAISuggestion = (customer, primaryPattern = "UnAssigned
 
   const primaryResult = evaluatePattern(customer, primaryPattern);
   const secondaryResult = evaluatePattern(customer, secondaryPattern);
+  const tertiaryResult = evaluatePattern(customer, tertiaryPattern);
 
   const isPrimaryOn = primaryResult.suggestion.includes("ON");
   const isSecondaryOn = secondaryResult.suggestion.includes("ON");
+  const isTertiaryOn = tertiaryResult.suggestion.includes("ON");
 
-  if (isPrimaryOn && isSecondaryOn) {
+  if (isPrimaryOn && isSecondaryOn && isTertiaryOn) {
     return {
       suggestion: "TURN_ON_TODAY",
-      confidence: Math.min(primaryResult.confidence, secondaryResult.confidence),
-      reason: `Primary: ${primaryResult.reason} | Secondary: ${secondaryResult.reason}`,
+      confidence: Math.min(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
+      reason: `Primary: ${primaryResult.reason} | Secondary: ${secondaryResult.reason} | Tertiary: ${tertiaryResult.reason}`,
     };
   } else {
-    const offResult = !isPrimaryOn ? primaryResult : secondaryResult;
+    const offLogics = [];
+    if (!isPrimaryOn) offLogics.push(`Primary: ${primaryResult.reason}`);
+    if (!isSecondaryOn) offLogics.push(`Secondary: ${secondaryResult.reason}`);
+    if (!isTertiaryOn) offLogics.push(`Tertiary: ${tertiaryResult.reason}`);
     return {
       suggestion: "TURN_OFF_TODAY",
-      confidence: Math.max(primaryResult.confidence, secondaryResult.confidence),
-      reason: `OFF because - ${!isPrimaryOn ? "Primary" : "Secondary"}: ${offResult.reason}`,
+      confidence: Math.max(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
+      reason: `OFF because - ${offLogics.join(" | ")}`,
     };
   }
 };

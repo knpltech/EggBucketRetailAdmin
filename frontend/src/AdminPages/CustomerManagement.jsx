@@ -114,6 +114,7 @@ export default function CustomerManagement() {
   const [activeAgentTab, setActiveAgentTab] = useState("ALL AGENTS");
   const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
   const [activeStatusTab, setActiveStatusTab] = useState("ALL STATUS");
+  const [activeRemarkTab, setActiveRemarkTab] = useState("ALL");
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -272,7 +273,8 @@ export default function CustomerManagement() {
         // Fetch routes dynamically
         try {
           const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
-          setRoutes(routesRes.data || []);
+          const routeNames = (routesRes.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
+          setRoutes(routeNames);
         } catch (err) {
           console.error("Error fetching routes:", err);
         }
@@ -303,7 +305,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, activeRemarkTab]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -509,6 +511,17 @@ export default function CustomerManagement() {
       });
     }
 
+    if (activeRemarkTab !== "ALL") {
+      list = list.filter((c) => {
+        const last8Days = c.last8Days || {};
+        const entry = last8Days[todayDate];
+        const entryObj = typeof entry === "object" ? entry : {};
+        const status = getLatestStatus(c);
+        const reason = String(entryObj.reason || "").trim().toLowerCase();
+        return status === "Checked" && reason === activeRemarkTab.toLowerCase();
+      });
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -601,7 +614,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents, activeRemarkTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -746,8 +759,30 @@ export default function CustomerManagement() {
       });
     }
 
+    if (activeRemarkTab !== "ALL") {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayDateStr = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
+      list = list.filter((c) => {
+        const last8Days = c.last8Days || {};
+        const entry = last8Days[yesterdayDateStr];
+        const entryObj = typeof entry === "object" ? entry : {};
+        const getYesterdayLatestStatus = (customer) => {
+          const last8Days = customer.last8Days || {};
+          const entry = last8Days[yesterdayDateStr];
+          const st = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
+          if (st === "delivered") return "Delivered";
+          if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "confirmed_tomorrow"].includes(st)) return "Checked";
+          return "Pending";
+        };
+        const status = getYesterdayLatestStatus(c);
+        const reason = String(entryObj.reason || "").trim().toLowerCase();
+        return status === "Checked" && reason === activeRemarkTab.toLowerCase();
+      });
+    }
+
     return list.length;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, agents]);
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, agents, activeRemarkTab]);
 
   const lastWeekActiveCount = useMemo(() => {
     const d = new Date();
@@ -1257,15 +1292,19 @@ export default function CustomerManagement() {
           >
             UNASSIGNED
           </button>
-          {routes.map((r) => (
-            <button
-              key={r}
-              onClick={() => setActiveRouteTab(r)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === r ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-            >
-              {r}
-            </button>
-          ))}
+          {routes.map((r) => {
+            const rName = typeof r === "string" ? r : r?.name;
+            if (!rName) return null;
+            return (
+              <button
+                key={rName}
+                onClick={() => setActiveRouteTab(rName)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRouteTab === rName ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+              >
+                {rName}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -1318,6 +1357,29 @@ export default function CustomerManagement() {
             className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeStatusTab === status ? "bg-orange-600 text-white border-orange-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             {status}
+          </button>
+        ))}
+      </div>
+
+      {/* REMARK FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {[
+          { label: "ALL REMARKS", value: "ALL" },
+          { label: "Stock Available", value: "stock_available" },
+          { label: "Other Vendor", value: "other_vendor" },
+          { label: "Shop Closed", value: "shop_closed" },
+          { label: "Confirmed Tomorrow", value: "confirmed_tomorrow" },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setActiveRemarkTab(tab.value)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+              activeRemarkTab === tab.value
+                ? "bg-slate-600 text-white border-slate-600 shadow-sm"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            {tab.label}
           </button>
         ))}
       </div>
@@ -1407,28 +1469,15 @@ export default function CustomerManagement() {
                       className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
                     >
                       <option value="">Assign</option>
-                      {routes.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  ) : editingRouteId === c.id ? (
-                    <select
-                      autoFocus
-                      defaultValue={c.route}
-                      onBlur={() => setEditingRouteId(null)}
-                      onChange={async (e) => {
-                        await assignRoute(c.id, e.target.value);
-                        setEditingRouteId(null);
-                      }}
-                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
-                    >
-                      {routes.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     <div className="flex items-center justify-center gap-2">
