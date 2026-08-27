@@ -79,6 +79,31 @@ const CollectionSummary = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
 
+  // ⭐ Add Inventory Entry Modal States
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addModalType, setAddModalType] = useState("load");
+  const [addFormDate, setAddFormDate] = useState("");
+  const [addFormAgent, setAddFormAgent] = useState("");
+  const [addFormValue, setAddFormValue] = useState("");
+  const [addFormRemarks, setAddFormRemarks] = useState("");
+  const [addFormSubmitting, setAddFormSubmitting] = useState(false);
+  const [addFormError, setAddFormError] = useState("");
+
+  const openAddModal = (type) => {
+    setAddModalType(type);
+    setAddFormDate(selectedDate || getTodayDateString());
+    setAddFormAgent("");
+    setAddFormValue("");
+    setAddFormRemarks("");
+    setAddFormError("");
+    setIsAddModalOpen(true);
+  };
+
+  const closeAddModal = () => {
+    setIsAddModalOpen(false);
+    setAddFormError("");
+  };
+
   const [inventoryMetrics, setInventoryMetrics] = useState({
     totalLoad: 0,
     totalReturn: 0,
@@ -92,6 +117,80 @@ const CollectionSummary = () => {
     returnEntries: [],
     damageEntries: [],
   });
+
+  const handleAddEntrySubmit = async (e) => {
+    e.preventDefault();
+    if (!addFormAgent.trim()) {
+      setAddFormError("Please select a delivery agent.");
+      return;
+    }
+    if (addFormValue === "" || isNaN(Number(addFormValue)) || Number(addFormValue) < 0) {
+      setAddFormError("Please enter a valid quantity or amount.");
+      return;
+    }
+
+    setAddFormSubmitting(true);
+    setAddFormError("");
+
+    try {
+      const payload = {
+        type: addModalType,
+        dateKey: addFormDate || selectedDate,
+        agentName: addFormAgent.trim(),
+        value: Number(addFormValue),
+        remarks: addFormRemarks.trim(),
+      };
+
+      const res = await axios.post(`${ADMIN_PATH}/add-inventory-entry`, payload);
+
+      if (res.data && res.data.success) {
+        setIsAddModalOpen(false);
+        setAddFormValue("");
+        setAddFormRemarks("");
+        // Refresh metrics & collection summary
+        await fetchInventoryMetrics(addFormDate || selectedDate);
+        await fetchCollectionSummary();
+      } else {
+        setAddFormError(res.data?.message || "Failed to add inventory entry");
+      }
+    } catch (err) {
+      console.error("Add entry error:", err);
+      setAddFormError(err.response?.data?.message || err.message || "Failed to add inventory entry");
+    } finally {
+      setAddFormSubmitting(false);
+    }
+  };
+
+  const agentOptionsList = useMemo(() => {
+    const list = new Set();
+    if (Array.isArray(deliveryPartners)) {
+      deliveryPartners.forEach((p) => {
+        const pName = p.name || p.displayName;
+        const pOutlet = (p.outlet || "").trim();
+        const hasLayout = Boolean(pOutlet && pOutlet !== "-");
+        const isActive = Boolean(p.active);
+
+        // Include agents who have an assigned layout/outlet OR are active
+        if (pName && (hasLayout || isActive)) {
+          list.add(pName.trim());
+        }
+      });
+    }
+    return Array.from(list).sort();
+  }, [deliveryPartners]);
+
+
+
+  const TYPE_CONFIG = {
+    load: { title: "Total Load", unit: "Trays", label: "Quantity (Trays)" },
+    return: { title: "Total Return", unit: "Trays", label: "Quantity (Trays)" },
+    damage: { title: "Total Damage", unit: "Pcs", label: "Quantity (Pcs)" },
+    cash_handover: { title: "Cash Handover", unit: "₹", label: "Amount (₹)" },
+    upi_handover: { title: "UPI Handover", unit: "₹", label: "Amount (₹)" },
+    food_allowance: { title: "Food Allowance", unit: "₹", label: "Amount (₹)" },
+    incentive: { title: "Incentives", unit: "₹", label: "Amount (₹)" },
+  };
+
 
   const fetchInventoryMetrics = useCallback(async (date) => {
     try {
@@ -1278,6 +1377,7 @@ const CollectionSummary = () => {
               color: "border-t-green-500",
               unit: "Trays",
               topRight: "Qty",
+              addType: "load",
             },
             {
               label: "Total Return",
@@ -1286,6 +1386,7 @@ const CollectionSummary = () => {
               color: "border-t-purple-500",
               unit: "Trays",
               topRight: "Qty",
+              addType: "return",
             },
             {
               label: "Total Damage",
@@ -1294,24 +1395,37 @@ const CollectionSummary = () => {
               color: "border-t-orange-500",
               unit: "Pcs",
               topRight: "Qty",
+              addType: "damage",
             },
           ];
 
           return cards.map((card) => (
             <div
               key={card.label}
-              className={`bg-white rounded-lg p-6 shadow border-t-4 ${card.color}`}
+              className={`bg-white rounded-lg p-5 shadow border-t-4 ${card.color} flex flex-col justify-between`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm text-gray-600">{card.label}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-gray-600">{card.label}</p>
                 <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
               </div>
-              <div className="flex items-baseline gap-2 mt-2">
-                <p className="text-3xl font-bold text-gray-900">
-                  {card.format(card.value)}
-                </p>
-                {card.unit && (
-                  <span className="text-2xl font-semibold text-gray-500 ml-1">{card.unit}</span>
+              <div className="flex items-center justify-between gap-2 mt-3">
+                <div className="flex items-baseline gap-2">
+                  <p className="text-3xl font-bold text-gray-900">
+                    {card.format(card.value)}
+                  </p>
+                  {card.unit && (
+                    <span className="text-xl font-semibold text-gray-500 ml-1">{card.unit}</span>
+                  )}
+                </div>
+                {card.addType && (
+                  <button
+                    onClick={() => openAddModal(card.addType)}
+                    className="px-3 py-1 border-2 border-purple-600 text-purple-700 hover:bg-purple-50 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer ml-auto shrink-0"
+                    title={`Add ${card.label}`}
+                  >
+                    <span>ADD</span>
+                    <span className="text-sm font-black">+</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -1374,6 +1488,7 @@ const CollectionSummary = () => {
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-blue-500",
               topRight: "Amt",
+              addType: "cash_handover",
             },
             {
               label: "UPI Handover",
@@ -1381,6 +1496,7 @@ const CollectionSummary = () => {
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-indigo-500",
               topRight: "Amt",
+              addType: "upi_handover",
             },
             {
               label: "Food Allowance",
@@ -1388,6 +1504,7 @@ const CollectionSummary = () => {
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-green-500",
               topRight: "Amt",
+              addType: "food_allowance",
             },
             {
               label: "Incentives",
@@ -1395,6 +1512,7 @@ const CollectionSummary = () => {
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-purple-500",
               topRight: "Amt",
+              addType: "incentive",
             },
             {
               label: "Difference/Balance",
@@ -1413,21 +1531,35 @@ const CollectionSummary = () => {
           return cards.map((card) => (
             <div
               key={card.label}
-              className={`bg-white rounded-lg p-6 shadow border-t-4 ${card.color}`}
+              className={`bg-white rounded-lg p-5 shadow border-t-4 ${card.color} flex flex-col justify-between`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm text-gray-600">{card.label}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-gray-600">{card.label}</p>
                 <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
               </div>
-              <div className="flex items-baseline gap-2 mt-2">
-                <p className="text-3xl font-bold text-gray-900">
-                  {card.format(card.value)}
-                </p>
+              <div className="flex items-center justify-between gap-2 mt-3">
+                <div className="flex items-baseline gap-2">
+                  <p className="text-3xl font-bold text-gray-900">
+                    {card.format(card.value)}
+                  </p>
+                </div>
+                {card.addType && (
+                  <button
+                    onClick={() => openAddModal(card.addType)}
+                    className="px-3 py-1 border-2 border-purple-600 text-purple-700 hover:bg-purple-50 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer ml-auto shrink-0"
+                    title={`Add ${card.label}`}
+                  >
+                    <span>ADD</span>
+                    <span className="text-sm font-black">+</span>
+                  </button>
+                )}
               </div>
             </div>
           ));
         })()}
       </div>
+
+
 
 
       {/* Table */}
@@ -1728,8 +1860,140 @@ const CollectionSummary = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Modal for Adding Inventory/Handover Data */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 flex items-center justify-between text-white">
+              <h3 className="text-lg font-bold">
+                Add {TYPE_CONFIG[addModalType]?.title || "Entry"}
+              </h3>
+              <button
+                onClick={closeAddModal}
+                className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Form Body */}
+            <form onSubmit={handleAddEntrySubmit} className="p-6 space-y-4">
+              {addFormError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-lg text-sm font-medium">
+                  {addFormError}
+                </div>
+              )}
+
+              {/* Entry Type Select */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
+                  Entry Type
+                </label>
+                <select
+                  value={addModalType}
+                  onChange={(e) => setAddModalType(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white cursor-pointer"
+                >
+                  {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
+                    <option key={key} value={key}>
+                      {cfg.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={addFormDate}
+                  onChange={(e) => setAddFormDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              {/* Delivery Agent Select */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
+                  Delivery Agent
+                </label>
+                <select
+                  value={addFormAgent}
+                  onChange={(e) => setAddFormAgent(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white cursor-pointer"
+                  required
+                >
+                  <option value="">-- Select Agent --</option>
+                  {agentOptionsList.map((agent) => (
+                    <option key={agent} value={agent}>
+                      {agent}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quantity / Amount Input */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
+                  {TYPE_CONFIG[addModalType]?.label || "Quantity / Amount"}
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={`Enter ${TYPE_CONFIG[addModalType]?.label || "value"}`}
+                  value={addFormValue}
+                  onChange={(e) => setAddFormValue(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
+                  Remarks / Notes
+                </label>
+                <textarea
+                  rows="2"
+                  placeholder="Enter remarks (optional)"
+                  value={addFormRemarks}
+                  onChange={(e) => setAddFormRemarks(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeAddModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addFormSubmitting}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 rounded-lg transition shadow flex items-center gap-2 cursor-pointer"
+                >
+                  {addFormSubmitting && <RefreshCw size={16} className="animate-spin" />}
+                  <span>Save Entry</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default CollectionSummary;
+

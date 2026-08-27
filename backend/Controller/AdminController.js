@@ -2480,6 +2480,102 @@ const getInventoryMetrics = async (req, res) => {
   }
 };
 
+// Controller to add inventory/handover entries directly from web
+const addInventoryEntry = async (req, res) => {
+  try {
+    const { type, dateKey, agentName, value, remarks } = req.body;
+
+    if (!type || !dateKey || !agentName || value === undefined || value === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Type, dateKey, agentName, and value are required.",
+      });
+    }
+
+    const numVal = Number(value);
+    if (isNaN(numVal) || numVal < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Value must be a valid non-negative number.",
+      });
+    }
+
+    const collectionMap = {
+      load: "loading_entries",
+      return: "return_load_entries",
+      damage: "damage_reports",
+      cash_handover: "cash_handover_entries",
+      upi_handover: "upi_handover_entries",
+      food_allowance: "food_allowance_entries",
+      incentive: "incentive_entries",
+    };
+
+    const collectionName = collectionMap[type];
+    if (!collectionName) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid type: ${type}`,
+      });
+    }
+
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+    const primaryDb = getFirestore();
+
+    // Look up agent details for outletName if possible
+    let outletName = "";
+    try {
+      const delPartnerSnap = await primaryDb
+        .collection("DeliveryMan")
+        .where("name", "==", agentName)
+        .get();
+      if (!delPartnerSnap.empty) {
+        outletName = delPartnerSnap.docs[0].data().outlet || "";
+      }
+    } catch (e) {
+      console.warn("Could not lookup agent outlet:", e);
+    }
+
+    const timestamp = new Date().toISOString();
+
+    const docData = {
+      dateKey,
+      agentName,
+      outletName,
+      supervisorName: "Admin (Web)",
+      remarks: remarks || "",
+      createdAt: timestamp,
+      timestamp: timestamp,
+    };
+
+    if (type === "load" || type === "return" || type === "damage") {
+      docData.quantity = numVal;
+    } else {
+      docData.Cash = numVal;
+      docData.cash = numVal;
+      if (type === "upi_handover") {
+        docData.amount = numVal;
+        docData.upi = numVal;
+      }
+    }
+
+    const docRef = await invDb.collection(collectionName).add(docData);
+
+    return res.status(200).json({
+      success: true,
+      message: "Inventory entry added successfully",
+      id: docRef.id,
+    });
+  } catch (err) {
+    console.error("addInventoryEntry error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add inventory entry",
+      error: err.message,
+    });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -2504,5 +2600,7 @@ export {
   recalculateCollectionData,
   updateCustomerPayment,
   getInventoryMetrics,
+  addInventoryEntry,
 };
+
 
