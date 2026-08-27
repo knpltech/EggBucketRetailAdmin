@@ -60,6 +60,9 @@ const AISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [priorities, setPriorities] = useState([]);
+  const [routePriorityMap, setRoutePriorityMap] = useState({});
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
   const [businessTypes, setBusinessTypes] = useState([]);
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
@@ -76,7 +79,7 @@ const AISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [businessTypeFilter, suggestionFilterOption, sortOption]);
+  }, [priorityFilter, businessTypeFilter, suggestionFilterOption, sortOption]);
 
   useEffect(() => {
     fetchData();
@@ -96,6 +99,32 @@ const AISuggestions = () => {
         setBusinessTypes(btRes.data || []);
       } catch (err) {
         console.error("Error fetching business types:", err);
+      }
+
+      // Fetch priorities and routes dynamically
+      try {
+        const [prioritiesRes, routeRes] = await Promise.all([
+          axios.get(`${ADMIN_PATH}/priorities`).catch(() => ({ data: [] })),
+          axios.get(`${ADMIN_PATH}/routes`).catch(() => ({ data: [] })),
+        ]);
+
+        const fetchedPriorities = (prioritiesRes.data || []).sort((a, b) => (a.order || 99) - (b.order || 99));
+        setPriorities(fetchedPriorities);
+
+        const routeMap = {};
+        (routeRes.data || []).forEach(r => {
+          if (!r) return;
+          const name = typeof r === "string" ? r : r.name;
+          const pId = r.priorityId || (r.priority && r.priority.id) || null;
+          if (name) {
+            routeMap[name] = pId;
+            routeMap[name.toLowerCase()] = pId;
+            routeMap[name.trim()] = pId;
+          }
+        });
+        setRoutePriorityMap(routeMap);
+      } catch (err) {
+        console.error("Error fetching routes/priorities:", err);
       }
 
       let allCustomers = [];
@@ -175,6 +204,15 @@ const AISuggestions = () => {
 
       if (!matchesSuggestionOption) return false;
 
+      // Priority filter
+      const customerRoute = String(item.customer?.route || "").trim();
+      const customerPriorityId = routePriorityMap[customerRoute] ?? routePriorityMap[customerRoute.toLowerCase()] ?? null;
+      const matchesPriority =
+        priorityFilter === "ALL" ||
+        customerPriorityId === priorityFilter;
+
+      if (!matchesPriority) return false;
+
       // Customer-type dropdown filter (Kirana/Hotel/etc)
       // AI candidates from backend (`/ai-suggestions/candidates`) may not always include businessType.
       // Try multiple fields used across the app: businessType, business, and zone.businessType (if present).
@@ -189,9 +227,9 @@ const AISuggestions = () => {
         String(normalizedCustomerType).trim().toLowerCase() ===
           String(businessTypeFilter).trim().toLowerCase();
 
-      return matchesSearch && matchesCustomerType;
+      return matchesSearch && matchesPriority && matchesCustomerType;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption]);
+  }, [processedData, searchQuery, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption]);
 
 
   const sortedData = useMemo(() => {
@@ -306,6 +344,18 @@ const AISuggestions = () => {
       <div className="flex justify-between items-center mb-4 gap-4">
         <h1 className="text-xl font-bold whitespace-nowrap">AI Suggestions</h1>
         <div className="flex gap-2">
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="border border-gray-300 px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="ALL">All Priorities</option>
+            {priorities.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
           <select
             value={businessTypeFilter}
             onChange={(e) => setBusinessTypeFilter(e.target.value)}

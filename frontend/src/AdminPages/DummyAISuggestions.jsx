@@ -55,6 +55,9 @@ const DummyAISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [priorities, setPriorities] = useState([]);
+  const [routePriorityMap, setRoutePriorityMap] = useState({});
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
   const [businessTypes, setBusinessTypes] = useState([]);
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
@@ -151,7 +154,7 @@ const DummyAISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [businessTypeFilter, suggestionFilterOption, sortOption, activeGapTab, patternFilter, categoryFilter, routeFilter]);
+  }, [priorityFilter, businessTypeFilter, suggestionFilterOption, sortOption, activeGapTab, patternFilter, categoryFilter, routeFilter]);
 
   useEffect(() => {
     fetchData();
@@ -173,13 +176,33 @@ const DummyAISuggestions = () => {
         console.error("Error fetching business types:", err);
       }
 
-      // Fetch routes dynamically
+      // Fetch priorities and routes dynamically
       try {
-        const routeRes = await axios.get(`${ADMIN_PATH}/routes`);
-        const routeNames = (routeRes.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
+        const [prioritiesRes, routeRes] = await Promise.all([
+          axios.get(`${ADMIN_PATH}/priorities`).catch(() => ({ data: [] })),
+          axios.get(`${ADMIN_PATH}/routes`).catch(() => ({ data: [] })),
+        ]);
+
+        const fetchedPriorities = (prioritiesRes.data || []).sort((a, b) => (a.order || 99) - (b.order || 99));
+        setPriorities(fetchedPriorities);
+
+        const routeMap = {};
+        const routeNames = (routeRes.data || []).map(r => {
+          if (!r) return null;
+          const name = typeof r === "string" ? r : r.name;
+          const pId = r.priorityId || (r.priority && r.priority.id) || null;
+          if (name) {
+            routeMap[name] = pId;
+            routeMap[name.toLowerCase()] = pId;
+            routeMap[name.trim()] = pId;
+          }
+          return name;
+        }).filter(Boolean);
+
         setRoutes(routeNames);
+        setRoutePriorityMap(routeMap);
       } catch (err) {
-        console.error("Error fetching routes:", err);
+        console.error("Error fetching routes/priorities:", err);
       }
 
       let allCustomers = [];
@@ -279,6 +302,15 @@ const DummyAISuggestions = () => {
 
       if (!matchesSuggestionOption) return false;
 
+      // Priority filter
+      const customerRoute = String(item.customer?.route || "").trim();
+      const customerPriorityId = routePriorityMap[customerRoute] ?? routePriorityMap[customerRoute.toLowerCase()] ?? null;
+      const matchesPriority =
+        priorityFilter === "ALL" ||
+        customerPriorityId === priorityFilter;
+
+      if (!matchesPriority) return false;
+
       // Customer-type dropdown filter (Kirana/Hotel/etc)
       // AI candidates from backend (`/ai-suggestions/candidates`) may not always include businessType.
       // Try multiple fields used across the app: businessType, business, and zone.businessType (if present).
@@ -315,7 +347,6 @@ const DummyAISuggestions = () => {
       }
 
       // Route filter (multi-select)
-      const customerRoute = String(item.customer?.route || "").trim();
       const matchesRoute = routeFilter.length === 0 || routeFilter.includes(customerRoute);
 
       // Delivery Gap filter
@@ -339,9 +370,9 @@ const DummyAISuggestions = () => {
         else if (activeGapTab === "G30+") matchesGap = gapNum >= 30;
       }
 
-      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
+      return matchesSearch && matchesPriority && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
+  }, [processedData, searchQuery, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -528,6 +559,19 @@ const DummyAISuggestions = () => {
             Download Excel
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Priorities</option>
+              {priorities.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+
             <select
               value={businessTypeFilter}
               onChange={(e) => setBusinessTypeFilter(e.target.value)}

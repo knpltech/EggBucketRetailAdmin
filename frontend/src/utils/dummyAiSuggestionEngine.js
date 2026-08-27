@@ -99,14 +99,14 @@ const exceptWeekdayBuyer = (targetWeekdayName) => {
     return {
       suggestion: "TURN_OFF_TODAY",
       confidence: 100,
-      reason: `Customer skips buying on ${targetWeekdayName}s. Today is ${todayWeekdayName}.`,
+      reason: `${targetWeekdayName} Exception: Today is ${targetWeekdayName}, skipping delivery.`,
     };
   }
 
   return {
     suggestion: "TURN_ON_TODAY",
     confidence: 100,
-    reason: `Customer buys on all days except ${targetWeekdayName}. Today is ${todayWeekdayName}.`,
+    reason: `${targetWeekdayName} Exception: Today is not ${targetWeekdayName}, proceeding with delivery.`,
   };
 };
 
@@ -216,28 +216,6 @@ const onCallLogicBuyer = (customer) => {
   };
 };
 
-const mondayException = (customer) => {
-  const today = new Date();
-  const todayWeekdayName = new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    timeZone: "Asia/Kolkata",
-  }).format(today);
-
-  if (todayWeekdayName === "Monday") {
-    return {
-      suggestion: "TURN_OFF_TODAY",
-      confidence: 100,
-      reason: "Monday Exception: Today is Monday, skipping delivery.",
-    };
-  }
-
-  return {
-    suggestion: "TURN_ON_TODAY",
-    confidence: 100,
-    reason: "Monday Exception: Today is not Monday, proceeding with delivery.",
-  };
-};
-
 const monthEndException = (customer) => {
   const todayStr = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const parts = todayStr.split("-");
@@ -286,15 +264,14 @@ export const BUYING_PATTERNS = [
   "Every Saturday Buyer",
   "Last Weekday Buyer",
   "Last Alternate Weekday Buyer",
-  "All Days Except Sunday",
-  "All Days Except Monday",
-  "All Days Except Tuesday",
-  "All Days Except Wednesday",
-  "All Days Except Thursday",
-  "All Days Except Friday",
-  "All Days Except Saturday",
-  "On Call Logic Buyer",
+  "Sunday Exception",
   "Monday Exception",
+  "Tuesday Exception",
+  "Wednesday Exception",
+  "Thursday Exception",
+  "Friday Exception",
+  "Saturday Exception",
+  "On Call Logic Buyer",
   "Month-End Exception",
   "Churn"
 ];
@@ -329,24 +306,29 @@ const evaluatePattern = (customer, pattern) => {
       return lastWeekdayBuyer(customer);
     case "Last Alternate Weekday Buyer":
       return lastAlternateWeekdayBuyer(customer);
+    case "Sunday Exception":
     case "All Days Except Sunday":
       return exceptWeekdayBuyer("Sunday");
+    case "Monday Exception":
     case "All Days Except Monday":
       return exceptWeekdayBuyer("Monday");
+    case "Tuesday Exception":
     case "All Days Except Tuesday":
       return exceptWeekdayBuyer("Tuesday");
+    case "Wednesday Exception":
     case "All Days Except Wednesday":
       return exceptWeekdayBuyer("Wednesday");
+    case "Thursday Exception":
     case "All Days Except Thursday":
       return exceptWeekdayBuyer("Thursday");
+    case "Friday Exception":
     case "All Days Except Friday":
       return exceptWeekdayBuyer("Friday");
+    case "Saturday Exception":
     case "All Days Except Saturday":
       return exceptWeekdayBuyer("Saturday");
     case "On Call Logic Buyer":
       return onCallLogicBuyer(customer);
-    case "Monday Exception":
-      return mondayException(customer);
     case "Month-End Exception":
       return monthEndException(customer);
     case "Churn":
