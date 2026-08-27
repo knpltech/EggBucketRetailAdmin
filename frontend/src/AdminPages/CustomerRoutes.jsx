@@ -14,6 +14,7 @@ export default function CustomerRoutes() {
   const [availablePriorities, setAvailablePriorities] = useState([]);
 
   // Filtering and Selection
+  const [sortBy, setSortBy] = useState("routeName");
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
   const [assignSelectedAgent, setAssignSelectedAgent] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
@@ -178,14 +179,23 @@ export default function CustomerRoutes() {
       };
     });
 
-    // Sort by priority order then name alphabetically
+    // Sort routes by selected sort criteria (default: Route Name)
     return finalizedRoutes.sort((a, b) => {
-      const orderA = a.priority ? (a.priority.order || 99) : 99;
-      const orderB = b.priority ? (b.priority.order || 99) : 99;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.name.localeCompare(b.name);
+      if (sortBy === "priority") {
+        const orderA = a.priority ? (a.priority.order || 99) : 99;
+        const orderB = b.priority ? (b.priority.order || 99) : 99;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      } else {
+        // Default: Route Name
+        const nameComparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+        if (nameComparison !== 0) return nameComparison;
+        const orderA = a.priority ? (a.priority.order || 99) : 99;
+        const orderB = b.priority ? (b.priority.order || 99) : 99;
+        return orderA - orderB;
+      }
     });
-  }, [routes, customers, agents, categoryPeaks, availablePriorities]);
+  }, [routes, customers, agents, categoryPeaks, availablePriorities, sortBy]);
 
   // Compute Agent stats for Right Sidebar
   const agentStats = useMemo(() => {
@@ -585,141 +595,172 @@ export default function CustomerRoutes() {
       <div className="flex flex-col xl:flex-row gap-5 items-start w-full">
         {/* LEFT PANEL - ALL ROUTES (EXPANDED TO FULL AVAILABLE WIDTH) */}
         <div className="flex-1 min-w-0 w-full bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
-          <div className="p-4 sm:p-5 border-b border-gray-100 flex justify-between items-center">
+          <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
             <h2 className="text-lg font-bold text-gray-800">All Routes</h2>
-          </div>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-3 sm:p-4">
-            {/* Header */}
-            <div className="flex items-center px-4 py-2 mb-2 text-xs font-bold text-gray-500 sticky top-0 z-10 bg-gray-50">
-              <div style={{ width: "125px", flexShrink: 0 }}>Priority</div>
-              <div className="flex-1 min-w-0 pr-3">Route Name</div>
-              <div className="w-16 text-center flex-shrink-0 text-xs">Total Cust.</div>
-              <div className="w-16 text-center flex-shrink-0 text-xs">Active Cust.</div>
-              <div className="w-16 text-center flex-shrink-0 text-xs">Best Pot.</div>
-              <div className="w-16 text-center flex-shrink-0 text-xs">Pot. Ach.</div>
-              <div className="w-16 text-center flex-shrink-0 text-xs">Route Eff.</div>
-              <div style={{ width: "135px", flexShrink: 0 }} className="pl-3">Assigned Agent</div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="sort-routes" className="text-xs font-semibold text-gray-500 whitespace-nowrap">
+                Sort By:
+              </label>
+              <select
+                id="sort-routes"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-xs font-semibold text-gray-700 shadow-2xs focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="routeName">Route Name</option>
+                <option value="priority">Priority</option>
+              </select>
             </div>
+          </div>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-2 sm:p-3">
+            <div className="w-full">
+              {/* Header */}
+              <div className="flex items-center px-3 py-2 mb-2 text-[11px] font-bold text-gray-500 sticky top-0 z-10 bg-gray-50 border-l-4 border-transparent">
+                <div style={{ width: "90px", flexShrink: 0 }} className="pr-2">Priority</div>
+                <div className="flex-1 min-w-0 pr-2">Route Name</div>
+                <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
+                  <div>Total</div>
+                  <div className="text-[10px] font-semibold text-gray-400">Customers</div>
+                </div>
+                <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
+                  <div>Active</div>
+                  <div className="text-[10px] font-semibold text-gray-400">Customers</div>
+                </div>
+                <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
+                  <div>Best</div>
+                  <div className="text-[10px] font-semibold text-gray-400">Potential</div>
+                </div>
+                <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
+                  <div>Potential</div>
+                  <div className="text-[10px] font-semibold text-gray-400">Achieved</div>
+                </div>
+                <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
+                  <div>Route</div>
+                  <div className="text-[10px] font-semibold text-gray-400">Efficiency</div>
+                </div>
+                <div style={{ width: "115px", flexShrink: 0 }} className="pl-2">Assigned Agent</div>
+              </div>
 
-            {/* Rows */}
-            <div className="flex flex-col gap-2.5">
-              {loading ? (
-                <div className="text-center py-10 text-gray-500">Loading...</div>
-              ) : routeData.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">No routes found.</div>
-              ) : (
-                routeData.map((route, i) => {
-                  const colors = [
-                    { border: "border-l-blue-500", text: "text-blue-600" },
-                    { border: "border-l-green-500", text: "text-green-600" },
-                    { border: "border-l-orange-500", text: "text-orange-600" },
-                    { border: "border-l-purple-500", text: "text-purple-600" },
-                    { border: "border-l-teal-500", text: "text-teal-600" },
-                    { border: "border-l-pink-500", text: "text-pink-600" },
-                  ];
-                  const color = colors[i % colors.length];
+              {/* Rows */}
+              <div className="flex flex-col gap-2">
+                {loading ? (
+                  <div className="text-center py-10 text-gray-500 text-xs">Loading...</div>
+                ) : routeData.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500 text-xs">No routes found.</div>
+                ) : (
+                  routeData.map((route, i) => {
+                    const colors = [
+                      { border: "border-l-blue-500", text: "text-blue-600" },
+                      { border: "border-l-green-500", text: "text-green-600" },
+                      { border: "border-l-orange-500", text: "text-orange-600" },
+                      { border: "border-l-purple-500", text: "text-purple-600" },
+                      { border: "border-l-teal-500", text: "text-teal-600" },
+                      { border: "border-l-pink-500", text: "text-pink-600" },
+                    ];
+                    const color = colors[i % colors.length];
 
-                  return (
-                    <div key={route.name} className={`flex items-center bg-white shadow-xs border border-gray-100 border-l-4 ${color.border} rounded-xl px-4 py-3 hover:shadow-md transition-all`}>
-                      {/* Column 1: Priority (Left to Route Name) */}
-                      <div style={{ width: "125px", flexShrink: 0 }} className="pr-3 flex items-center">
-                        <select
-                          value={route.priorityId || ""}
-                          onChange={(e) => handlePriorityChange(route.name, e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white font-bold cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 text-xs shadow-2xs transition-colors"
-                          style={{ color: route.priority?.color || "#6b7280" }}
-                        >
-                          <option value="">None</option>
-                          {availablePriorities.filter(p => p.active !== false).map(p => (
-                            <option key={p.id} value={p.id} style={{ color: p.color }}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    return (
+                      <div key={route.name} className={`flex items-center bg-white shadow-xs border border-gray-100 border-l-4 ${color.border} rounded-xl px-3 py-2.5 hover:shadow-md transition-all`}>
+                        {/* Column 1: Priority */}
+                        <div style={{ width: "90px", flexShrink: 0 }} className="pr-2 flex items-center">
+                          <select
+                            value={route.priorityId || ""}
+                            onChange={(e) => handlePriorityChange(route.name, e.target.value)}
+                            className="w-full border border-gray-200 rounded-md px-1.5 py-1 bg-white font-bold cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 text-[11px] shadow-2xs transition-colors"
+                            style={{ color: route.priority?.color || "#6b7280" }}
+                          >
+                            <option value="">None</option>
+                            {availablePriorities.filter(p => p.active !== false).map(p => (
+                              <option key={p.id} value={p.id} style={{ color: p.color }}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                      {/* Column 2: Route Name */}
-                      <div className="flex-1 min-w-0 pr-3">
-                        {editingRoute === route.name ? (
-                          <div className="flex flex-col gap-1 pr-2">
-                            <input
-                              type="text"
-                              value={editRouteValue}
-                              onChange={(e) => setEditRouteValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveRouteName(route.name);
-                                else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
-                              }}
-                              className={`border rounded px-2 py-1 text-xs outline-none font-bold ${color.text} w-full ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              autoFocus
-                              disabled={isSavingRoute}
-                            />
-                            <div className="flex gap-2 text-xs">
-                              <button onClick={() => saveRouteName(route.name)} disabled={isSavingRoute} className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}>
-                                {isSavingRoute ? 'Saving...' : 'Save'}
-                              </button>
-                              <button onClick={() => setEditingRoute(null)} disabled={isSavingRoute} className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}>
-                                Cancel
-                              </button>
+                        {/* Column 2: Route Name */}
+                        <div className="flex-1 min-w-0 pr-2">
+                          {editingRoute === route.name ? (
+                            <div className="flex flex-col gap-1 pr-1">
+                              <input
+                                type="text"
+                                value={editRouteValue}
+                                onChange={(e) => setEditRouteValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveRouteName(route.name);
+                                  else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
+                                }}
+                                className={`border rounded px-2 py-1 text-xs outline-none font-bold ${color.text} w-full ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                autoFocus
+                                disabled={isSavingRoute}
+                              />
+                              <div className="flex gap-2 text-xs">
+                                <button onClick={() => saveRouteName(route.name)} disabled={isSavingRoute} className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}>
+                                  {isSavingRoute ? 'Saving...' : 'Save'}
+                                </button>
+                                <button onClick={() => setEditingRoute(null)} disabled={isSavingRoute} className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}>
+                                  Cancel
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-start gap-1.5">
-                              <p className={`font-bold text-sm leading-snug break-words ${color.text}`} title={route.name}>{route.name}</p>
-                              <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-0.5" title="Rename route">
-                                <FiEdit2 size={13} />
-                              </button>
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-400 font-medium">
-                              <span>Route {i + 1}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                          ) : (
+                            <>
+                              <div className="flex items-start gap-1">
+                                <p className={`font-bold text-xs sm:text-[13px] leading-snug break-words ${color.text}`} title={route.name}>{route.name}</p>
+                                <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-0.5" title="Rename route">
+                                  <FiEdit2 size={11} />
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-400 font-medium">
+                                <span>Route {i + 1}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
 
-                      {/* Stat Columns */}
-                      <div className="w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-semibold text-gray-800">
-                        <span>{route.totalCustomers}</span>
-                        {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
-                      </div>
-                      <div className="w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
-                        <span>{route.activeCustomers}</span>
-                        {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
-                      </div>
-                      <div className="w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
-                        <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
-                      </div>
-                      <div className="w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
-                        <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
-                        {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
-                      </div>
-                      <div className="w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-teal-600">
-                        <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
-                        {renderEfficiencyDiff(
-                          route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
-                          route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
-                          true
-                        )}
-                      </div>
+                        {/* Stat Columns */}
+                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-semibold text-gray-800">
+                          <span>{route.totalCustomers}</span>
+                          {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
+                        </div>
+                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
+                          <span>{route.activeCustomers}</span>
+                          {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
+                        </div>
+                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
+                          <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
+                        </div>
+                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
+                          <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
+                          {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
+                        </div>
+                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-teal-600">
+                          <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
+                          {renderEfficiencyDiff(
+                            route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
+                            route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
+                            true
+                          )}
+                        </div>
 
-                      {/* Assigned Agent Column */}
-                      <div style={{ width: "135px", flexShrink: 0 }} className="pl-3 flex items-center min-w-0">
-                        {route.assignedAgent === "Unassigned" ? (
-                          <span className="text-red-500 font-semibold text-xs">Unassigned</span>
-                        ) : (
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0">
-                              {getInitials(route.assignedAgentName)}
+                        {/* Assigned Agent Column */}
+                        <div style={{ width: "115px", flexShrink: 0 }} className="pl-2 flex items-center min-w-0">
+                          {route.assignedAgent === "Unassigned" ? (
+                            <span className="text-red-500 font-semibold text-[11px]">Unassigned</span>
+                          ) : (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[9px] flex-shrink-0">
+                                {getInitials(route.assignedAgentName)}
+                              </div>
+                              <span className="text-gray-700 text-[11px] font-medium truncate" title={route.assignedAgentName}>{route.assignedAgentName}</span>
                             </div>
-                            <span className="text-gray-700 text-xs font-medium truncate" title={route.assignedAgentName}>{route.assignedAgentName}</span>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
 

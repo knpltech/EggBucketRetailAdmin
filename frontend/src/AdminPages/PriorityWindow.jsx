@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
+import { getCachedUserInfo } from "../utils/customerInfoClientCache";
 import {
-  FiPlus, FiEdit2, FiTrash2, FiX, FiMapPin, FiUsers,
+  FiPlus, FiEdit2, FiTrash2, FiX, FiMapPin, FiUsers, FiUserCheck, FiTarget,
   FiCalendar, FiCheck, FiAlertCircle, FiChevronRight, FiClock
 } from "react-icons/fi";
 
@@ -63,9 +64,24 @@ function RouteCard({ route, color }) {
           )}
         </div>
       </div>
-      <div className="flex-shrink-0 flex items-center gap-1.5 text-xs text-gray-500 font-medium">
-        <span className="text-[11px] text-gray-400">Assigned Agent(s)</span>
-        <span className="font-bold text-gray-700">{route.agentCount || 0}</span>
+      <div className="flex-shrink-0 flex items-center gap-2 text-xs text-gray-500 font-medium">
+        <div className="text-right">
+          <span className="text-[11px] text-gray-400 mr-0.5">Cust:</span>
+          <span className="font-bold text-gray-700">{route.customerCount || 0}</span>
+        </div>
+        <span className="text-gray-200">|</span>
+        <div className="text-right">
+          <span className="text-[11px] text-gray-400 mr-0.5">Achieved:</span>
+          <span className="font-bold text-emerald-600">{route.potentialAchieved || 0}</span>
+          <span className="text-[10px] text-emerald-700 font-bold ml-1">
+            ({route.peakPotential > 0 ? Math.round(((route.potentialAchieved || 0) / route.peakPotential) * 100) : 0}%)
+          </span>
+        </div>
+        <span className="text-gray-200">|</span>
+        <div className="text-right">
+          <span className="text-[11px] text-gray-400 mr-0.5">Agents:</span>
+          <span className="font-bold text-gray-700">{route.agentCount || 0}</span>
+        </div>
       </div>
     </div>
   );
@@ -437,6 +453,26 @@ function DeleteConfirm({ priority, onClose, onConfirm, loading }) {
 
 // ─── Priority Column ──────────────────────────────────────────────────────────
 
+function getCustomerPeakPotential(customer) {
+  if (!customer) return 0;
+  const raw = customer.Peak_Potential || customer.potential;
+  if (typeof raw === "number" && raw > 0) return raw;
+  if (typeof raw === "string") {
+    const num = Number(raw.replace(/[^\d.]/g, ""));
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  const last8Days = customer.last8Days || {};
+  let maxTrays = 0;
+  Object.values(last8Days).forEach((entry) => {
+    if (!entry) return;
+    const status = String(typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
+    if (status !== "delivered") return;
+    const trays = Number(entry.traysDelivered ?? entry.trays ?? entry.quantity ?? entry?.deliveredTrays ?? 0);
+    if (Number.isFinite(trays) && trays > maxTrays) maxTrays = trays;
+  });
+  return maxTrays;
+}
+
 function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
   const color = priority.color || "#3b82f6";
   const bgLight = colorWithAlpha(color, 0.04);
@@ -444,6 +480,18 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
 
   const agentSet = new Set(routes.flatMap(r => r.agents || []));
   const agentCount = agentSet.size || routes.reduce((s, r) => s + (r.agentCount || 0), 0);
+  const totalCustomers = routes.reduce((s, r) => s + (r.customerCount || 0), 0);
+  const totalPotentialAchieved = routes.reduce((s, r) => s + (r.potentialAchieved || 0), 0);
+  const totalPeakPotential = routes.reduce((s, r) => s + (r.peakPotential || 0), 0);
+  const totalLastWeekPotential = routes.reduce((s, r) => s + (r.lastWeekPotential || 0), 0);
+
+  const achievementPercentage = totalPeakPotential > 0
+    ? Math.round((totalPotentialAchieved / totalPeakPotential) * 100)
+    : 0;
+
+  const wowPercentage = totalLastWeekPotential === 0
+    ? (totalPotentialAchieved > 0 ? 100 : 0)
+    : (((totalPotentialAchieved - totalLastWeekPotential) / totalLastWeekPotential) * 100).toFixed(1);
 
   return (
     <div
@@ -486,22 +534,54 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
 
         {/* Stats card */}
         <div className="grid grid-cols-2 gap-2">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs">
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
               <FiMapPin size={13} />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-gray-400 font-medium">Total Routes</p>
-              <p className="text-base font-bold text-gray-800 leading-tight">{routes.length}</p>
+              <p className="text-[11px] text-gray-400 font-medium truncate">Total Routes</p>
+              <p className="text-sm sm:text-base font-bold text-gray-800 leading-tight">{routes.length}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs">
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
               <FiUsers size={13} />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-gray-400 font-medium">Assigned Agents</p>
-              <p className="text-base font-bold text-gray-800 leading-tight">{agentCount}</p>
+              <p className="text-[11px] text-gray-400 font-medium truncate">Total Customers</p>
+              <p className="text-sm sm:text-base font-bold text-gray-800 leading-tight">{totalCustomers}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
+              <FiUserCheck size={13} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] text-gray-400 font-medium truncate">Assigned Agents</p>
+              <p className="text-sm sm:text-base font-bold text-gray-800 leading-tight">{agentCount}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
+              <FiTarget size={13} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] text-gray-400 font-medium truncate">Potential Achieved</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-sm sm:text-base font-bold text-emerald-600 leading-tight">
+                  {totalPotentialAchieved} <span className="text-[10px] text-gray-400 font-normal">trays</span>
+                </p>
+                <span
+                  className="text-[11px] font-bold px-1.5 py-0.5 rounded-md leading-none inline-flex items-center"
+                  style={{
+                    backgroundColor: achievementPercentage >= 100 ? '#ecfdf5' : achievementPercentage >= 70 ? '#fffbeb' : '#fef2f2',
+                    color: achievementPercentage >= 100 ? '#059669' : achievementPercentage >= 70 ? '#d97706' : '#dc2626',
+                  }}
+                  title={totalPeakPotential > 0 ? `Target Peak: ${totalPeakPotential} trays` : `Target Peak: ${totalCustomers * 10} trays`}
+                >
+                  {achievementPercentage}%
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -551,6 +631,8 @@ export default function PriorityWindow() {
   const [priorities, setPriorities] = useState([]);
   const [routes, setRoutes]         = useState([]);
   const [agents, setAgents]         = useState([]);
+  const [customers, setCustomers]   = useState([]);
+  const [categoryPeaks, setCategoryPeaks] = useState({});
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
 
@@ -567,13 +649,23 @@ export default function PriorityWindow() {
     if (showSpinner) setLoading(true);
     setError(null);
     try {
-      const [dashRes, agentsRes] = await Promise.all([
+      const [dashRes, agentsRes, userInfoData, peakRes] = await Promise.all([
         axios.get(`${ADMIN_PATH}/priority-dashboard`),
         axios.get(`${ADMIN_PATH}/get-del-partner`).catch(() => ({ data: [] })),
+        getCachedUserInfo().catch(() => ({ customers: [] })),
+        axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} })),
       ]);
       setPriorities(dashRes.data?.priorities || []);
       setRoutes(dashRes.data?.routes || []);
       setAgents(agentsRes.data || []);
+      setCategoryPeaks(peakRes.data || {});
+
+      const rawCustomers = Array.isArray(userInfoData?.customers)
+        ? userInfoData.customers
+        : Array.isArray(userInfoData)
+          ? userInfoData
+          : [];
+      setCustomers(rawCustomers);
     } catch (e) {
       console.error("PriorityWindow load error:", e);
       if (showSpinner) {
@@ -590,6 +682,26 @@ export default function PriorityWindow() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
+  const todayDate = useMemo(() => {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  }, []);
+
+  const lastWeekDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  }, []);
+
   // Build agent-count per route from agents list
   const agentCountByRoute = useMemo(() => {
     const map = {};
@@ -602,17 +714,94 @@ export default function PriorityWindow() {
     return map;
   }, [agents]);
 
+  // Build customer-count, today's potential-achieved, and last-week potential per route
+  const routeStatsFromCustomers = useMemo(() => {
+    const custMap = {};
+    const potMap = {};
+    const custPeakMap = {};
+    const lastWeekPotMap = {};
+
+    customers.forEach(customer => {
+      const route = (customer.route || customer.routeName || "").toString().trim();
+      if (!route) return;
+
+      custMap[route] = (custMap[route] || 0) + 1;
+      custMap[route.toLowerCase()] = (custMap[route.toLowerCase()] || 0) + 1;
+
+      // Customer Peak Potential sum
+      const cPeak = getCustomerPeakPotential(customer);
+      custPeakMap[route] = (custPeakMap[route] || 0) + cPeak;
+      custPeakMap[route.toLowerCase()] = (custPeakMap[route.toLowerCase()] || 0) + cPeak;
+
+      const last8Days = customer.last8Days || {};
+
+      // Today's delivered trays
+      const todayEntry = last8Days[todayDate];
+      if (todayEntry) {
+        const status = String(typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "").trim().toLowerCase();
+        if (status === "delivered") {
+          const trays = todayEntry.traysDelivered ?? todayEntry.trays ?? todayEntry.quantity ?? todayEntry?.deliveredTrays ?? 0;
+          const numTrays = Number(trays);
+          if (Number.isFinite(numTrays) && numTrays > 0) {
+            potMap[route] = (potMap[route] || 0) + numTrays;
+            potMap[route.toLowerCase()] = (potMap[route.toLowerCase()] || 0) + numTrays;
+          }
+        }
+      }
+
+      // Last week's delivered trays (7 days ago)
+      const lastWeekEntry = last8Days[lastWeekDate];
+      if (lastWeekEntry) {
+        const status = String(typeof lastWeekEntry === "string" ? lastWeekEntry : lastWeekEntry?.status || "").trim().toLowerCase();
+        if (status === "delivered") {
+          const trays = lastWeekEntry.traysDelivered ?? lastWeekEntry.trays ?? lastWeekEntry.quantity ?? lastWeekEntry?.deliveredTrays ?? 0;
+          const numTrays = Number(trays);
+          if (Number.isFinite(numTrays) && numTrays > 0) {
+            lastWeekPotMap[route] = (lastWeekPotMap[route] || 0) + numTrays;
+            lastWeekPotMap[route.toLowerCase()] = (lastWeekPotMap[route.toLowerCase()] || 0) + numTrays;
+          }
+        }
+      }
+    });
+
+    return {
+      customerCountByRoute: custMap,
+      customerPeakByRoute: custPeakMap,
+      potentialAchievedByRoute: potMap,
+      lastWeekPotentialByRoute: lastWeekPotMap,
+    };
+  }, [customers, todayDate, lastWeekDate]);
+
   // Group routes by priorityId
   const routesByPriority = useMemo(() => {
     const map = {};
     priorities.forEach(p => { map[p.id] = []; });
     routes.forEach(r => {
       if (r.priorityId && map[r.priorityId]) {
-        map[r.priorityId].push({ ...r, agentCount: agentCountByRoute[r.name] || 0 });
+        const rName = (r.name || "").toString().trim();
+        const clientCount = routeStatsFromCustomers.customerCountByRoute[rName] ?? routeStatsFromCustomers.customerCountByRoute[rName.toLowerCase()];
+        const count = clientCount !== undefined ? clientCount : (r.customerCount || 0);
+
+        const clientPot = routeStatsFromCustomers.potentialAchievedByRoute[rName] ?? routeStatsFromCustomers.potentialAchievedByRoute[rName.toLowerCase()];
+        const potAchieved = clientPot !== undefined ? clientPot : (r.potentialAchieved || 0);
+
+        const lastWeekPot = routeStatsFromCustomers.lastWeekPotentialByRoute[rName] ?? routeStatsFromCustomers.lastWeekPotentialByRoute[rName.toLowerCase()] ?? 0;
+        const catPeak = Number(categoryPeaks[`ROUTE_${rName.toUpperCase()}`]) || 0;
+        const custPeak = routeStatsFromCustomers.customerPeakByRoute[rName] ?? routeStatsFromCustomers.customerPeakByRoute[rName.toLowerCase()] ?? 0;
+        const peakPot = Math.max(catPeak, custPeak);
+
+        map[r.priorityId].push({
+          ...r,
+          customerCount: count,
+          potentialAchieved: potAchieved,
+          lastWeekPotential: lastWeekPot,
+          peakPotential: peakPot,
+          agentCount: agentCountByRoute[r.name] || 0,
+        });
       }
     });
     return map;
-  }, [priorities, routes, agentCountByRoute]);
+  }, [priorities, routes, agentCountByRoute, routeStatsFromCustomers, categoryPeaks]);
 
   // ── Priority actions (Silent Background Refresh) ───────────────────────────
 

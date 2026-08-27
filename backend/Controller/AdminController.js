@@ -1491,24 +1491,66 @@ const getPriorityDashboard = async (req, res) => {
     const db = getFirestore();
     await migrateLegacyRoutePriorities(db);
 
-    const [prioritiesSnap, routesSnap] = await Promise.all([
+    const [prioritiesSnap, routesSnap, customersSnap] = await Promise.all([
       db.collection("priorities").orderBy("order", "asc").get(),
       db.collection("routes").get(),
+      db.collection("customers").get(),
     ]);
 
     const priorities = prioritiesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     const priorityMap = {};
     priorities.forEach(p => { priorityMap[p.id] = p; });
 
+    // Get todayDate in Asia/Kolkata
+    const todayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    // Build customer count & potential achieved per route map
+    const customerCountByRoute = {};
+    const potentialAchievedByRoute = {};
+
+    customersSnap.docs.forEach(doc => {
+      const c = doc.data();
+      const rawRoute = c ? (c.route || c.routeName || "") : "";
+      const routeName = String(rawRoute).trim();
+      if (routeName) {
+        customerCountByRoute[routeName] = (customerCountByRoute[routeName] || 0) + 1;
+        customerCountByRoute[routeName.toLowerCase()] = (customerCountByRoute[routeName.toLowerCase()] || 0) + 1;
+
+        const last8Days = c.last8Days || {};
+        const todayEntry = last8Days[todayDate];
+        if (todayEntry) {
+          const status = String(typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "").trim().toLowerCase();
+          if (status === "delivered") {
+            const trays = todayEntry.traysDelivered ?? todayEntry.trays ?? todayEntry.quantity ?? todayEntry?.deliveredTrays ?? 0;
+            const numTrays = Number(trays);
+            if (Number.isFinite(numTrays) && numTrays > 0) {
+              potentialAchievedByRoute[routeName] = (potentialAchievedByRoute[routeName] || 0) + numTrays;
+              potentialAchievedByRoute[routeName.toLowerCase()] = (potentialAchievedByRoute[routeName.toLowerCase()] || 0) + numTrays;
+            }
+          }
+        }
+      }
+    });
+
     const routes = routesSnap.docs.map(doc => {
       const data = doc.data();
       const priority = data.priorityId ? (priorityMap[data.priorityId] || null) : null;
+      const exactName = data.name ? String(data.name).trim() : "";
+      const count = customerCountByRoute[exactName] ?? customerCountByRoute[exactName.toLowerCase()] ?? 0;
+      const potential = potentialAchievedByRoute[exactName] ?? potentialAchievedByRoute[exactName.toLowerCase()] ?? 0;
       return {
         id: doc.id,
         name: data.name,
         routeCode: data.routeCode || data.name,
         description: data.description || "",
         priorityId: data.priorityId || null,
+        customerCount: count,
+        potentialAchieved: potential,
         priority,
       };
     });
