@@ -8,7 +8,7 @@ import { saveAs } from "file-saver";
 
 import { ADMIN_PATH } from "../constant";
 
-const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR"];
+const CHECK_REASONS = ["SHOP CLOSED", "STOCK AVAILABLE", "OTHER VENDOR", "CONFIRMED TOMORROW"];
 const TRAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100];
 const CHECKED_TYPES = [
   "reached",
@@ -16,6 +16,7 @@ const CHECKED_TYPES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const Report = () => {
@@ -338,6 +339,76 @@ const Report = () => {
       a.name.localeCompare(b.name),
     );
   }, [filteredDeliveries]);
+
+  const lastWeekDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  }, [selectedDate]);
+
+  const lastWeekStats = useMemo(() => {
+    let stats = { checked: 0, delivered: 0, total: 0, agents: {} };
+    allCustomers.forEach((customer) => {
+      const last8Days = customer.last8Days || {};
+      const entry = last8Days[lastWeekDate];
+      if (!entry) return;
+      
+      const entryObj = typeof entry === "string" ? { status: entry } : entry;
+      const status = String(entryObj.status || "").toLowerCase();
+      
+      if (status && status !== "pending") {
+        const statusKey = status === "delivered" ? "delivered" : "checked";
+        let agentName = "Not Assigned";
+        if (entryObj.agentName) {
+            agentName = getDeliveryAgentName({ name: entryObj.agentName }) || "Not Assigned";
+        }
+        
+        if (!stats.agents[agentName]) {
+          stats.agents[agentName] = { checked: 0, delivered: 0, total: 0 };
+        }
+
+        if (statusKey === "delivered") {
+          stats.delivered += 1;
+          stats.agents[agentName].delivered += 1;
+        } else {
+          stats.checked += 1;
+          stats.agents[agentName].checked += 1;
+        }
+
+        stats.total += 1;
+        stats.agents[agentName].total += 1;
+      }
+    });
+    return stats;
+  }, [allCustomers, lastWeekDate]);
+
+  const renderConversionDiff = (currentTotal, currentDelivered, prevTotal, prevDelivered) => {
+    if (!prevTotal || prevTotal === 0) return null;
+
+    const currentConv = currentTotal > 0 ? (currentDelivered / currentTotal) * 100 : 0;
+    const prevConv = (prevDelivered / prevTotal) * 100;
+    
+    const diff = currentConv - prevConv;
+    const prevText = `(Last Week: ${prevConv.toFixed(1)}%)`;
+    
+    if (Math.abs(diff) < 0.1) {
+      return <span className="ml-1.5 text-slate-500 font-normal">{prevText}</span>;
+    } else if (diff > 0) {
+      return (
+        <span className="ml-1.5 inline-flex items-center gap-1 font-normal text-slate-500">
+          <span>{prevText}</span>
+          <span className="font-bold text-green-600">▲ {diff.toFixed(1)}%</span>
+        </span>
+      );
+    } else {
+      return (
+        <span className="ml-1.5 inline-flex items-center gap-1 font-normal text-slate-500">
+          <span>{prevText}</span>
+          <span className="font-bold text-red-600">▼ {Math.abs(diff).toFixed(1)}%</span>
+        </span>
+      );
+    }
+  };
 
   // ⭐ OPTIMIZED: Generate Excel from frontend data (no API call)
   const downloadSummaryExcel = () => {
@@ -675,6 +746,13 @@ const Report = () => {
             <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-800 border border-slate-300">
               Total: {selectedAgentStats.total}
             </span>
+            <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800 border border-purple-300 shadow-sm ml-auto">
+              Conversion: {selectedAgentStats.total > 0 ? ((selectedAgentStats.delivered / selectedAgentStats.total) * 100).toFixed(1) : 0}%
+              {selectedAgent === "all" ? 
+                renderConversionDiff(selectedAgentStats.total, selectedAgentStats.delivered, lastWeekStats.total, lastWeekStats.delivered) : 
+                (lastWeekStats.agents[selectedAgent] ? renderConversionDiff(selectedAgentStats.total, selectedAgentStats.delivered, lastWeekStats.agents[selectedAgent].total, lastWeekStats.agents[selectedAgent].delivered) : null)
+              }
+            </span>
           </div>
         )}
 
@@ -698,6 +776,10 @@ const Report = () => {
                     </span>
                     <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-800 border border-slate-300 shadow-sm">
                       Total: {agent.total}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800 border border-purple-300 shadow-sm">
+                      Conversion: {agent.total > 0 ? ((agent.delivered / agent.total) * 100).toFixed(1) : 0}%
+                      {lastWeekStats.agents[agent.name] ? renderConversionDiff(agent.total, agent.delivered, lastWeekStats.agents[agent.name].total, lastWeekStats.agents[agent.name].delivered) : null}
                     </span>
                   </div>
                 </div>

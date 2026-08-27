@@ -69,7 +69,7 @@ const ExecutionCalendarModal = ({ customer, onClose }) => {
     const status = String(typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
     
     if (status === "delivered") return "bg-green-100 text-green-800 border-green-300"; // Green
-    if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "shop_closed"].includes(status)) return "bg-yellow-100 text-yellow-800 border-yellow-300"; // Orange
+    if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "shop_closed", "confirmed_tomorrow"].includes(status)) return "bg-yellow-100 text-yellow-800 border-yellow-300"; // Orange
     
     return "bg-red-100 text-red-800 border-red-300"; // Red for pending/others
   };

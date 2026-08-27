@@ -27,6 +27,7 @@ const getDeliveryStatusForDate = (customer, dateStr) => {
     "shop_closed",
     "stock_available",
     "other_vendor",
+    "confirmed_tomorrow",
   ];
 
   if (checkedStatuses.includes(apiStatus)) return "checked";
@@ -49,7 +50,7 @@ const alternateDayBuyer = (customer) => {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
   const yesterdayStatus = getDeliveryStatusForDate(customer, yesterdayStr);
-  
+
   if (yesterdayStatus === "delivered") {
     return {
       suggestion: "TURN_OFF_TODAY",
@@ -98,21 +99,21 @@ const exceptWeekdayBuyer = (targetWeekdayName) => {
     return {
       suggestion: "TURN_OFF_TODAY",
       confidence: 100,
-      reason: `Customer skips buying on ${targetWeekdayName}s. Today is ${todayWeekdayName}.`,
+      reason: `${targetWeekdayName} Exception: Today is ${targetWeekdayName}, skipping delivery.`,
     };
   }
 
   return {
     suggestion: "TURN_ON_TODAY",
     confidence: 100,
-    reason: `Customer buys on all days except ${targetWeekdayName}. Today is ${todayWeekdayName}.`,
+    reason: `${targetWeekdayName} Exception: Today is not ${targetWeekdayName}, proceeding with delivery.`,
   };
 };
 
 const lastWeekdayBuyer = (customer) => {
   let latestDeliveryReference = null;
   const today = new Date();
-  
+
   // Search from 1 to 14 days ago to find the absolute most recent delivery
   for (let i = 1; i <= 14; i++) {
     const pastDate = new Date();
@@ -136,9 +137,9 @@ const lastWeekdayBuyer = (customer) => {
   const todayDay = today.getDay(); // 0 to 6
 
   // Check if today is lastDeliveredDay, lastDeliveredDay - 1, or lastDeliveredDay + 1 (with wrap around)
-  const isMatch = 
-    todayDay === lastDeliveredDay || 
-    todayDay === (lastDeliveredDay + 1) % 7 || 
+  const isMatch =
+    todayDay === lastDeliveredDay ||
+    todayDay === (lastDeliveredDay + 1) % 7 ||
     todayDay === (lastDeliveredDay + 6) % 7; // +6 is same as -1 with modulo
 
   const weekdayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "Asia/Kolkata" }).format(latestDeliveryReference);
@@ -161,7 +162,7 @@ const lastWeekdayBuyer = (customer) => {
 const lastAlternateWeekdayBuyer = (customer) => {
   let latestDeliveryReference = null;
   const today = new Date();
-  
+
   // Search from 1 to 14 days ago to find the absolute most recent delivery
   for (let i = 1; i <= 14; i++) {
     const pastDate = new Date();
@@ -185,9 +186,9 @@ const lastAlternateWeekdayBuyer = (customer) => {
   const todayDay = today.getDay(); // 0 to 6
 
   // Check if today is lastDeliveredDay, lastDeliveredDay - 2, or lastDeliveredDay + 2
-  const isMatch = 
-    todayDay === lastDeliveredDay || 
-    todayDay === (lastDeliveredDay + 2) % 7 || 
+  const isMatch =
+    todayDay === lastDeliveredDay ||
+    todayDay === (lastDeliveredDay + 2) % 7 ||
     todayDay === (lastDeliveredDay + 5) % 7; // +5 is same as -2 with modulo
 
   const weekdayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "Asia/Kolkata" }).format(latestDeliveryReference);
@@ -207,6 +208,47 @@ const lastAlternateWeekdayBuyer = (customer) => {
   }
 };
 
+const onCallLogicBuyer = (customer) => {
+  return {
+    suggestion: "TURN_OFF_TODAY",
+    confidence: 100,
+    reason: "Customer is an On Call Logic Buyer, so always suggest OFF.",
+  };
+};
+
+const monthEndException = (customer) => {
+  const todayStr = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+  const parts = todayStr.split("-");
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  const lastDayOfThisMonth = new Date(year, month, 0).getDate();
+  const isMonthEnd = day === lastDayOfThisMonth;
+
+  if (isMonthEnd) {
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: 100,
+      reason: `Month-End Exception: Today is the last day of the month (${todayStr}), skipping delivery.`,
+    };
+  }
+
+  return {
+    suggestion: "TURN_ON_TODAY",
+    confidence: 100,
+    reason: `Month-End Exception: Today is not the last day of the month, proceeding with delivery.`,
+  };
+};
+
+const churnBuyer = (customer) => {
+  return {
+    suggestion: "TURN_OFF_TODAY",
+    confidence: 100,
+    reason: "Customer is flagged as Churn, so always suggest OFF.",
+  };
+};
+
 // --- Main Engine Function ---
 
 export const BUYING_PATTERNS = [
@@ -222,28 +264,19 @@ export const BUYING_PATTERNS = [
   "Every Saturday Buyer",
   "Last Weekday Buyer",
   "Last Alternate Weekday Buyer",
-  "All Days Except Sunday",
-  "All Days Except Monday",
-  "All Days Except Tuesday",
-  "All Days Except Wednesday",
-  "All Days Except Thursday",
-  "All Days Except Friday",
-  "All Days Except Saturday"
+  "Sunday Exception",
+  "Monday Exception",
+  "Tuesday Exception",
+  "Wednesday Exception",
+  "Thursday Exception",
+  "Friday Exception",
+  "Saturday Exception",
+  "On Call Logic Buyer",
+  "Month-End Exception",
+  "Churn"
 ];
 
-export const generateDummyAISuggestion = (customer, pattern = "UnAssigned") => {
-  const skipConfig = customer?.skipConfig || {};
-
-  // RULE: Skip config active (Applies across all patterns)
-  if (skipConfig?.days > 0) {
-    return {
-      suggestion: "KEEP_OFF_TODAY",
-      confidence: 100,
-      score: 0,
-      reason: "Customer currently in skip mode.",
-    };
-  }
-
+const evaluatePattern = (customer, pattern) => {
   switch (pattern) {
     case "UnAssigned":
       return {
@@ -273,20 +306,33 @@ export const generateDummyAISuggestion = (customer, pattern = "UnAssigned") => {
       return lastWeekdayBuyer(customer);
     case "Last Alternate Weekday Buyer":
       return lastAlternateWeekdayBuyer(customer);
+    case "Sunday Exception":
     case "All Days Except Sunday":
       return exceptWeekdayBuyer("Sunday");
+    case "Monday Exception":
     case "All Days Except Monday":
       return exceptWeekdayBuyer("Monday");
+    case "Tuesday Exception":
     case "All Days Except Tuesday":
       return exceptWeekdayBuyer("Tuesday");
+    case "Wednesday Exception":
     case "All Days Except Wednesday":
       return exceptWeekdayBuyer("Wednesday");
+    case "Thursday Exception":
     case "All Days Except Thursday":
       return exceptWeekdayBuyer("Thursday");
+    case "Friday Exception":
     case "All Days Except Friday":
       return exceptWeekdayBuyer("Friday");
+    case "Saturday Exception":
     case "All Days Except Saturday":
       return exceptWeekdayBuyer("Saturday");
+    case "On Call Logic Buyer":
+      return onCallLogicBuyer(customer);
+    case "Month-End Exception":
+      return monthEndException(customer);
+    case "Churn":
+      return churnBuyer(customer);
     default:
       return {
         suggestion: "TURN_OFF_TODAY",
@@ -294,5 +340,45 @@ export const generateDummyAISuggestion = (customer, pattern = "UnAssigned") => {
         score: 0,
         reason: "Unknown Buying Pattern selected.",
       };
+  }
+};
+
+export const generateDummyAISuggestion = (customer, primaryPattern = "UnAssigned", secondaryPattern = "UnAssigned", tertiaryPattern = "UnAssigned") => {
+  const skipConfig = customer?.skipConfig || {};
+
+  // RULE: Skip config active (Applies across all patterns)
+  if (skipConfig?.days > 0) {
+    return {
+      suggestion: "KEEP_OFF_TODAY",
+      confidence: 100,
+      score: 0,
+      reason: "Customer currently in skip mode.",
+    };
+  }
+
+  const primaryResult = evaluatePattern(customer, primaryPattern);
+  const secondaryResult = evaluatePattern(customer, secondaryPattern);
+  const tertiaryResult = evaluatePattern(customer, tertiaryPattern);
+
+  const isPrimaryOn = primaryResult.suggestion.includes("ON");
+  const isSecondaryOn = secondaryResult.suggestion.includes("ON");
+  const isTertiaryOn = tertiaryResult.suggestion.includes("ON");
+
+  if (isPrimaryOn && isSecondaryOn && isTertiaryOn) {
+    return {
+      suggestion: "TURN_ON_TODAY",
+      confidence: Math.min(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
+      reason: `Primary: ${primaryResult.reason} | Secondary: ${secondaryResult.reason} | Tertiary: ${tertiaryResult.reason}`,
+    };
+  } else {
+    const offLogics = [];
+    if (!isPrimaryOn) offLogics.push(`Primary: ${primaryResult.reason}`);
+    if (!isSecondaryOn) offLogics.push(`Secondary: ${secondaryResult.reason}`);
+    if (!isTertiaryOn) offLogics.push(`Tertiary: ${tertiaryResult.reason}`);
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: Math.max(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
+      reason: `OFF because - ${offLogics.join(" | ")}`,
+    };
   }
 };

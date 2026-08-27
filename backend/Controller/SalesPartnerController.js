@@ -4,7 +4,7 @@ import { getFirestore } from "firebase-admin/firestore";
 // Controller to add a new salesperson
 const addSalesPerson = async (req, res) => {
   try {
-    const { name, phone, password } = req.body;
+    const { name, phone, password, outlet } = req.body;
 
     if (!name || !phone || !password) {
       return res
@@ -51,6 +51,7 @@ const addSalesPerson = async (req, res) => {
         email,
         password,
         sales_id: `S${currentCount + 1}`,
+        outlet: outlet || "",
         active: true,
       });
 
@@ -89,7 +90,7 @@ const getSalesPartners = async (req, res) => {
 // Controller to update a salesperson's details
 const updateSalesPartner = async (req, res) => {
   try {
-    const { uid, name, phone } = req.body;
+    const { uid, name, phone, outlet } = req.body;
     if (!uid || !name || !phone) {
       return res
         .status(400)
@@ -105,6 +106,7 @@ const updateSalesPartner = async (req, res) => {
       name,
       phone,
       email: newEmail,
+      outlet: outlet || "",
     });
 
     res.status(200).json({ message: "Salesperson updated successfully." });

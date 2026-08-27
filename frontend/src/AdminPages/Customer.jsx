@@ -15,6 +15,7 @@ const CHECKED_TYPES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const getDeliveryStatusKey = (delivery) => {

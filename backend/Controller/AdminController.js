@@ -1,5 +1,5 @@
 import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getInventoryApp } from "../config/firebaseAdmin.js";
 import axios from "axios";
 import { getStorage } from "firebase-admin/storage";
@@ -94,12 +94,48 @@ const getCurrentCategoryFromLast8Days = (last8Days = {}, baseDate = new Date()) 
   return `D${Math.min(count, 7)}`;
 };
 
+const getDateDayNumber = (dateStr) => {
+  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const time = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(time)) return null;
+  return Math.floor(time / 86400000);
+};
+
+const computeDeliveryGap = (last8Days, todayDate) => {
+  if (!last8Days || typeof last8Days !== "object") return "G10";
+  const todayDayNumber = getDateDayNumber(todayDate);
+  if (todayDayNumber === null) return "G10";
+  let latestDeliveredDayNumber = null;
+  Object.entries(last8Days).forEach(([dateStr, entry]) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (status !== "delivered") return;
+    const dayNumber = getDateDayNumber(dateStr);
+    if (dayNumber === null || dayNumber > todayDayNumber) return;
+    if (
+      latestDeliveredDayNumber === null ||
+      dayNumber > latestDeliveredDayNumber
+    ) {
+      latestDeliveredDayNumber = dayNumber;
+    }
+  });
+  if (latestDeliveredDayNumber === null) return "G10";
+  return `G${todayDayNumber - latestDeliveredDayNumber}`;
+};
+
 const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
   const currentPeak = getCurrentDeliveryFrequency(last8Days);
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
-      customerData.peakFrequency ||
-      customerData.peak_frequency,
+    customerData.peakFrequency ||
+    customerData.peak_frequency,
   );
 
   return getPeakFrequencyNumber(savedPeak) >=
@@ -148,6 +184,7 @@ const updateLast8Days = async (
         "shop_closed",
         "stock_available",
         "other_vendor",
+        "confirmed_tomorrow",
       ].includes(normalizedType)
     ) {
       status = normalizedType;
@@ -187,8 +224,8 @@ const updateLast8Days = async (
     const peakFrequency = resolvePeakFrequency(customerData, last8Days);
     const savedPeak = normalizePeakFrequency(
       customerData.Peak_Frequency ||
-        customerData.peakFrequency ||
-        customerData.peak_frequency,
+      customerData.peakFrequency ||
+      customerData.peak_frequency,
     );
 
     // ⭐ COMPUTE CURRENT CATEGORY FROM last8Days
@@ -319,7 +356,8 @@ const getStatusAndReasonFromType = (type, checkReason) => {
     normalizedType === "price_mismatch" ||
     normalizedType === "shop_closed" ||
     normalizedType === "stock_available" ||
-    normalizedType === "other_vendor"
+    normalizedType === "other_vendor" ||
+    normalizedType === "confirmed_tomorrow"
   ) {
     return { status: "Checked", reason: checkReason || null };
   } else {
@@ -332,6 +370,7 @@ const RETENTION_CATEGORIES = [
   "price_mismatch",
   "shop_closed",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const normalizeRetentionCategory = (value) => {
@@ -373,6 +412,7 @@ const getRetentionCategoryLabel = (category) => {
     return "Shop Closed";
   if (category === "stock_available") return "Stock Available";
   if (category === "other_vendor") return "Other Vendor";
+  if (category === "confirmed_tomorrow") return "Confirmed Tomorrow";
   return "-";
 };
 
@@ -489,6 +529,7 @@ const RETENTION_CHECKED_STATUSES = [
   "shop_closed",
   "stock_available",
   "other_vendor",
+  "confirmed_tomorrow",
 ];
 
 const getRetentionCheckedCustomerDocsCached = async (db, todayKey) => {
@@ -592,9 +633,9 @@ const getRetentionCustomers = async (req, res) => {
         if (typeof nestedAgent === "object") {
           const nestedName = String(
             nestedAgent.name ||
-              nestedAgent.display_name ||
-              nestedAgent.agentName ||
-              "",
+            nestedAgent.display_name ||
+            nestedAgent.agentName ||
+            "",
           ).trim();
           if (nestedName) return nestedName;
         }
@@ -644,6 +685,7 @@ const getRetentionCustomers = async (req, res) => {
         "shop_closed",
         "stock_available",
         "other_vendor",
+        "confirmed_tomorrow",
       ];
       if (checkedStatuses.includes(status)) {
         return "checked";
@@ -716,6 +758,7 @@ const getRetentionCustomers = async (req, res) => {
       price_mismatch: 0,
       shop_closed: 0,
       other_vendor: 0,
+      confirmed_tomorrow: 0,
     };
     const todayDeliveriesMap = {};
     const customerCategories = {};
@@ -769,6 +812,7 @@ const getRetentionCustomers = async (req, res) => {
       stockAvailable: 0,
       shopClosed: 0,
       otherVendor: 0,
+      confirmedTomorrow: 0,
       totalShops: 0,
     });
     const addCategoryToStats = (stats, category) => {
@@ -778,6 +822,8 @@ const getRetentionCustomers = async (req, res) => {
         stats.shopClosed += 1;
       } else if (category === "other_vendor") {
         stats.otherVendor += 1;
+      } else if (category === "confirmed_tomorrow") {
+        stats.confirmedTomorrow += 1;
       }
       stats.totalShops += 1;
     };
@@ -948,6 +994,7 @@ const getRetentionCustomers = async (req, res) => {
             customer.last8Days,
             new Date(`${todayKey}T00:00:00`),
           ),
+          deliveryGap: computeDeliveryGap(customer.last8Days, todayKey),
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
@@ -977,6 +1024,7 @@ const getRetentionCustomers = async (req, res) => {
         { value: "price_mismatch", label: "Shop Closed" },
         { value: "shop_closed", label: "Shop Closed" },
         { value: "other_vendor", label: "Other Vendor" },
+        { value: "confirmed_tomorrow", label: "Confirmed Tomorrow" },
       ],
       counts,
       deliveryAgentOptions,
@@ -1170,7 +1218,8 @@ const getCustomerMapStatus = async (req, res) => {
 
 const updateCustomerMeta = async (req, res) => {
   try {
-    const { id, remarks, zone, customerType, businessType } = req.body;
+    const { id, remarks, zone, customerType, businessType, phone, callStatus } = req.body;
+    console.log("updateCustomerMeta called with:", req.body);
 
     if (!id) {
       return res.status(400).json({ message: "Customer ID is required" });
@@ -1214,6 +1263,14 @@ const updateCustomerMeta = async (req, res) => {
 
     // ✅ REMARKS
     if (remarks !== undefined) updateData.remarks = remarks;
+
+    // ✅ PHONE
+    if (phone !== undefined) updateData.phone = phone;
+
+    // ✅ CALL STATUS
+    if (callStatus !== undefined) updateData.callStatus = callStatus;
+
+    console.log("updateCustomerMeta updateData:", updateData);
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ message: "Nothing to update" });
@@ -1273,21 +1330,276 @@ const addZone = async (req, res) => {
   }
 };
 
+// ─── PRIORITY HELPERS ───────────────────────────────────────────────────────
+
+// ─── PRIORITY HELPERS & MIGRATION ──────────────────────────────────────────
+
+/** One-time migration: converts existing routes with legacy string values (A, B, C) to priorityId and deletes the legacy field. */
+const migrateLegacyRoutePriorities = async (db) => {
+  try {
+    const snap = await db.collection("priorities").get();
+    const priorityMap = {};
+    snap.docs.forEach(d => { priorityMap[d.id] = { id: d.id, ...d.data() }; });
+
+    const routesSnap = await db.collection("routes").get();
+    const batch = db.batch();
+    let migratedCount = 0;
+
+    routesSnap.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.priority !== undefined) {
+        let targetPriorityId = data.priorityId || null;
+        if (!targetPriorityId && data.priority) {
+          const matched = Object.values(priorityMap).find(p => p.code === data.priority || p.name === data.priority);
+          targetPriorityId = matched ? matched.id : null;
+        }
+
+        const updatePayload = {
+          priorityId: targetPriorityId,
+          priority: FieldValue.delete(),
+        };
+        batch.update(doc.ref, updatePayload);
+        migratedCount++;
+      }
+    });
+
+    if (migratedCount > 0) {
+      await batch.commit();
+      cache.del("routes:list");
+      cache.del("priority:dashboard");
+    }
+  } catch (err) {
+    console.error("migrateLegacyRoutePriorities error:", err);
+  }
+};
+
+// ─── PRIORITY CRUD ───────────────────────────────────────────────────────────
+
+const getPriorities = async (req, res) => {
+  try {
+    const cacheKey = "priorities:list";
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const db = getFirestore();
+    await migrateLegacyRoutePriorities(db);
+
+    const snap = await db.collection("priorities").orderBy("order", "asc").get();
+    const priorities = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    cache.set(cacheKey, priorities, 3600);
+    res.json(priorities);
+  } catch (e) {
+    console.error("getPriorities error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const addPriority = async (req, res) => {
+  try {
+    const { name, description, color, active, order } = req.body;
+    if (!name) return res.status(400).json({ message: "Priority name is required" });
+
+    const db = getFirestore();
+
+    await db.collection("priorities").add({
+      name,
+      description: description || "",
+      color: color || "#6b7280",
+      active: active !== false,
+      order: Number(order) || 99,
+      createdAt: new Date(),
+    });
+
+    cache.del("priorities:list");
+    cache.del("routes:list");
+    cache.del("priority:dashboard");
+    res.json({ message: "Priority added" });
+  } catch (e) {
+    console.error("addPriority error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const updatePriority = async (req, res) => {
+  try {
+    const { id, name, description, color, active, order } = req.body;
+    if (!id) return res.status(400).json({ message: "id is required" });
+
+    const db = getFirestore();
+    const ref = db.collection("priorities").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ message: "Priority not found" });
+
+    const updateData = {};
+    if (name       !== undefined) updateData.name        = name;
+    if (description!== undefined) updateData.description = description;
+    if (color      !== undefined) updateData.color       = color;
+    if (active     !== undefined) updateData.active      = active;
+    if (order      !== undefined) updateData.order       = Number(order);
+
+    await ref.update(updateData);
+
+    cache.del("priorities:list");
+    cache.del("routes:list");
+    cache.del("priority:dashboard");
+    res.json({ message: "Priority updated" });
+  } catch (e) {
+    console.error("updatePriority error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const deletePriority = async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ message: "id is required" });
+
+    const db = getFirestore();
+    const targetDoc = await db.collection("priorities").doc(id).get();
+    if (!targetDoc.exists) return res.status(404).json({ message: "Priority not found" });
+
+    // Set any routes that were assigned to this priority to null (unassigned)
+    const routesSnap = await db.collection("routes").where("priorityId", "==", id).get();
+    if (!routesSnap.empty) {
+      const batch = db.batch();
+      routesSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { priorityId: null });
+      });
+      await batch.commit();
+    }
+
+    await db.collection("priorities").doc(id).delete();
+
+    cache.del("priorities:list");
+    cache.del("routes:list");
+    cache.del("priority:dashboard");
+    res.json({ message: "Priority deleted and routes moved to unassigned" });
+  } catch (e) {
+    console.error("deletePriority error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/** Single consolidated endpoint specifically for the Priority Window — returns priorities + enriched routes in 1 API call */
+const getPriorityDashboard = async (req, res) => {
+  try {
+    const cacheKey = "priority:dashboard";
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const db = getFirestore();
+    await migrateLegacyRoutePriorities(db);
+
+    const [prioritiesSnap, routesSnap, customersSnap] = await Promise.all([
+      db.collection("priorities").orderBy("order", "asc").get(),
+      db.collection("routes").get(),
+      db.collection("customers").get(),
+    ]);
+
+    const priorities = prioritiesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const priorityMap = {};
+    priorities.forEach(p => { priorityMap[p.id] = p; });
+
+    // Get todayDate in Asia/Kolkata
+    const todayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    // Build customer count & potential achieved per route map
+    const customerCountByRoute = {};
+    const potentialAchievedByRoute = {};
+
+    customersSnap.docs.forEach(doc => {
+      const c = doc.data();
+      const rawRoute = c ? (c.route || c.routeName || "") : "";
+      const routeName = String(rawRoute).trim();
+      if (routeName) {
+        customerCountByRoute[routeName] = (customerCountByRoute[routeName] || 0) + 1;
+        customerCountByRoute[routeName.toLowerCase()] = (customerCountByRoute[routeName.toLowerCase()] || 0) + 1;
+
+        const last8Days = c.last8Days || {};
+        const todayEntry = last8Days[todayDate];
+        if (todayEntry) {
+          const status = String(typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "").trim().toLowerCase();
+          if (status === "delivered") {
+            const trays = todayEntry.traysDelivered ?? todayEntry.trays ?? todayEntry.quantity ?? todayEntry?.deliveredTrays ?? 0;
+            const numTrays = Number(trays);
+            if (Number.isFinite(numTrays) && numTrays > 0) {
+              potentialAchievedByRoute[routeName] = (potentialAchievedByRoute[routeName] || 0) + numTrays;
+              potentialAchievedByRoute[routeName.toLowerCase()] = (potentialAchievedByRoute[routeName.toLowerCase()] || 0) + numTrays;
+            }
+          }
+        }
+      }
+    });
+
+    const routes = routesSnap.docs.map(doc => {
+      const data = doc.data();
+      const priority = data.priorityId ? (priorityMap[data.priorityId] || null) : null;
+      const exactName = data.name ? String(data.name).trim() : "";
+      const count = customerCountByRoute[exactName] ?? customerCountByRoute[exactName.toLowerCase()] ?? 0;
+      const potential = potentialAchievedByRoute[exactName] ?? potentialAchievedByRoute[exactName.toLowerCase()] ?? 0;
+      return {
+        id: doc.id,
+        name: data.name,
+        routeCode: data.routeCode || data.name,
+        description: data.description || "",
+        priorityId: data.priorityId || null,
+        customerCount: count,
+        potentialAchieved: potential,
+        priority,
+      };
+    });
+
+    const payload = { priorities, routes };
+    cache.set(cacheKey, payload, 300);
+    res.json(payload);
+  } catch (e) {
+    console.error("getPriorityDashboard error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── ROUTE CRUD ──────────────────────────────────────────────────────────────
+
 const addRoute = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, priorityId, description } = req.body;
     if (!name) return res.status(400).json({ message: "Route name required" });
 
     const db = getFirestore();
 
-    // Check duplicate
+    // Check duplicate name
     const snap = await db.collection("routes").where("name", "==", name).get();
     if (!snap.empty) {
       return res.status(400).json({ message: "Route already exists" });
     }
 
-    await db.collection("routes").add({ name });
+    // Backend validation: If priorityId provided, verify it exists and is active
+    let resolvedPriorityId = priorityId || null;
+    if (resolvedPriorityId) {
+      const pDoc = await db.collection("priorities").doc(resolvedPriorityId).get();
+      if (!pDoc.exists) {
+        return res.status(400).json({ message: "Priority not found" });
+      }
+      if (pDoc.data().active === false) {
+        return res.status(400).json({ message: "Cannot assign route to an inactive priority" });
+      }
+    }
+
+    await db.collection("routes").add({
+      name,
+      description: description || "",
+      priorityId: resolvedPriorityId,
+    });
+
     cache.del("routes:list");
+    cache.del("routes:priority:list");
+    cache.del("priority:dashboard");
 
     res.json({ message: "Route added" });
   } catch (e) {
@@ -1298,29 +1610,52 @@ const addRoute = async (req, res) => {
 
 const updateRoute = async (req, res) => {
   try {
-    const { oldName, newName } = req.body;
-    if (!oldName || !newName) return res.status(400).json({ message: "oldName and newName required" });
+    const { oldName, newName, priorityId, description } = req.body;
+    if (!oldName) return res.status(400).json({ message: "oldName required" });
 
     const db = getFirestore();
+    const updateData = {};
 
-    if (oldName !== newName) {
+    // Backend validation: Verify priority exists and is active
+    if (priorityId !== undefined) {
+      if (priorityId) {
+        const pDoc = await db.collection("priorities").doc(priorityId).get();
+        if (!pDoc.exists) {
+          return res.status(400).json({ message: "Priority not found" });
+        }
+        if (pDoc.data().active === false) {
+          return res.status(400).json({ message: "Cannot assign route to an inactive priority" });
+        }
+      }
+      updateData.priorityId = priorityId || null;
+    }
+
+    if (description !== undefined) updateData.description = description;
+
+    const targetName = newName || oldName;
+
+    if (newName && oldName !== newName) {
       const snap = await db.collection("routes").where("name", "==", newName).get();
       if (!snap.empty) {
         return res.status(400).json({ message: "A route with this name already exists" });
       }
+      updateData.name = newName;
+    }
 
-      const oldSnap = await db.collection("routes").where("name", "==", oldName).get();
-      if (!oldSnap.empty) {
-        await oldSnap.docs[0].ref.update({ name: newName });
-      } else {
-        await db.collection("routes").add({ name: newName });
-      }
+    const oldSnap = await db.collection("routes").where("name", "==", oldName).get();
+    if (!oldSnap.empty) {
+      await oldSnap.docs[0].ref.update(updateData);
+    } else {
+      await db.collection("routes").add({ name: targetName, ...updateData });
+    }
 
+    // If route name actually changed, update related customers and deliveryman docs
+    if (newName && oldName !== newName) {
       const customersSnap = await db.collection("customers").where("route", "==", oldName).get();
       if (!customersSnap.empty) {
         const batch = db.batch();
         customersSnap.forEach(doc => {
-           batch.update(doc.ref, { route: newName });
+          batch.update(doc.ref, { route: newName });
         });
         await batch.commit();
       }
@@ -1347,6 +1682,8 @@ const updateRoute = async (req, res) => {
     }
 
     cache.del("routes:list");
+    cache.del("routes:priority:list");
+    cache.del("priority:dashboard");
     cache.del("allDeliveryPartners:v1");
     const keys = await cache.keysAsync("customerInfo:userInfo*");
     if (keys && keys.length > 0) {
@@ -1376,12 +1713,14 @@ const deleteRoute = async (req, res) => {
     if (!customersSnap.empty) {
       const batch = db.batch();
       customersSnap.forEach(doc => {
-         batch.update(doc.ref, { route: "" });
+        batch.update(doc.ref, { route: "" });
       });
       await batch.commit();
     }
 
     cache.del("routes:list");
+    cache.del("routes:priority:list");
+    cache.del("priority:dashboard");
     const keys = await cache.keysAsync("customerInfo:userInfo*");
     if (keys && keys.length > 0) {
       await cache.delAsync(keys);
@@ -1422,13 +1761,22 @@ const getRoutes = async (req, res) => {
     if (cached) return res.json(cached);
 
     const db = getFirestore();
-    const snap = await db.collection("routes").get();
-    const routes = snap.docs.map((doc) => doc.data().name).filter(Boolean);
+    const routesSnap = await db.collection("routes").get();
 
-    // Sort alphabetically
-    routes.sort((a, b) => a.localeCompare(b));
+    const routes = routesSnap.docs.map((doc) => {
+      const data = doc.data();
+      if (!data.name) return null;
+      return {
+        id: doc.id,
+        name: data.name,
+        description: data.description || "",
+        priorityId: data.priorityId || null,
+      };
+    }).filter(Boolean);
 
-    cache.set(cacheKey, routes, 3600); // Cache for 1 hour
+    routes.sort((a, b) => a.name.localeCompare(b.name));
+
+    cache.set(cacheKey, routes, 3600);
     res.json(routes);
   } catch (e) {
     console.error(e);
@@ -1894,10 +2242,10 @@ const saveWeeklySchedule = async (req, res) => {
         const patchRows = (rows) =>
           Array.isArray(rows)
             ? rows.map((row) =>
-                row.id === customerId
-                  ? { ...row, weeklySchedule: normalizedSchedule }
-                  : row,
-              )
+              row.id === customerId
+                ? { ...row, weeklySchedule: normalizedSchedule }
+                : row,
+            )
             : rows;
 
         if (Array.isArray(cachedPayload)) {
@@ -1995,8 +2343,8 @@ const toggleTodayDelivery = async (req, res) => {
         const patchRows = (rows) =>
           Array.isArray(rows)
             ? rows.map((row) =>
-                row.id === id ? { ...row, todayOverride } : row,
-              )
+              row.id === id ? { ...row, todayOverride } : row,
+            )
             : rows;
 
         if (Array.isArray(cachedPayload)) {
@@ -2601,6 +2949,13 @@ export {
   updateCustomerPayment,
   getInventoryMetrics,
   addInventoryEntry,
+  // Priority management
+  getPriorities,
+  addPriority,
+  updatePriority,
+  deletePriority,
+  getPriorityDashboard,
 };
+
 
 

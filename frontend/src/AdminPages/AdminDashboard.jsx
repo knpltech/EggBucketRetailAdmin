@@ -27,14 +27,16 @@ export default function AdminDashboard() {
     { label: "Collections", path: "/admin/collections" },
     { label: "Business Statistics", path: "/admin/business-statistics" },
     { label: "Customer Management", path: "/admin/customer-management" },
+    { label: "Calling Customers", path: "/admin/prime-customers" },
     { label: "Route Management", path: "/admin/routes" },
+    { label: "Priority Window", path: "/admin/priority-window" },
     { label: "Customer Map ", path: "/admin/customer-map-for-delivery" },
   ];
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100 font-sans">
       {/* Sidebar */}
-      <aside className="w-64 min-h-0 bg-gradient-to-b from-gray-800 to-gray-900 text-white flex flex-col shadow-xl z-10">
+      <aside className="w-[235px] flex-shrink-0 min-h-0 bg-gradient-to-b from-gray-800 to-gray-900 text-white flex flex-col shadow-xl z-10">
         <div className="flex items-center justify-center h-20 border-b border-gray-700 bg-gray-900 flex-none">
           <div className="flex items-center space-x-2">
             <img src="/logo.png" alt="EggBucket Logo" className="h-10 w-auto" />
@@ -49,7 +51,7 @@ export default function AdminDashboard() {
             <Link
               key={item.path}
               to={item.path}
-              className={`px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center space-x-3 text-[15px] ${
+              className={`px-3 py-2 rounded-lg transition-all duration-200 flex items-center space-x-2 text-sm ${
                 location.pathname === item.path
                   ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white font-medium shadow-md"
                   : "text-gray-300 hover:bg-gray-700 hover:text-white"
@@ -88,8 +90,8 @@ export default function AdminDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow p-8 overflow-auto bg-white rounded-tl-3xl rounded-bl-3xl shadow-lg">
-        <div className="max-w-7xl bg-white mx-auto">
+      <main className="flex-grow p-4 overflow-y-auto overflow-x-hidden bg-white rounded-tl-3xl rounded-bl-3xl shadow-lg">
+        <div className="w-full bg-white">
           <Outlet />
         </div>
       </main>

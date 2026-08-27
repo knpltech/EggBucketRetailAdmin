@@ -7,6 +7,7 @@ import {
   resolvePeakFrequency,
   getDateStringInTimeZone,
   computeDeliveryGap,
+  computeCurrentCategory,
 } from './aiSuggestionEngine';
 
 /**
@@ -46,6 +47,7 @@ export const exportToExcel = (sortedData, logicOption) => {
       'Business': customer.business || '',
       'Phone': customer.phone || '',
       'Peak Frequency': resolvePeakFrequency(customer) || '',
+      'Current Category': computeCurrentCategory(customer?.last8Days) || '',
       'Potential': normalizePotential(customer.potential),
       'Delivery Gap': deliveryGap || '',
       'Current Status': customer.todayOverride?.status || 'NOT SET',
@@ -68,6 +70,7 @@ export const exportToExcel = (sortedData, logicOption) => {
     { wch: 20 }, // Business
     { wch: 15 }, // Phone
     { wch: 15 }, // Peak Frequency
+    { wch: 18 }, // Current Category
     { wch: 12 }, // Potential
     { wch: 15 }, // Delivery Gap
     { wch: 15 }, // Current Status

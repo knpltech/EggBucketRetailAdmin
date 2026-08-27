@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import {
   computeDeliveryGap,
   computeCurrentCategory,
-  generateAISuggestion,
   getCurrentCategoryNumber,
   getDateStringInTimeZone,
   getDeliveryGapNumber,
@@ -17,7 +16,6 @@ import {
 import { generateDummyAISuggestion, BUYING_PATTERNS } from "../utils/dummyAiSuggestionEngine";
 import {
   getCachedUserInfo,
-  getCachedAISuggestionCandidates,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
 import { exportToExcel } from "../utils/excelExport";
@@ -46,12 +44,7 @@ const getPotentialNumber = (value) => {
   return Number.isFinite(n) && n > 0 ? n : 1;
 };
 
-const getCustomerDeliveryGapNumber = (customer) => {
-  const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-  const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-  const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
-  return getDeliveryGapNumber(deliveryGap);
-};
+
 
 const compareByName = (a, b) =>
   (a.customer.name || "").localeCompare(b.customer.name || "");
@@ -62,11 +55,29 @@ const DummyAISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [priorities, setPriorities] = useState([]);
+  const [routePriorityMap, setRoutePriorityMap] = useState({});
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
   const [businessTypes, setBusinessTypes] = useState([]);
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
   const [patternFilter, setPatternFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [routeFilter, setRouteFilter] = useState([]);
+  const [activeGapTab, setActiveGapTab] = useState("ALL");
+  const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
+  const routeDropdownRef = useRef(null);
+  const [routes, setRoutes] = useState([]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (routeDropdownRef.current && !routeDropdownRef.current.contains(event.target)) {
+        setIsRouteDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
 
   // Default sorting: TOGGLE (ON FIRST) as soon as page opens
@@ -77,7 +88,16 @@ const DummyAISuggestions = () => {
     try {
       const saved = localStorage.getItem("dummyAIPatterns");
       return saved ? JSON.parse(saved) : {};
-    } catch (e) {
+    } catch {
+      return {};
+    }
+  });
+
+  const [rowSecondaryPatterns, setRowSecondaryPatterns] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dummyAISecondaryPatterns");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
       return {};
     }
   });
@@ -87,18 +107,54 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
-      } catch (e) { }
+      } catch {
+        // ignore storage write errors
+      }
+      return updated;
+    });
+  };
+
+  const handleSecondaryPatternChange = (customerId, newPattern) => {
+    setRowSecondaryPatterns((prev) => {
+      const updated = { ...prev, [customerId]: newPattern };
+      try {
+        localStorage.setItem("dummyAISecondaryPatterns", JSON.stringify(updated));
+      } catch {
+        // ignore storage write errors
+      }
+      return updated;
+    });
+  };
+
+  const [rowTertiaryPatterns, setRowTertiaryPatterns] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dummyAITertiaryPatterns");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleTertiaryPatternChange = (customerId, newPattern) => {
+    setRowTertiaryPatterns((prev) => {
+      const updated = { ...prev, [customerId]: newPattern };
+      try {
+        localStorage.setItem("dummyAITertiaryPatterns", JSON.stringify(updated));
+      } catch {
+        // ignore storage write errors
+      }
       return updated;
     });
   };
 
   const [currentPage, setCurrentPage] = useState(1);
   const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
+  const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [businessTypeFilter, suggestionFilterOption, sortOption]);
+  }, [priorityFilter, businessTypeFilter, suggestionFilterOption, sortOption, activeGapTab, patternFilter, categoryFilter, routeFilter]);
 
   useEffect(() => {
     fetchData();
@@ -120,6 +176,35 @@ const DummyAISuggestions = () => {
         console.error("Error fetching business types:", err);
       }
 
+      // Fetch priorities and routes dynamically
+      try {
+        const [prioritiesRes, routeRes] = await Promise.all([
+          axios.get(`${ADMIN_PATH}/priorities`).catch(() => ({ data: [] })),
+          axios.get(`${ADMIN_PATH}/routes`).catch(() => ({ data: [] })),
+        ]);
+
+        const fetchedPriorities = (prioritiesRes.data || []).sort((a, b) => (a.order || 99) - (b.order || 99));
+        setPriorities(fetchedPriorities);
+
+        const routeMap = {};
+        const routeNames = (routeRes.data || []).map(r => {
+          if (!r) return null;
+          const name = typeof r === "string" ? r : r.name;
+          const pId = r.priorityId || (r.priority && r.priority.id) || null;
+          if (name) {
+            routeMap[name] = pId;
+            routeMap[name.toLowerCase()] = pId;
+            routeMap[name.trim()] = pId;
+          }
+          return name;
+        }).filter(Boolean);
+
+        setRoutes(routeNames);
+        setRoutePriorityMap(routeMap);
+      } catch (err) {
+        console.error("Error fetching routes/priorities:", err);
+      }
+
       let allCustomers = [];
 
       // Backend returns an array if no pagination is requested, or { customers: [...] } 
@@ -129,39 +214,8 @@ const DummyAISuggestions = () => {
         allCustomers = userInfoData.customers;
       }
 
-      // 1. Filter out customers with missing todayOverride.
-      // 2. Filter for D1 to D4 customers.
-      // 3. Exclude onboarding customers (<= 45 days old).
-      // 4. Filter to show only PENDING status for today.
-      const validCustomers = allCustomers.filter((c) => {
-        if (!c || !c.todayOverride) return false;
-
-        const currentCategoryNumber = getCurrentCategoryNumber(
-          computeCurrentCategory(c.last8Days),
-        );
-        if (currentCategoryNumber < 1 || currentCategoryNumber > 4) return false;
-
-        // Exclude onboarding customers (<= 45 days)
-        if (c.createdAt) {
-          let createdTime;
-          if (typeof c.createdAt === 'object' && c.createdAt._seconds) {
-            createdTime = c.createdAt._seconds * 1000;
-          } else if (!isNaN(Number(c.createdAt))) {
-            createdTime = Number(c.createdAt);
-          } else {
-            createdTime = new Date(c.createdAt).getTime();
-          }
-
-          if (createdTime && !isNaN(createdTime)) {
-            const daysSinceCreation = (Date.now() - createdTime) / (1000 * 60 * 60 * 24);
-            if (daysSinceCreation <= 45) return false;
-          }
-        }
-
-        // ⭐ OPTIMIZATION: Filter only PENDING customers (no additional reads)
-        const todayStatus = getTodayDeliveryStatus(c);
-        return todayStatus === "pending";
-      });
+      // Show all customers without exclusions
+      const validCustomers = allCustomers.filter((c) => !!c);
 
       // 2. Store valid customers (Suggestions are dynamically generated by useMemo)
       setCustomers(validCustomers);
@@ -174,11 +228,41 @@ const DummyAISuggestions = () => {
   };
 
   const processedData = useMemo(() => {
-    const data = customers.map((customer) => {
+    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+
+    const activeCustomers = customers.filter((customer) => {
+      const todayStatus = getTodayDeliveryStatus(customer, todayDate);
+      return todayStatus !== "delivered" && todayStatus !== "checked";
+    });
+
+    const data = activeCustomers.map((customer) => {
       const customerPattern = rowPatterns[customer.id] || "UnAssigned";
+      const secondaryPattern = rowSecondaryPatterns[customer.id] || "UnAssigned";
+      const tertiaryPattern = rowTertiaryPatterns[customer.id] || "UnAssigned";
+
+      // Precompute expensive values for sorting & filtering
+      const currentCategory = computeCurrentCategory(customer.last8Days);
+      const currentCategoryNumber = getCurrentCategoryNumber(currentCategory);
+
+      const peakFrequencyStr = resolvePeakFrequency(customer);
+      const peakFrequencyNumber = getPeakFrequencyNumber(peakFrequencyStr);
+
+      const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
+      const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+      const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
+
+      const potentialNumber = getPotentialNumber(customer.potential);
+
       return {
         customer,
-        suggestion: generateDummyAISuggestion(customer, customerPattern),
+        suggestion: generateDummyAISuggestion(customer, customerPattern, secondaryPattern, tertiaryPattern),
+        currentCategory,
+        currentCategoryNumber,
+        peakFrequencyStr,
+        peakFrequencyNumber,
+        deliveryGapStr,
+        deliveryGapNumber,
+        potentialNumber,
       };
     });
 
@@ -190,7 +274,7 @@ const DummyAISuggestions = () => {
     });
 
     return data;
-  }, [customers, rowPatterns]);
+  }, [customers, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
   const filteredData = useMemo(() => {
     return processedData.filter((item) => {
@@ -218,6 +302,15 @@ const DummyAISuggestions = () => {
 
       if (!matchesSuggestionOption) return false;
 
+      // Priority filter
+      const customerRoute = String(item.customer?.route || "").trim();
+      const customerPriorityId = routePriorityMap[customerRoute] ?? routePriorityMap[customerRoute.toLowerCase()] ?? null;
+      const matchesPriority =
+        priorityFilter === "ALL" ||
+        customerPriorityId === priorityFilter;
+
+      if (!matchesPriority) return false;
+
       // Customer-type dropdown filter (Kirana/Hotel/etc)
       // AI candidates from backend (`/ai-suggestions/candidates`) may not always include businessType.
       // Try multiple fields used across the app: businessType, business, and zone.businessType (if present).
@@ -234,15 +327,52 @@ const DummyAISuggestions = () => {
 
       // Pattern filter (Logic Sets)
       const customerPattern = rowPatterns[item.customer.id] || "UnAssigned";
-      const matchesPattern = patternFilter === "ALL" || customerPattern === patternFilter;
+      const secondaryPattern = rowSecondaryPatterns[item.customer.id] || "UnAssigned";
+      const tertiaryPattern = rowTertiaryPatterns[item.customer.id] || "UnAssigned";
+      const matchesPattern =
+        patternFilter === "ALL" ||
+        (customerPattern === patternFilter && secondaryPattern === patternFilter && tertiaryPattern === patternFilter);
 
-      // Category filter (D1, D2, D3, D4)
-      const currentCategory = computeCurrentCategory(item.customer.last8Days);
-      const matchesCategory = categoryFilter === "ALL" || currentCategory === categoryFilter;
+      // Category filter (All Current Category, D0-D7, D1 to D3, D5 to D7)
+      const currentCategory = item.currentCategory;
+      let matchesCategory = false;
+      if (categoryFilter === "ALL") {
+        matchesCategory = true;
+      } else if (categoryFilter === "D1_TO_D3" && ["D1", "D2", "D3"].includes(currentCategory)) {
+        matchesCategory = true;
+      } else if (categoryFilter === "D5_TO_D7" && ["D5", "D6", "D7"].includes(currentCategory)) {
+        matchesCategory = true;
+      } else if (categoryFilter === currentCategory) {
+        matchesCategory = true;
+      }
 
-      return matchesSearch && matchesCustomerType && matchesPattern && matchesCategory;
+      // Route filter (multi-select)
+      const matchesRoute = routeFilter.length === 0 || routeFilter.includes(customerRoute);
+
+      // Delivery Gap filter
+      let matchesGap = false;
+      if (activeGapTab === "ALL") {
+        matchesGap = true;
+      } else {
+        const gapNum = item.deliveryGapNumber;
+        if (activeGapTab === "G0") matchesGap = gapNum === 0;
+        else if (activeGapTab === "G1") matchesGap = gapNum === 1;
+        else if (activeGapTab === "G2") matchesGap = gapNum === 2;
+        else if (activeGapTab === "G3") matchesGap = gapNum === 3;
+        else if (activeGapTab === "G4") matchesGap = gapNum === 4;
+        else if (activeGapTab === "G5") matchesGap = gapNum === 5;
+        else if (activeGapTab === "G6") matchesGap = gapNum === 6;
+        else if (activeGapTab === "G7") matchesGap = gapNum === 7;
+        else if (activeGapTab === "G7+") matchesGap = gapNum >= 7;
+        else if (activeGapTab === "G10+") matchesGap = gapNum >= 10;
+        else if (activeGapTab === "G15+") matchesGap = gapNum >= 15;
+        else if (activeGapTab === "G20+") matchesGap = gapNum >= 20;
+        else if (activeGapTab === "G30+") matchesGap = gapNum >= 30;
+      }
+
+      return matchesSearch && matchesPriority && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, rowPatterns]);
+  }, [processedData, searchQuery, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -267,24 +397,19 @@ const DummyAISuggestions = () => {
         });
       case "PEAK_FREQUENCY":
         return dataToSort.sort((a, b) => {
-          const diff =
-            getPeakFrequencyNumber(resolvePeakFrequency(b.customer)) -
-            getPeakFrequencyNumber(resolvePeakFrequency(a.customer));
-          return diff || compareByName(a, b);
+          return b.peakFrequencyNumber - a.peakFrequencyNumber || compareByName(a, b);
+        });
+      case "CURRENT_CATEGORY":
+        return dataToSort.sort((a, b) => {
+          return b.currentCategoryNumber - a.currentCategoryNumber || compareByName(a, b);
         });
       case "PEAK_POTENTIAL":
         return dataToSort.sort((a, b) => {
-          const diff =
-            getPotentialNumber(b.customer.potential) -
-            getPotentialNumber(a.customer.potential);
-          return diff || compareByName(a, b);
+          return b.potentialNumber - a.potentialNumber || compareByName(a, b);
         });
       case "DELIVERY_GAP":
         return dataToSort.sort((a, b) => {
-          const diff =
-            getCustomerDeliveryGapNumber(a.customer) -
-            getCustomerDeliveryGapNumber(b.customer);
-          return diff || compareByName(a, b);
+          return a.deliveryGapNumber - b.deliveryGapNumber || compareByName(a, b);
         });
       case "DEFAULT":
       default:
@@ -348,6 +473,53 @@ const DummyAISuggestions = () => {
     }
   };
 
+  const handleUpdateWeeklySchedule = async (customer, day) => {
+    if (!customer?.id || updatingScheduleId === customer.id) return;
+
+    const current = customer.weeklySchedule || {
+      mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true,
+    };
+    const updated = { ...current, [day]: !current[day] };
+    const previousSchedule = customer.weeklySchedule;
+
+    // Optimistically update the schedule in local state
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customer.id ? { ...c, weeklySchedule: updated } : c
+      )
+    );
+
+    try {
+      setUpdatingScheduleId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer/weekly-schedule`, {
+        id: customer.id,
+        weeklySchedule: updated,
+      });
+      const saved = res?.data?.weeklySchedule;
+      if (saved && typeof saved === "object") {
+        patchCachedUserInfoCustomer(customer.id, (row) => ({
+          ...row,
+          weeklySchedule: saved,
+        }));
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customer.id ? { ...c, weeklySchedule: saved } : c
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Weekly schedule update error:", err);
+      // Revert if error
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === customer.id ? { ...c, weeklySchedule: previousSchedule } : c
+        )
+      );
+    } finally {
+      setUpdatingScheduleId(null);
+    }
+  };
+
   const handleDownloadExcel = () => {
     exportToExcel(sortedData, "Multiple Patterns (Dummy)");
   };
@@ -362,17 +534,23 @@ const DummyAISuggestions = () => {
   const suggestOnPercentage = totalCustomers > 0 ? ((suggestOnCount / totalCustomers) * 100).toFixed(1) : 0;
   const suggestOffPercentage = totalCustomers > 0 ? ((suggestOffCount / totalCustomers) * 100).toFixed(1) : 0;
 
+  const currentOnCount = filteredData.filter((item) => getTodayEffectiveStatus(item.customer) === "ON").length;
+  const currentOffCount = totalCustomers - currentOnCount;
+
+  const currentOnPercentage = totalCustomers > 0 ? ((currentOnCount / totalCustomers) * 100).toFixed(1) : 0;
+  const currentOffPercentage = totalCustomers > 0 ? ((currentOffCount / totalCustomers) * 100).toFixed(1) : 0;
+
   return (
-    <div className="p-6 bg-[#FAFAFA] min-h-screen font-sans">
-      <div className="flex justify-between items-start mb-6">
+    <div className="px-2 py-6 bg-[#FAFAFA] min-h-screen font-sans">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Suggestions</h1>
           <p className="text-sm text-gray-500 mt-1 font-medium">Final daily decision: Turn ON or OFF for today</p>
         </div>
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
           <button
             onClick={handleDownloadExcel}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors whitespace-nowrap"
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors whitespace-nowrap self-end"
             title="Download all details as Excel"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -380,74 +558,134 @@ const DummyAISuggestions = () => {
             </svg>
             Download Excel
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 w-full">
             <select
-            value={businessTypeFilter}
-            onChange={(e) => setBusinessTypeFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Customer Types</option>
-            {businessTypes.map((bt) => (
-              <option key={bt} value={bt}>
-                {bt}
-              </option>
-            ))}
-          </select>
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Priorities</option>
+              {priorities.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={patternFilter}
-            onChange={(e) => setPatternFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Logic Sets</option>
-            {BUYING_PATTERNS.map((pattern) => (
-              <option key={pattern} value={pattern}>
-                {pattern}
-              </option>
-            ))}
-          </select>
+            <select
+              value={businessTypeFilter}
+              onChange={(e) => setBusinessTypeFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Customer Types</option>
+              {businessTypes.map((bt) => (
+                <option key={bt} value={bt}>
+                  {bt}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Current Category</option>
-            <option value="D1">D1</option>
-            <option value="D2">D2</option>
-            <option value="D3">D3</option>
-            <option value="D4">D4</option>
-          </select>
+            <div className="relative" ref={routeDropdownRef}>
+              <button
+                onClick={() => setIsRouteDropdownOpen(!isRouteDropdownOpen)}
+                className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm flex items-center justify-between min-w-[150px]"
+              >
+                <span className="truncate max-w-[120px]">
+                  {routeFilter.length === 0 ? "All Routes" : `${routeFilter.length} Selected`}
+                </span>
+                <svg className="w-4 h-4 ml-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </button>
+              
+              {isRouteDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto right-0">
+                  <div className="p-2 flex gap-2 border-b border-gray-100 sticky top-0 bg-white z-20">
+                    <button 
+                      onClick={() => setRouteFilter([...routes])}
+                      className="flex-1 text-xs bg-blue-50 text-blue-600 font-semibold py-1.5 rounded hover:bg-blue-100"
+                    >
+                      Check All
+                    </button>
+                    <button 
+                      onClick={() => setRouteFilter([])}
+                      className="flex-1 text-xs bg-gray-50 text-gray-600 font-semibold py-1.5 rounded hover:bg-gray-100"
+                    >
+                      Uncheck All
+                    </button>
+                  </div>
+                  <div className="p-1">
+                    {routes.map((r) => {
+                      const rt = typeof r === "string" ? r : r?.name;
+                      if (!rt) return null;
+                      return (
+                        <label key={rt} className="flex items-center px-3 py-2 hover:bg-gray-50 rounded cursor-pointer text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={routeFilter.includes(rt)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setRouteFilter([...routeFilter, rt]);
+                              } else {
+                                setRouteFilter(routeFilter.filter(r => r !== rt));
+                              }
+                            }}
+                          />
+                          <span className="truncate" title={rt}>{rt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
-          <select
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="DEFAULT">Sort: Default (AI Confidence)</option>
-            <option value="NAME_ASC">Name (A-Z)</option>
-            <option value="NAME_DESC">Name (Z-A)</option>
-            <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
-            <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
-            <option value="PEAK_FREQUENCY">Peak Frequency</option>
-            <option value="PEAK_POTENTIAL">Peak Potential</option>
-            <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
-          </select>
+            <select
+              value={patternFilter}
+              onChange={(e) => setPatternFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Logic Sets</option>
+              {BUYING_PATTERNS.map((pattern) => (
+                <option key={pattern} value={pattern}>
+                  {pattern}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={suggestionFilterOption}
-            onChange={(e) => setSuggestionFilterOption(e.target.value)}
-            className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-          >
-            <option value="ALL">All Suggestions</option>
-            <option value="TURN_ON_TODAY">Turn ON Today</option>
-            <option value="TURN_OFF_TODAY">Turn OFF Today</option>
-          </select>
+
+
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="DEFAULT">Sort: Default (AI Confidence)</option>
+              <option value="NAME_ASC">Name (A-Z)</option>
+              <option value="NAME_DESC">Name (Z-A)</option>
+              <option value="TOGGLE_ON_FIRST">Toggle (ON First)</option>
+              <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
+              <option value="PEAK_FREQUENCY">Peak Frequency</option>
+              <option value="CURRENT_CATEGORY">Current Category (D7 to D0)</option>
+              <option value="PEAK_POTENTIAL">Peak Potential</option>
+              <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
+            </select>
+
+            <select
+              value={suggestionFilterOption}
+              onChange={(e) => setSuggestionFilterOption(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Suggestions</option>
+              <option value="TURN_ON_TODAY">Turn ON Today</option>
+              <option value="TURN_OFF_TODAY">Turn OFF Today</option>
+            </select>
+
+
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {/* Card 1 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
@@ -492,8 +730,65 @@ const DummyAISuggestions = () => {
             </div>
           </div>
         </div>
+
+        {/* Card 4 - Current Toggle ON */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">Current Toggle ON</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{currentOnCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700">{currentOnPercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5 - Current Toggle OFF */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 border border-gray-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-12.728 12.728M5.636 5.636l12.728 12.728" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">Current Toggle OFF</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{currentOffCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-700">{currentOffPercentage}%</span>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* CATEGORY FILTERS TABS */}
+      <div className="flex gap-2 mb-4 flex-wrap mt-4">
+        {["ALL", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"].map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategoryFilter(cat)}
+            className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${categoryFilter === cat ? "bg-black text-white border-black shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* DELIVERY GAP FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
+          <button
+            key={gap}
+            onClick={() => setActiveGapTab(gap)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {gap}
+          </button>
+        ))}
+      </div>
 
       {error && (
         <div className="bg-red-50 text-red-600 p-4 rounded-md mb-6 border border-red-200">
@@ -516,6 +811,12 @@ const DummyAISuggestions = () => {
           updatingSuggestionId={updatingSuggestionId}
           rowPatterns={rowPatterns}
           onPatternChange={handlePatternChange}
+          rowSecondaryPatterns={rowSecondaryPatterns}
+          onSecondaryPatternChange={handleSecondaryPatternChange}
+          rowTertiaryPatterns={rowTertiaryPatterns}
+          onTertiaryPatternChange={handleTertiaryPatternChange}
+          updatingScheduleId={updatingScheduleId}
+          onUpdateSchedule={handleUpdateWeeklySchedule}
         />
       </div>
 

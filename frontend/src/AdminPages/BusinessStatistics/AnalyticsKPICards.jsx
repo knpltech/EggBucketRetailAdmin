@@ -1,6 +1,6 @@
 import React from 'react';
-import { 
-  Users, UserPlus, UserCheck, Star, 
+import {
+  Users, UserPlus, UserCheck, Star,
   DollarSign, Package, CreditCard, Activity,
   Truck, CheckCircle, Clock, AlertTriangle,
   Wallet, Percent, ArrowDownToLine, ArrowUpRight,

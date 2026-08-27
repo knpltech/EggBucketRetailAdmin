@@ -175,7 +175,8 @@ const Analytics = () => {
       normalizedType === "price_mismatch" ||
       normalizedType === "shop_closed" ||
       normalizedType === "stock_available" ||
-      normalizedType === "other_vendor"
+      normalizedType === "other_vendor" ||
+      normalizedType === "confirmed_tomorrow"
     ) {
       // All "checked" variants
       bg = "#F59E0B"; // softer orange
@@ -284,7 +285,8 @@ const Analytics = () => {
       s === "price_mismatch" ||
       s === "shop_closed" ||
       s === "stock_available" ||
-      s === "other_vendor"
+      s === "other_vendor" ||
+      s === "confirmed_tomorrow"
     ) {
       return "CHECKED ";
     }
@@ -323,6 +325,8 @@ const Analytics = () => {
       "Customer ID",
       "Name",
       "Zone",
+      "Peak Freq",
+      "Current Category",
       ...dateList.map(
         (d) =>
           `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}`,
@@ -337,6 +341,8 @@ const Analytics = () => {
         c.custid || "",
         c.name || "",
         c.zone || "UNASSIGNED",
+        getPeakFrequencyLabel(c),
+        getCurrentCategory(c),
       ];
 
       dateList.forEach((day) => {
@@ -362,6 +368,8 @@ const Analytics = () => {
       { wch: 14 }, // Customer ID
       { wch: 36 }, // Name - made wider for long names
       { wch: 18 }, // zone
+      { wch: 12 }, // Peak Freq
+      { wch: 18 }, // Current Category
       ...dateList.map(() => ({ wch: 12 })),
     ];
     ws["!cols"] = cols;
@@ -895,6 +903,7 @@ function getDayRemarkText(day = {}) {
       "shop_closed",
       "stock_available",
       "other_vendor",
+      "confirmed_tomorrow",
     ].includes(type)
   ) {
     return normalizeReasonLabel(day.reason) || "Checked";

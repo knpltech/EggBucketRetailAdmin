@@ -248,7 +248,7 @@ const CustomerInfo = () => {
   const fetchRoutes = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/routes`);
-      const fetchedRoutes = res.data || [];
+      const fetchedRoutes = (res.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
       setRoutes(fetchedRoutes.sort((a, b) => String(a).localeCompare(String(b))));
     } catch (err) {
       console.warn("Routes API unavailable, using empty route list:", err);
@@ -679,11 +679,15 @@ const CustomerInfo = () => {
                     >
                       <option value="">Assign</option>
 
-                      {routes.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
 
                     </select>
 
@@ -700,11 +704,15 @@ const CustomerInfo = () => {
                       className="border rounded px-2 py-1 w-40"
                     >
 
-                      {routes.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
 
                     </select>
 

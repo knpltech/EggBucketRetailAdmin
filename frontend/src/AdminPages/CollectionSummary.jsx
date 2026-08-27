@@ -71,6 +71,7 @@ const CollectionSummary = () => {
   const [selectedAgent, setSelectedAgent] = useState("all");
   const [selectedOutlet, setSelectedOutlet] = useState("all");
   const [deliveryPartners, setDeliveryPartners] = useState([]);
+  const [salesPartners, setSalesPartners] = useState([]);
   const [sortBy] = useState("delivery-time");
   const [todaysPrice, setTodaysPrice] = useState("");
   const [minusAmounts, setMinusAmounts] = useState({});
@@ -361,37 +362,73 @@ const CollectionSummary = () => {
     }
   };
 
-  // Helper to match delivery partner names fuzzily (handles case variations, first-name matches, and common spelling differences like Bishal/Vishal)
+  // Helper to match partner names fuzzily (handles case variations, first-name matches, and common spelling differences like Bishal/Vishal)
   const findPartnerByName = useCallback((name) => {
     if (!name) return null;
     const clean = name.toLowerCase().replace(/[^a-z]/g, "");
-    
-    // 1. Try exact match first
-    let found = deliveryPartners.find(
+
+    // --- Tier 1 & 2: Exact Match ---
+    const exactDel = deliveryPartners.find(
       (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
     );
-    if (found) return found;
-    
-    // 2. Try matching first word / substring
+    const exactSales = salesPartners.find(
+      (p) => p.name?.toLowerCase().trim() === name.toLowerCase().trim()
+    );
+
+    if (exactDel && exactDel.outlet) return exactDel;
+    if (exactSales && exactSales.outlet) return exactSales;
+    if (exactDel) return exactDel;
+    if (exactSales) return exactSales;
+
+    // --- Tier 3 & 4: Substring / First Word Match ---
     const firstWord = name.toLowerCase().trim().split(/\s+/)[0];
-    found = deliveryPartners.find((p) => {
+    const subMatchesDel = deliveryPartners.filter((p) => {
       const pName = p.name?.toLowerCase().trim();
       if (!pName) return false;
       const pFirstWord = pName.split(/\s+/)[0];
       return pFirstWord === firstWord || pName.includes(firstWord) || firstWord.includes(pName);
     });
-    if (found) return found;
 
-    // 3. Try matching Bishal / Vishal similarity
+    const subMatchesSales = salesPartners.filter((p) => {
+      const pName = p.name?.toLowerCase().trim();
+      if (!pName) return false;
+      const pFirstWord = pName.split(/\s+/)[0];
+      return pFirstWord === firstWord || pName.includes(firstWord) || firstWord.includes(pName);
+    });
+
+    const subWithOutletDel = subMatchesDel.find((p) => p.outlet);
+    if (subWithOutletDel) return subWithOutletDel;
+
+    const subWithOutletSales = subMatchesSales.find((p) => p.outlet);
+    if (subWithOutletSales) return subWithOutletSales;
+
+    if (subMatchesDel.length > 0) return subMatchesDel[0];
+    if (subMatchesSales.length > 0) return subMatchesSales[0];
+
+    // --- Tier 5 & 6: Similarity Match (Bishal/Vishal) ---
     if (clean.includes("bishal") || clean.includes("vishal")) {
-      return deliveryPartners.find((p) => {
+      const simMatchesDel = deliveryPartners.filter((p) => {
         const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
         return pClean.includes("vishal") || pClean.includes("bishal");
       });
+
+      const simMatchesSales = salesPartners.filter((p) => {
+        const pClean = p.name?.toLowerCase().replace(/[^a-z]/g, "") || "";
+        return pClean.includes("vishal") || pClean.includes("bishal");
+      });
+
+      const simWithOutletDel = simMatchesDel.find((p) => p.outlet);
+      if (simWithOutletDel) return simWithOutletDel;
+
+      const simWithOutletSales = simMatchesSales.find((p) => p.outlet);
+      if (simWithOutletSales) return simWithOutletSales;
+
+      if (simMatchesDel.length > 0) return simMatchesDel[0];
+      if (simMatchesSales.length > 0) return simMatchesSales[0];
     }
 
     return null;
-  }, [deliveryPartners]);
+  }, [deliveryPartners, salesPartners]);
 
   // Calculate metrics based on selected outlet and agent filters
   const displayedMetrics = useMemo(() => {
@@ -591,7 +628,7 @@ const CollectionSummary = () => {
       foodAllowance: filteredFood,
       incentives: filteredIncentive,
     };
-  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners, findPartnerByName]);
+  }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners, salesPartners, findPartnerByName]);
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -777,14 +814,15 @@ const CollectionSummary = () => {
   // ─── Potential Achieved: sum of trays delivered TODAY in current tab ───────
   const potentialAchieved = filteredTotals.totalTrays;
 
-  // ─── Last Weekday Potential: sum of trays delivered exactly 7 days ago ────
-  const lastWeekdayPotential = useMemo(() => {
-    if (!data?.customers) return 0;
-    
+  // ─── Last Weekday Totals: sum of metrics delivered exactly 7 days ago ────
+  const lastWeekdayTotals = useMemo(() => {
+    let totals = { totalTrays: 0, totalCash: 0, totalUpi: 0, totalAmount: 0, deliveredCount: 0 };
+    if (!data?.customers) return totals;
+
     // Calculate date exactly 7 days ago
     const d = new Date(selectedDate + "T00:00:00");
     d.setDate(d.getDate() - 7);
-    
+
     // Format to YYYY-MM-DD in IST
     let lastWeekDateStr = d.toISOString().split("T")[0];
     try {
@@ -801,9 +839,8 @@ const CollectionSummary = () => {
       if (year && month && day) {
         lastWeekDateStr = `${year}-${month}-${day}`;
       }
-    } catch (e) {}
+    } catch (e) { }
 
-    let sum = 0;
     data.customers.forEach((customer) => {
       const last8Days = customer.last8Days || {};
       const entry = last8Days[lastWeekDateStr];
@@ -825,7 +862,7 @@ const CollectionSummary = () => {
       const baseAmount = entryObj.totalAmount ?? entryObj.amount ?? 0;
       const cashAmount = typeof entryObj.cashAmount === "number" ? entryObj.cashAmount : (entryObj.paymentMethod === "CASH" ? baseAmount : 0);
       const upiAmount = typeof entryObj.upiAmount === "number" ? entryObj.upiAmount : (entryObj.paymentMethod === "UPI" ? baseAmount : 0);
-      
+
       let paymentMethod = entryObj.paymentMethod || "UNKNOWN";
       if (paymentMethod === "UNKNOWN") {
         if (cashAmount > 0 && upiAmount > 0) paymentMethod = "SPLIT";
@@ -838,11 +875,19 @@ const CollectionSummary = () => {
 
       const trays = entryObj.quantity ?? entryObj.trays ?? 0;
       const numTrays = Number(trays);
-      sum += (Number.isFinite(numTrays) && numTrays > 0 ? numTrays : 0);
+      if (Number.isFinite(numTrays) && numTrays > 0) {
+        totals.totalTrays += numTrays;
+      }
+      totals.totalCash += typeof cashAmount === "number" ? cashAmount : 0;
+      totals.totalUpi += typeof upiAmount === "number" ? upiAmount : 0;
+      totals.totalAmount += (typeof cashAmount === "number" ? cashAmount : 0) + (typeof upiAmount === "number" ? upiAmount : 0);
+      totals.deliveredCount += 1;
     });
 
-    return sum;
+    return totals;
   }, [data, selectedDate, selectedAgent, activeTab]);
+
+  const lastWeekdayPotential = lastWeekdayTotals.totalTrays;
 
   // ─── Achievement %: today's trays vs best same-weekday total ──────────────
   const achievementPercentage = useMemo(() => {
@@ -854,6 +899,11 @@ const CollectionSummary = () => {
     if (totalPeakPotential <= 0) return 0;
     return Math.round((lastWeekdayPotential / totalPeakPotential) * 100);
   }, [lastWeekdayPotential, totalPeakPotential]);
+
+  const wowPercentage = useMemo(() => {
+    if (lastWeekdayPotential === 0) return potentialAchieved > 0 ? 100 : 0;
+    return (((potentialAchieved - lastWeekdayPotential) / lastWeekdayPotential) * 100).toFixed(2);
+  }, [potentialAchieved, lastWeekdayPotential]);
 
   // Get unique delivery agents for selected date
   const deliveryAgentOptions = useMemo(() => {
@@ -879,10 +929,11 @@ const CollectionSummary = () => {
     setRefreshing(true);
     setError("");
     try {
-      // Fetch full customer data and delivery partners
-      const [res, delPartnersRes, peakRes] = await Promise.all([
+      // Fetch full customer data, delivery partners, and sales partners
+      const [res, delPartnersRes, salesPartnersRes, peakRes] = await Promise.all([
         axios.get(`${ADMIN_PATH}/user-info`),
         axios.get(`${ADMIN_PATH}/get-del-partner`),
+        axios.get(`${ADMIN_PATH}/get-sales-partner`).catch(() => ({ data: [] })),
         axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} }))
       ]);
       if (Array.isArray(res.data)) {
@@ -894,8 +945,9 @@ const CollectionSummary = () => {
         setError("Failed to fetch collection summary");
       }
       setDeliveryPartners(delPartnersRes.data || []);
+      setSalesPartners(salesPartnersRes.data || []);
       setCategoryPeaks(peakRes.data || {});
-      
+
       // Also fetch inventory metrics for the selected date
       await fetchInventoryMetrics(selectedDate);
     } catch (err) {
@@ -1116,6 +1168,23 @@ const CollectionSummary = () => {
     );
   }
 
+  const renderWowIndicator = (current, previous) => {
+    if (previous === 0) return current > 0 ? (
+      <span className="inline-flex items-center gap-1 text-sm font-bold text-green-500 mt-1 whitespace-nowrap"><span>▲</span><span>100%</span></span>
+    ) : (
+      <span className="inline-flex items-center gap-1 text-sm font-bold text-gray-500 mt-1 whitespace-nowrap"><span>▬</span><span>0%</span></span>
+    );
+
+    const diff = (((current - previous) / previous) * 100).toFixed(2);
+    const color = diff > 0 ? 'text-green-500' : diff < 0 ? 'text-red-500' : 'text-gray-500';
+    const icon = diff > 0 ? '▲' : diff < 0 ? '▼' : '▬';
+    return (
+      <span className={`inline-flex items-center gap-1 text-sm font-bold ${color} mt-1 whitespace-nowrap`}>
+        <span>{icon}</span><span>{Math.abs(diff)}%</span>
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
       {/* Header Section */}
@@ -1139,7 +1208,7 @@ const CollectionSummary = () => {
         </div>
 
         {/* ⭐ Total Peak Potential & Potential Achieved row */}
-        <div className="flex gap-4 mb-4 md:mb-0 flex-wrap">
+        <div className="flex gap-4 mb-4 md:mb-0 flex-nowrap">
           <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500 flex flex-col justify-center">
             <p className="text-xs text-gray-500 whitespace-nowrap">
               Best {weekdayName} Potential
@@ -1153,9 +1222,17 @@ const CollectionSummary = () => {
             <p className="text-xs text-gray-500 whitespace-nowrap">
               Potential Achieved
             </p>
-            <p className="text-xl font-bold text-purple-600">
-              {loading ? "…" : potentialAchieved}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xl font-bold text-purple-600">
+                {loading ? "…" : potentialAchieved}
+              </p>
+              {!loading && (
+                <span className={`inline-flex items-center gap-1 text-sm font-bold whitespace-nowrap ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                  <span>{wowPercentage > 0 ? '▲' : wowPercentage < 0 ? '▼' : '▬'}</span>
+                  <span>{Math.abs(wowPercentage)}%</span>
+                </span>
+              )}
+            </div>
             {!loading && totalPeakPotential > 0 && (
               <p
                 className="text-xs font-semibold mt-1"
@@ -1198,24 +1275,30 @@ const CollectionSummary = () => {
           </div>
         </div>
 
-        {/* Stats Card */}
-        <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-6 w-full md:w-auto">
-          <FiTrendingUp className="text-3xl text-blue-500 flex-shrink-0" />
-
-          <div className="flex-1">
-            <p className="text-sm text-gray-600">Total Collections</p>
-            <p className="text-2xl font-bold">
-              {loading ? "…" : filtered.length}
-            </p>
+        {/* Stats Cards */}
+        <div className="flex gap-4 w-full md:w-auto flex-nowrap ml-auto">
+          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-indigo-400 flex flex-col justify-center min-w-[160px]">
+            <p className="text-sm text-gray-600 mb-1 whitespace-nowrap">Avg Order</p>
+            <div className="flex items-end justify-between gap-4">
+              <p className="text-2xl font-bold text-gray-900">
+                {filtered.length > 0 ? (filteredTotals.totalTrays / filtered.length).toFixed(2) : "0.00"}
+              </p>
+              {!loading && renderWowIndicator(
+                filtered.length > 0 ? (filteredTotals.totalTrays / filtered.length) : 0,
+                lastWeekdayTotals.deliveredCount > 0 ? (lastWeekdayTotals.totalTrays / lastWeekdayTotals.deliveredCount) : 0
+              )}
+            </div>
           </div>
 
-          <button
-            onClick={handleExcelExport}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 whitespace-nowrap"
-          >
-            <Download size={18} />
-            <span>Export</span>
-          </button>
+          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center min-w-[160px]">
+            <p className="text-sm text-gray-600 mb-1 whitespace-nowrap">Total Collections</p>
+            <div className="flex items-end justify-between gap-4">
+              <p className="text-2xl font-bold">
+                {loading ? "…" : filtered.length}
+              </p>
+              {!loading && renderWowIndicator(filtered.length, lastWeekdayTotals.deliveredCount)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1225,11 +1308,10 @@ const CollectionSummary = () => {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-xl border font-medium transition ${
-              activeTab === tab
-                ? "bg-black text-white border-black"
-                : "bg-white text-gray-900 border-gray-200 hover:border-gray-300"
-            }`}
+            className={`px-4 py-2 rounded-xl border font-medium transition ${activeTab === tab
+              ? "bg-black text-white border-black"
+              : "bg-white text-gray-900 border-gray-200 hover:border-gray-300"
+              }`}
           >
             {tab}
           </button>
@@ -1246,12 +1328,12 @@ const CollectionSummary = () => {
               if (newAgent === "all") {
                 setSelectedOutlet("all");
               } else {
-                 const partner = findPartnerByName(newAgent);
-                 if (partner && partner.outlet) {
-                   setSelectedOutlet(partner.outlet);
-                 } else {
-                   setSelectedOutlet("all");
-                 }
+                const partner = findPartnerByName(newAgent);
+                if (partner && partner.outlet) {
+                  setSelectedOutlet(partner.outlet);
+                } else {
+                  setSelectedOutlet("all");
+                }
               }
             }}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
@@ -1276,7 +1358,7 @@ const CollectionSummary = () => {
               if (newOutlet === "all") {
                 setSelectedAgent("all");
               } else {
-                const partner = deliveryPartners.find(p => p.outlet === newOutlet);
+                const partner = deliveryPartners.find(p => p.outlet === newOutlet) || salesPartners.find(p => p.outlet === newOutlet);
                 if (partner && partner.name) {
                   setSelectedAgent(partner.name);
                 } else {
@@ -1287,11 +1369,18 @@ const CollectionSummary = () => {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
           >
             <option value="all">All Outlets</option>
-            {Array.from(new Set(deliveryPartners.map(p => p.outlet).filter(Boolean))).sort().map((outlet) => (
-              <option key={outlet} value={outlet}>
-                {outlet}
-              </option>
-            ))}
+            {Array.from(
+              new Set([
+                ...deliveryPartners.map((p) => p.outlet),
+                ...salesPartners.map((p) => p.outlet),
+              ].filter(Boolean))
+            )
+              .sort()
+              .map((outlet) => (
+                <option key={outlet} value={outlet}>
+                  {outlet}
+                </option>
+              ))}
           </select>
         </div>
 
@@ -1306,15 +1395,24 @@ const CollectionSummary = () => {
           />
         </div>
 
-        {/* Refresh Button */}
-        <button
-          onClick={fetchCollectionSummary}
-          disabled={refreshing}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-lg transition"
-        >
-          <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
-          <span>Refresh</span>
-        </button>
+        {/* Refresh and Export Buttons */}
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={fetchCollectionSummary}
+            disabled={refreshing}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-lg transition"
+          >
+            <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={handleExcelExport}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition w-full justify-center"
+          >
+            <Download size={18} />
+            <span>Export</span>
+          </button>
+        </div>
 
         {/* Recalculate Button */}
         <button
@@ -1354,12 +1452,13 @@ const CollectionSummary = () => {
 
       {/* Summary Stats Cards */}
       {/* Row 1 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {(() => {
           const sales = displayedMetrics.nettSales;
           const load = displayedMetrics.totalLoad;
           const ret = displayedMetrics.totalReturn;
           const dmg = displayedMetrics.totalDamage;
+          const inc = displayedMetrics.incentives || 0;
 
           const cards = [
             {
@@ -1397,6 +1496,13 @@ const CollectionSummary = () => {
               topRight: "Qty",
               addType: "damage",
             },
+            {
+              label: "Incentives",
+              value: inc,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-purple-500",
+              topRight: "Amt",
+            },
           ];
 
           return cards.map((card) => (
@@ -1433,40 +1539,51 @@ const CollectionSummary = () => {
         })()}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total Trays</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {filteredTotals.totalTrays}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              {filteredTotals.totalTrays}
+            </p>
+            {renderWowIndicator(filteredTotals.totalTrays, lastWeekdayTotals.totalTrays)}
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Sales Point</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-green-500">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-green-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total Cash</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-purple-500">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-purple-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total UPI</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-orange-500">
+        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-orange-500 flex flex-col justify-between">
           <p className="text-sm text-gray-600 mb-2">Total Amount</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
-          </p>
+          <div className="flex justify-between items-end">
+            <p className="text-3xl font-bold text-gray-900">
+              ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1476,7 +1593,8 @@ const CollectionSummary = () => {
           const cash = displayedMetrics.cashHandover || 0;
           const upiHandover = displayedMetrics.upiHandover || 0;
           const food = displayedMetrics.foodAllowance || 0;
-          const inc = displayedMetrics.incentives || 0;
+          const totalUpi = filteredTotals.totalUpi || 0;
+          const upiBalance = totalUpi - upiHandover;
           // difference/balance = Total Cash - Cash Handover - Food Allowance
           const totalCash = filteredTotals.totalCash || 0;
           const diff = totalCash - cash - food;
@@ -1507,15 +1625,20 @@ const CollectionSummary = () => {
               addType: "food_allowance",
             },
             {
-              label: "Incentives",
-              value: inc,
-              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              label: "UPI Balance",
+              value: upiBalance,
+              format: (v) => {
+                if (v < 0) {
+                  return `-₹${Math.abs(v).toLocaleString("en-IN")}`;
+                }
+                return `₹${v.toLocaleString("en-IN")}`;
+              },
               color: "border-t-purple-500",
               topRight: "Amt",
               addType: "incentive",
             },
             {
-              label: "Difference/Balance",
+              label: "Cash Balance",
               value: diff,
               format: (v) => {
                 if (v < 0) {
@@ -1639,7 +1762,7 @@ const CollectionSummary = () => {
                 {/* Quantity Column */}
                 <td className="p-3 text-center text-gray-700 font-medium">
                   {editingCell?.rowId === item.docId &&
-                  editingCell?.field === "quantity" ? (
+                    editingCell?.field === "quantity" ? (
                     <div className="flex items-center justify-center gap-2">
                       <input
                         type="number"
@@ -1682,11 +1805,10 @@ const CollectionSummary = () => {
 
                 <td className="p-3 text-center">
                   <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                      item.paymentMethod === "CASH"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-purple-100 text-purple-800"
-                    }`}
+                    className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${item.paymentMethod === "CASH"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-purple-100 text-purple-800"
+                      }`}
                   >
                     {item.paymentMethod}
                   </span>
@@ -1695,7 +1817,7 @@ const CollectionSummary = () => {
                 {/* Cash Column */}
                 <td className="p-3 text-right text-gray-700 font-medium">
                   {editingCell?.rowId === item.docId &&
-                  editingCell?.field === "cash" ? (
+                    editingCell?.field === "cash" ? (
                     <div className="flex items-center justify-end gap-2">
                       <input
                         type="number"
@@ -1743,7 +1865,7 @@ const CollectionSummary = () => {
                 {/* UPI Column */}
                 <td className="p-3 text-right text-gray-700 font-medium">
                   {editingCell?.rowId === item.docId &&
-                  editingCell?.field === "upi" ? (
+                    editingCell?.field === "upi" ? (
                     <div className="flex items-center justify-end gap-2">
                       <input
                         type="number"
@@ -1796,12 +1918,12 @@ const CollectionSummary = () => {
 
                 <td className="p-3 text-right text-gray-900 font-semibold">
                   {typeof item.amount === "number" &&
-                  typeof item.quantity === "number" &&
-                  item.quantity > 0
+                    typeof item.quantity === "number" &&
+                    item.quantity > 0
                     ? `₹${(item.amount / item.quantity).toLocaleString("en-IN", {
-                        minimumFractionDigits: 3,
-                        maximumFractionDigits: 3,
-                      })}`
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 3,
+                    })}`
                     : "-"}
                 </td>
 
@@ -1842,18 +1964,18 @@ const CollectionSummary = () => {
               <td className="p-3 text-right text-gray-900">
                 {filteredTotals.totalTrays > 0
                   ? `₹${(
-                      filteredTotals.totalAmount / filteredTotals.totalTrays
-                    ).toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}`
+                    filteredTotals.totalAmount / filteredTotals.totalTrays
+                  ).toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`
                   : "-"}
               </td>
               <td className="p-3 text-right text-gray-900">
                 {Object.keys(minusAmounts).length > 0
                   ? `₹${Object.values(minusAmounts)
-                      .reduce((sum, val) => sum + val, 0)
-                      .toLocaleString("en-IN")}`
+                    .reduce((sum, val) => sum + val, 0)
+                    .toLocaleString("en-IN")}`
                   : "-"}
               </td>
             </tr>

@@ -14,9 +14,8 @@ import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 // TABS
 const TABS = [
   "ALL",
-  "PRIME CUSTOMER",
-  "ONBOARDING",
   "CALLING CUSTOMER",
+  "ONBOARDING",
   "D0",
   "D1",
   "D2",
@@ -99,26 +98,24 @@ function syncPrimeCustomer(customer = {}) {
   };
 }
 
-export default function CustomerManagement() {
+export default function CallingCustomers() {
   const [customers, setCustomers] = useState([]);
   const [categoryPeaks, setCategoryPeaks] = useState({});
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
-  const [activeTab, setActiveTab] = useState("ALL");
-  const [activeBusinessTab, setActiveBusinessTab] = useState("ALL");
+  const [activeTab, setActiveTab] = useState("CALLING CUSTOMER");
+  const activeBusinessTab = "ALL";
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
-  const [activeGapTab, setActiveGapTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
   const [activeAgentTab, setActiveAgentTab] = useState("ALL AGENTS");
   const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
   const [activeStatusTab, setActiveStatusTab] = useState("ALL STATUS");
-  const [activeRemarkTab, setActiveRemarkTab] = useState("ALL");
+  const [activeGapTab, setActiveGapTab] = useState("ALL");
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [businessTypes, setBusinessTypes] = useState([]);
   const [sortBy, setSortBy] = useState("name");
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -130,6 +127,51 @@ export default function CustomerManagement() {
 
   const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [editingZoneId, setEditingZoneId] = useState(null);
+
+  const [editingPhoneId, setEditingPhoneId] = useState(null);
+  const [editPhoneValue, setEditPhoneValue] = useState("");
+  const [updatingCallStatusId, setUpdatingCallStatusId] = useState(null);
+
+  const updateCallStatus = async (id) => {
+    if (updatingCallStatusId === id) return;
+    try {
+      setUpdatingCallStatusId(id);
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        callStatus: "Called",
+      });
+
+      patchCachedUserInfoCustomer(id, (c) => ({ ...c, callStatus: "Called" }));
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, callStatus: "Called" } : c))
+      );
+    } catch (err) {
+      console.error("Error updating call status:", err);
+      alert("Failed to update call status");
+    } finally {
+      setUpdatingCallStatusId(null);
+    }
+  };
+
+  const updatePhone = async (id, newPhone) => {
+    if (editingPhoneId !== id) return;
+    try {
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        phone: newPhone,
+      });
+
+      patchCachedUserInfoCustomer(id, (c) => ({ ...c, phone: newPhone }));
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, phone: newPhone } : c))
+      );
+    } catch (err) {
+      console.error("Error updating phone:", err);
+      alert("Failed to update phone");
+    } finally {
+      setEditingPhoneId(null);
+    }
+  };
 
   const assignZone = async (id, zoneName) => {
     if (!zoneName || assigningZoneId === id) return;
@@ -183,7 +225,6 @@ export default function CustomerManagement() {
       peakFrequency: c.peakFrequency || computePeakFrequency(c.last8Days),
       potential: c.potential || computePotential(c.last8Days),
       deliveryGap: c.deliveryGap || computeDeliveryGap(c.last8Days, todayDate),
-      deliveredCount: getDeliveredCountForCustomer(c),
     }));
 
   // ─── Helper: Sync Prime Customer status for all customers ─────────────────
@@ -287,13 +328,7 @@ export default function CustomerManagement() {
           console.error("Error fetching agents:", err);
         }
 
-        // Fetch business types dynamically
-        try {
-          const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
-          setBusinessTypes(btRes.data || []);
-        } catch (err) {
-          console.error("Error fetching business types:", err);
-        }
+
       } catch (err) {
         console.error("CustomerManagement init error:", err);
       } finally {
@@ -305,7 +340,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, activeRemarkTab]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -392,7 +427,7 @@ export default function CustomerManagement() {
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-    if (activeTab === "PRIME CUSTOMER") {
+    if (activeTab === "CALLING CUSTOMER") {
       list = list.filter((c) => {
         const bt = String(c.businessType || "").trim().toLowerCase();
         return bt === "calling customer" || bt === "calling customers";
@@ -405,17 +440,9 @@ export default function CustomerManagement() {
         const createdTime = new Date(c.createdAt).getTime();
         return (now - createdTime) <= fortyFiveDaysMs;
       });
-    } else if (activeTab === "CALLING CUSTOMER") {
-      list = list.filter((c) => {
-        const bt = String(c.businessType || "").trim().toLowerCase();
-        return bt === "calling customer" || bt === "calling customers";
-      });
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
-      list = list.filter((c) => {
-        const count = c.deliveredCount ?? getDeliveredCount(c);
-        return count === targetDays;
-      });
+      list = list.filter((c) => getDeliveredCount(c) === targetDays);
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -511,17 +538,6 @@ export default function CustomerManagement() {
       });
     }
 
-    if (activeRemarkTab !== "ALL") {
-      list = list.filter((c) => {
-        const last8Days = c.last8Days || {};
-        const entry = last8Days[todayDate];
-        const entryObj = typeof entry === "object" ? entry : {};
-        const status = getLatestStatus(c);
-        const reason = String(entryObj.reason || "").trim().toLowerCase();
-        return status === "Checked" && reason === activeRemarkTab.toLowerCase();
-      });
-    }
-
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -572,14 +588,6 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
-    } else if (sortBy === "currentCategory") {
-      list.sort((a, b) => {
-        const aCount = a.deliveredCount ?? getDeliveredCountForCustomer(a);
-        const bCount = b.deliveredCount ?? getDeliveredCountForCustomer(b);
-        const diff = bCount - aCount;
-        if (diff !== 0) return diff;
-        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
-      });
     } else if (sortBy === "remarks") {
       const withR = list.filter((c) => getRemarkDisplay(c) !== "");
       const noR = list.filter((c) => getRemarkDisplay(c) === "");
@@ -614,7 +622,7 @@ export default function CustomerManagement() {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents, activeRemarkTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -645,7 +653,7 @@ export default function CustomerManagement() {
       return count;
     };
 
-    if (activeTab === "PRIME CUSTOMER") {
+    if (activeTab === "CALLING CUSTOMER") {
       list = list.filter((c) => {
         const bt = String(c.businessType || "").trim().toLowerCase();
         return bt === "calling customer" || bt === "calling customers";
@@ -657,11 +665,6 @@ export default function CustomerManagement() {
         if (!c.createdAt) return false;
         const createdTime = new Date(c.createdAt).getTime();
         return (yesterday - createdTime) <= fortyFiveDaysMs;
-      });
-    } else if (activeTab === "CALLING CUSTOMER") {
-      list = list.filter((c) => {
-        const bt = String(c.businessType || "").trim().toLowerCase();
-        return bt === "calling customer" || bt === "calling customers";
       });
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
@@ -759,30 +762,8 @@ export default function CustomerManagement() {
       });
     }
 
-    if (activeRemarkTab !== "ALL") {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayDateStr = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
-      list = list.filter((c) => {
-        const last8Days = c.last8Days || {};
-        const entry = last8Days[yesterdayDateStr];
-        const entryObj = typeof entry === "object" ? entry : {};
-        const getYesterdayLatestStatus = (customer) => {
-          const last8Days = customer.last8Days || {};
-          const entry = last8Days[yesterdayDateStr];
-          const st = (typeof entry === "string" ? entry : entry?.status || "").trim().toLowerCase();
-          if (st === "delivered") return "Delivered";
-          if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "confirmed_tomorrow"].includes(st)) return "Checked";
-          return "Pending";
-        };
-        const status = getYesterdayLatestStatus(c);
-        const reason = String(entryObj.reason || "").trim().toLowerCase();
-        return status === "Checked" && reason === activeRemarkTab.toLowerCase();
-      });
-    }
-
     return list.length;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, agents, activeRemarkTab]);
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, agents]);
 
   const lastWeekActiveCount = useMemo(() => {
     const d = new Date();
@@ -815,12 +796,10 @@ export default function CustomerManagement() {
     }
 
     let key = "ALL";
-    if (activeTab === "PRIME CUSTOMER") {
+    if (activeTab === "CALLING CUSTOMER") {
       key = "PRIME";
     } else if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
-    } else if (activeTab === "CALLING CUSTOMER") {
-      key = "CALLING_CUSTOMER";
     } else if (activeTab !== "ALL") {
       key = activeTab; // "D0", "D1", etc.
     }
@@ -1034,13 +1013,14 @@ export default function CustomerManagement() {
       const baseData = {
         "Customer ID": c.custid || c.id,
         Name: getName(c),
+        Phone: c.phone || "",
         Zone: c.zone || "",
         Peak_Potential: normalizePotential(c.potential),
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER, ONBOARDING and CALLING CUSTOMER tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") {
+      // Add Current_Category for ALL, CALLING CUSTOMER and ONBOARDING tabs
+      if (activeTab === "ALL" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData.Status = getLatestStatus(c);
@@ -1064,7 +1044,7 @@ export default function CustomerManagement() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">Customer Management</h1>
+        <h1 className="text-3xl font-bold">Calling Customers</h1>
 
         <div className="flex items-center gap-4">
           <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex items-center gap-4">
@@ -1094,7 +1074,6 @@ export default function CustomerManagement() {
               <option value="peakPotential">Peak_Potential</option>
               <option value="peakFrequency">Peak_Frequency</option>
               <option value="deliveryGap">Delivery_Gap</option>
-              <option value="currentCategory">Current Category</option>
               <option value="zone">Zone</option>
               <option value="delivery">Delivery Plan </option>
               <option value="status">Status </option>
@@ -1198,57 +1177,17 @@ export default function CustomerManagement() {
       </div>
 
       {/* TABS */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 mb-6 flex-wrap">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`px-4 py-2 rounded-xl border ${activeTab === t ? "bg-black text-white" : "bg-white"}`}
+            className={`px-4 py-2 rounded-xl border ${activeTab === t ? "bg-black text-white border-black shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             {t}
           </button>
         ))}
       </div>
-
-      {/* DELIVERY GAP FILTERS TABS */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
-          <button
-            key={gap}
-            onClick={() => setActiveGapTab(gap)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            {gap}
-          </button>
-        ))}
-      </div>
-
-      {/* BUSINESS CATEGORIES TABS */}
-      {businessTypes && businessTypes.length > 0 && (
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <button
-            onClick={() => setActiveBusinessTab("ALL")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "ALL" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            ALL CATEGORIES
-          </button>
-          <button
-            onClick={() => setActiveBusinessTab("UNASSIGNED")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "UNASSIGNED" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            UNASSIGNED
-          </button>
-          {businessTypes.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActiveBusinessTab(t)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === t ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* ZONE FILTERS TABS */}
       {zones && zones.length > 0 && (
@@ -1361,25 +1300,15 @@ export default function CustomerManagement() {
         ))}
       </div>
 
-      {/* REMARK FILTERS TABS */}
+      {/* DELIVERY GAP FILTERS TABS */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {[
-          { label: "ALL REMARKS", value: "ALL" },
-          { label: "Stock Available", value: "stock_available" },
-          { label: "Other Vendor", value: "other_vendor" },
-          { label: "Shop Closed", value: "shop_closed" },
-          { label: "Confirmed Tomorrow", value: "confirmed_tomorrow" },
-        ].map((tab) => (
+        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
           <button
-            key={tab.value}
-            onClick={() => setActiveRemarkTab(tab.value)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-              activeRemarkTab === tab.value
-                ? "bg-slate-600 text-white border-slate-600 shadow-sm"
-                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-            }`}
+            key={gap}
+            onClick={() => setActiveGapTab(gap)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
-            {tab.label}
+            {gap}
           </button>
         ))}
       </div>
@@ -1389,19 +1318,24 @@ export default function CustomerManagement() {
         <table className="w-full text-xs text-center border-collapse">
           <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="px-2 py-3">Customer ID</th>
+              
               <th className="px-2 py-3">Name</th>
+              <th className="px-2 py-3">Phone</th>
               <th className="px-2 py-3">Zone</th>
               <th className="px-2 py-3">Route</th>
 
               <th className="px-2 py-3">Delivery Plan</th>
               <th className="px-2 py-3">Weekly Schedule</th>
               <th className="px-2 py-3">Peak_Potential</th>
-              <th className="px-2 py-3">Peak_Frequency</th>
-              <th className="px-2 py-3">Delivery_Gap</th>
-              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
-                <th className="px-2 py-3">Current Category</th>
-              )}
+              <th
+                className="px-2 py-3 cursor-pointer hover:bg-gray-200 transition-colors group"
+                onClick={() => setSortBy("deliveryGap")}
+                title="Sort by Delivery Gap"
+              >
+                Delivery Gap
+                {sortBy === "deliveryGap" && " ▼"}
+              </th>
+              <th className="px-2 py-3">Call Status</th>
               <th className="px-2 py-3">Status</th>
               <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
             </tr>
@@ -1410,8 +1344,40 @@ export default function CustomerManagement() {
           <tbody>
             {paginatedCustomers.map((c) => (
               <tr key={c.id} className={`border-t ${calendarCustomer?.id === c.id ? 'relative z-50' : ''}`}>
-                <td className="px-2 py-3 font-medium">{c.custid || c.id}</td>
+                
                 <td className="px-2 py-3 font-medium">{getName(c)}</td>
+                <td className="px-2 py-3">
+                  {editingPhoneId === c.id ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      className="border rounded px-2 py-1 w-28 text-xs text-center"
+                      value={editPhoneValue}
+                      onChange={(e) => setEditPhoneValue(e.target.value)}
+                      onBlur={() => updatePhone(c.id, editPhoneValue)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          updatePhone(c.id, editPhoneValue);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center gap-2">
+                      <span>{c.phone || "-"}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPhoneId(c.id);
+                          setEditPhoneValue(c.phone || "");
+                        }}
+                        className="text-gray-500 hover:text-gray-700"
+                        title="Edit Phone"
+                      >
+                        <FiEdit2 />
+                      </button>
+                    </div>
+                  )}
+                </td>
                 <td
                   className="px-2 py-3 font-medium text-gray-700"
                   onClick={(e) => e.stopPropagation()}
@@ -1469,6 +1435,27 @@ export default function CustomerManagement() {
                       className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
                     >
                       <option value="">Assign</option>
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : editingRouteId === c.id ? (
+                    <select
+                      autoFocus
+                      defaultValue={c.route}
+                      onBlur={() => setEditingRouteId(null)}
+                      onChange={async (e) => {
+                        await assignRoute(c.id, e.target.value);
+                        setEditingRouteId(null);
+                      }}
+                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
+                    >
                       {routes.map((r) => {
                         const rName = typeof r === "string" ? r : r?.name;
                         if (!rName) return null;
@@ -1634,37 +1621,30 @@ export default function CustomerManagement() {
                 <td className="px-2 py-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: getPeakFrequencyColor(c) }}
-                  >
-                    {getPeakFrequencyLabel(c)}
-                  </span>
-                </td>
-
-                <td className="px-2 py-3">
-                  <span
-                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                    style={{
-                      backgroundColor: getDeliveryGapColor(c.deliveryGap),
-                    }}
+                    style={{ backgroundColor: getDeliveryGapColor(c.deliveryGap) }}
                   >
                     {normalizeDeliveryGap(c.deliveryGap)}
                   </span>
                 </td>
 
-                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
-                  <td className="px-2 py-3">
-                    <span
-                      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-                      style={{
-                        backgroundColor: getCurrentCategoryColor(
-                          getCurrentCategory(c),
-                        ),
-                      }}
-                    >
-                      {getCurrentCategory(c)}
+                <td className="px-2 py-3">
+                  {c.callStatus === "Called" ? (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-500 text-white cursor-default">
+                      Called
                     </span>
-                  </td>
-                )}
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateCallStatus(c.id);
+                      }}
+                      disabled={updatingCallStatusId === c.id}
+                      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+                    >
+                      {updatingCallStatusId === c.id ? "..." : "To Call"}
+                    </button>
+                  )}
+                </td>
 
                 <td className="px-2 py-3">
                   <div className="flex flex-col items-center gap-1">
@@ -1791,7 +1771,7 @@ function normalizePotential(value) {
 }
 
 function resolvePeakFrequency(customer) {
-  const currentPeak = `D${customer.deliveredCount ?? getDeliveredCountForCustomer(customer)}`;
+  const currentPeak = `D${getDeliveredCountForCustomer(customer)}`;
   const savedPeak = normalizePeakFrequency(
     customer?.Peak_Frequency ||
     customer?.peakFrequency ||
@@ -1851,13 +1831,7 @@ function getDeliveredCountForCustomer(customer) {
   return count;
 }
 
-function getPeakFrequencyColor(customer) {
-  const n = getPeakFrequencyNumber(customer);
 
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-}
 
 function getPotentialColor(value) {
   const potential = normalizePotential(value);
@@ -2006,17 +1980,7 @@ function computePotential(last8Days) {
 }
 
 function getCurrentCategory(customer) {
-  return `D${customer.deliveredCount ?? getDeliveredCountForCustomer(customer)}`;
+  return `D${getDeliveredCountForCustomer(customer)}`;
 }
 
-function getCurrentCategoryColor(category) {
-  const match = String(category || "").match(/^D(\d+)$/);
-  if (!match) return "#FF3B30";
 
-  const num = Number(match[1]);
-  if (!Number.isFinite(num)) return "#FF3B30";
-
-  if (num <= 2) return "#FF3B30"; // red: D0-D2
-  if (num <= 4) return "#FB8C00"; // orange: D3-D4
-  return "#0F9D58"; // green: D5-D7
-}
