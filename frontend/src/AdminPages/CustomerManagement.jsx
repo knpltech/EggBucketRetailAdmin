@@ -1479,6 +1479,27 @@ export default function CustomerManagement() {
                         );
                       })}
                     </select>
+                  ) : editingRouteId === c.id ? (
+                    <select
+                      autoFocus
+                      defaultValue={c.route}
+                      onBlur={() => setEditingRouteId(null)}
+                      onChange={async (e) => {
+                        await assignRoute(c.id, e.target.value);
+                        setEditingRouteId(null);
+                      }}
+                      className="border rounded px-2 py-1 w-32 text-xs bg-white text-gray-900"
+                    >
+                      {routes.map((r) => {
+                        const rName = typeof r === "string" ? r : r?.name;
+                        if (!rName) return null;
+                        return (
+                          <option key={rName} value={rName}>
+                            {rName}
+                          </option>
+                        );
+                      })}
+                    </select>
                   ) : (
                     <div className="flex items-center justify-center gap-2">
                       <span>{c.route}</span>
