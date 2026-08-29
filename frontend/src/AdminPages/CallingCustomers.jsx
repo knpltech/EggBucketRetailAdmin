@@ -14,7 +14,6 @@ import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 // TABS
 const TABS = [
   "ALL",
-  "CALLING CUSTOMER",
   "ONBOARDING",
   "D0",
   "D1",
@@ -105,7 +104,7 @@ export default function CallingCustomers() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
-  const [activeTab, setActiveTab] = useState("CALLING CUSTOMER");
+  const [activeTab, setActiveTab] = useState("ALL");
   const activeBusinessTab = "ALL";
   const [activeZoneTab, setActiveZoneTab] = useState("ALL");
   const [activeRouteTab, setActiveRouteTab] = useState("ALL");
@@ -289,11 +288,15 @@ export default function CallingCustomers() {
             : [];
 
         const normalizedRows = normaliseRows(rows);
-        setCustomers(normalizedRows);
+        const callingCustomerRows = normalizedRows.filter((c) => {
+          const bt = String(c?.businessType || "").trim().toLowerCase();
+          return bt === "calling customer" || bt === "calling customers";
+        });
+        setCustomers(callingCustomerRows);
 
-        // Sync Prime Customer status for all customers
+        // Sync Prime Customer status for all calling customers
         // This ensures Firestore is kept in sync with Peak_Potential
-        await syncAllPrimeCustomers(normalizedRows);
+        await syncAllPrimeCustomers(callingCustomerRows);
 
         // Fetch category peak potentials for today's weekday
         try {
@@ -427,12 +430,7 @@ export default function CallingCustomers() {
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-    if (activeTab === "CALLING CUSTOMER") {
-      list = list.filter((c) => {
-        const bt = String(c.businessType || "").trim().toLowerCase();
-        return bt === "calling customer" || bt === "calling customers";
-      });
-    } else if (activeTab === "ONBOARDING") {
+    if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
       const now = Date.now();
       list = list.filter((c) => {
@@ -653,12 +651,7 @@ export default function CallingCustomers() {
       return count;
     };
 
-    if (activeTab === "CALLING CUSTOMER") {
-      list = list.filter((c) => {
-        const bt = String(c.businessType || "").trim().toLowerCase();
-        return bt === "calling customer" || bt === "calling customers";
-      });
-    } else if (activeTab === "ONBOARDING") {
+    if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
       const yesterday = Date.now() - 24 * 60 * 60 * 1000;
       list = list.filter((c) => {
@@ -795,10 +788,8 @@ export default function CallingCustomers() {
       return Number(categoryPeaks[activeBusinessTab.toUpperCase()]) || 0;
     }
 
-    let key = "ALL";
-    if (activeTab === "CALLING CUSTOMER") {
-      key = "PRIME";
-    } else if (activeTab === "ONBOARDING") {
+    let key = "PRIME";
+    if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
     } else if (activeTab !== "ALL") {
       key = activeTab; // "D0", "D1", etc.
@@ -1019,8 +1010,8 @@ export default function CallingCustomers() {
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, CALLING CUSTOMER and ONBOARDING tabs
-      if (activeTab === "ALL" || activeTab === "CALLING CUSTOMER" || activeTab === "ONBOARDING") {
+      // Add Current_Category for ALL and ONBOARDING tabs
+      if (activeTab === "ALL" || activeTab === "ONBOARDING") {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData.Status = getLatestStatus(c);

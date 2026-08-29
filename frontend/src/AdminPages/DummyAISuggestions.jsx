@@ -55,7 +55,7 @@ const DummyAISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [priorityFilter, setPriorityFilter] = useState([]);
   const [priorities, setPriorities] = useState([]);
   const [routePriorityMap, setRoutePriorityMap] = useState({});
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
@@ -67,12 +67,17 @@ const DummyAISuggestions = () => {
   const [activeGapTab, setActiveGapTab] = useState("ALL");
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
   const routeDropdownRef = useRef(null);
+  const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false);
+  const priorityDropdownRef = useRef(null);
   const [routes, setRoutes] = useState([]);
 
   useEffect(() => {
     function handleClickOutside(event) {
       if (routeDropdownRef.current && !routeDropdownRef.current.contains(event.target)) {
         setIsRouteDropdownOpen(false);
+      }
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(event.target)) {
+        setIsPriorityDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -302,12 +307,12 @@ const DummyAISuggestions = () => {
 
       if (!matchesSuggestionOption) return false;
 
-      // Priority filter
+      // Priority filter (multi-select)
       const customerRoute = String(item.customer?.route || "").trim();
       const customerPriorityId = routePriorityMap[customerRoute] ?? routePriorityMap[customerRoute.toLowerCase()] ?? null;
       const matchesPriority =
-        priorityFilter === "ALL" ||
-        customerPriorityId === priorityFilter;
+        priorityFilter.length === 0 ||
+        (customerPriorityId && priorityFilter.includes(customerPriorityId));
 
       if (!matchesPriority) return false;
 
@@ -559,18 +564,57 @@ const DummyAISuggestions = () => {
             Download Excel
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2 w-full">
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-            >
-              <option value="ALL">All Priorities</option>
-              {priorities.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative" ref={priorityDropdownRef}>
+              <button
+                onClick={() => setIsPriorityDropdownOpen(!isPriorityDropdownOpen)}
+                className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm flex items-center justify-between min-w-[150px]"
+              >
+                <span className="truncate max-w-[120px]">
+                  {priorityFilter.length === 0 ? "All Priorities" : `${priorityFilter.length} Selected`}
+                </span>
+                <svg className="w-4 h-4 ml-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              {isPriorityDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto left-0 lg:right-0">
+                  <div className="p-2 flex gap-2 border-b border-gray-100 sticky top-0 bg-white z-20">
+                    <button
+                      onClick={() => setPriorityFilter(priorities.map((p) => p.id))}
+                      className="flex-1 text-xs bg-blue-50 text-blue-600 font-semibold py-1.5 rounded hover:bg-blue-100"
+                    >
+                      Check All
+                    </button>
+                    <button
+                      onClick={() => setPriorityFilter([])}
+                      className="flex-1 text-xs bg-gray-50 text-gray-600 font-semibold py-1.5 rounded hover:bg-gray-100"
+                    >
+                      Uncheck All
+                    </button>
+                  </div>
+                  <div className="p-1">
+                    {priorities.map((p) => (
+                      <label key={p.id} className="flex items-center px-3 py-2 hover:bg-gray-50 rounded cursor-pointer text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          checked={priorityFilter.includes(p.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setPriorityFilter([...priorityFilter, p.id]);
+                            } else {
+                              setPriorityFilter(priorityFilter.filter((id) => id !== p.id));
+                            }
+                          }}
+                        />
+                        <span className="truncate" title={p.name}>{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <select
               value={businessTypeFilter}

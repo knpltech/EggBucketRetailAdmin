@@ -2,9 +2,11 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo } from "../utils/customerInfoClientCache";
+import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 import {
   FiPlus, FiEdit2, FiTrash2, FiX, FiMapPin, FiUsers, FiUserCheck, FiTarget,
-  FiCalendar, FiCheck, FiAlertCircle, FiChevronRight, FiClock
+  FiCalendar, FiCheck, FiAlertCircle, FiChevronRight, FiChevronLeft, FiClock,
+  FiCheckCircle, FiEye, FiTrendingUp, FiShoppingBag, FiInfo
 } from "react-icons/fi";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -354,64 +356,407 @@ function AddRouteModal({ priority, allRoutes, onClose, onSuccess }) {
   );
 }
 
-// ─── Calendar Modal ───────────────────────────────────────────────────────────
+// ─── Monthly Delivery & Peak Calendar Modal ───────────────────────────────────
 
-function CalendarModal({ priorities, routes, onClose }) {
-  const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-  const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+function CalendarModal({ priorities, routes, customers = [], categoryPeaks, onClose }) {
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [selectedPriorityId, setSelectedPriorityId] = useState("ALL");
+  const [selectedDayData, setSelectedDayData] = useState(null);
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth(); // 0-indexed
+
+  // Month navigation
+  const prevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+    setSelectedDayData(null);
+  };
+  const nextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+    setSelectedDayData(null);
+  };
+  const goToToday = () => {
+    setCurrentDate(new Date());
+    setSelectedDayData(null);
+  };
+
+  const monthLabel = currentDate.toLocaleString("default", { month: "long", year: "numeric" });
+
+  // Map route names to priority
+  const routePriorityMap = useMemo(() => {
+    const map = {};
+    (routes || []).forEach(r => {
+      if (r.name && r.priorityId) {
+        map[r.name] = r.priorityId;
+      }
+    });
+    return map;
+  }, [routes]);
+
+  // Compute daily stats for the entire month
+  const monthCalendarData = useMemo(() => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Monday-based first day offset: Mon=0, Tue=1, ..., Sun=6
+    const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7;
+
+    // Filter relevant customers based on priority
+    const filteredCustomers = (customers || []).filter(c => {
+      if (selectedPriorityId === "ALL") return true;
+      const rPriorityId = routePriorityMap[c.route];
+      return rPriorityId === selectedPriorityId;
+    });
+
+    // Estimate daily peak benchmark
+    let benchmarkPeak = 0;
+    filteredCustomers.forEach(c => {
+      const peak = (categoryPeaks && categoryPeaks[c.category]) || 10;
+      benchmarkPeak += peak;
+    });
+    // Scaled for daily active expected (~50% of total)
+    const expectedDailyPeak = Math.max(1, Math.round(benchmarkPeak * 0.45));
+
+    const days = [];
+    let monthTotalTrays = 0;
+    let greenCount = 0;
+    let orangeCount = 0;
+    let redCount = 0;
+
+    const todayStr = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const isFuture = dStr > todayStr;
+
+      let totalTrays = 0;
+      let delivered = 0;
+      let checked = 0;
+      const routesBreakdown = {};
+
+      filteredCustomers.forEach(c => {
+        const last8Days = c.last8Days || {};
+        const entry = last8Days[dStr];
+        if (!entry) return;
+
+        const status = String(typeof entry === "string" ? entry : entry.status || "").toLowerCase();
+        const qty = Number(typeof entry === "object" ? entry.quantity : 0) || 0;
+
+        if (status === "delivered") {
+          delivered += 1;
+          const trays = qty > 0 ? qty : 1;
+          totalTrays += trays;
+          const rName = c.route || "Other";
+          routesBreakdown[rName] = (routesBreakdown[rName] || 0) + trays;
+        } else if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "shop_closed", "confirmed_tomorrow"].includes(status)) {
+          checked += 1;
+        }
+      });
+
+      monthTotalTrays += totalTrays;
+
+      // Peak achievement percentage for this date
+      const peakPercentage = expectedDailyPeak > 0 ? Math.min(100, Math.round((totalTrays / expectedDailyPeak) * 100)) : 0;
+
+      // Color classification:
+      // Green: High delivery (≥ 60% peak or ≥ 40 trays)
+      // Orange: Medium delivery (25% - 59% or 15 - 39 trays)
+      // Red: Low delivery (< 25% or < 15 trays when records exist)
+      let tier = "inactive";
+      if (!isFuture && (delivered > 0 || checked > 0)) {
+        if (peakPercentage >= 60 || totalTrays >= 35) {
+          tier = "high";
+          greenCount++;
+        } else if (peakPercentage >= 25 || totalTrays >= 15) {
+          tier = "medium";
+          orangeCount++;
+        } else {
+          tier = "low";
+          redCount++;
+        }
+      }
+
+      days.push({
+        day,
+        dateStr: dStr,
+        isFuture,
+        isToday: dStr === todayStr,
+        totalTrays,
+        delivered,
+        checked,
+        peakPercentage,
+        tier,
+        routesBreakdown,
+      });
+    }
+
+    return {
+      firstDayIndex,
+      days,
+      monthTotalTrays,
+      greenCount,
+      orangeCount,
+      redCount,
+      activeDaysCount: greenCount + orangeCount + redCount,
+    };
+  }, [year, month, customers, selectedPriorityId, routePriorityMap, categoryPeaks]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+        
+        {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <div className="flex items-center gap-2">
-            <FiCalendar className="text-blue-600" size={20} />
-            <h2 className="text-lg font-bold text-gray-800">Priority Route Delivery Calendar</h2>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+              <FiCalendar size={18} />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900 leading-tight">Monthly Delivery & Peak Calendar</h2>
+              <p className="text-xs text-gray-500">Day-by-day delivery volume & peak potential heatmap</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><FiX size={20} /></button>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            <FiX size={18} />
+          </button>
         </div>
-        <div className="flex-1 overflow-auto p-6">
-          <div className="grid grid-cols-7 gap-2 mb-3">
-            {DAY_LABELS.map(d => (
-              <div key={d} className="text-center text-xs font-bold text-gray-500 uppercase tracking-wide">{d}</div>
+
+        {/* Filter & Navigation Bar */}
+        <div className="px-6 py-3 border-b border-gray-100 bg-white flex flex-wrap items-center justify-between gap-3">
+          {/* Priority Window Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500">Window:</span>
+            <select
+              value={selectedPriorityId}
+              onChange={e => {
+                setSelectedPriorityId(e.target.value);
+                setSelectedDayData(null);
+              }}
+              className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
+            >
+              <option value="ALL">All Priority Windows</option>
+              {priorities.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.startTime} - {p.endTime})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Month Navigator */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={prevMonth}
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors"
+              title="Previous Month"
+            >
+              <FiChevronLeft size={15} />
+            </button>
+            <button
+              onClick={goToToday}
+              className="px-3 py-1 text-xs font-bold text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors min-w-[130px] text-center"
+            >
+              {monthLabel}
+            </button>
+            <button
+              onClick={nextMonth}
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors"
+              title="Next Month"
+            >
+              <FiChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+
+        {/* Monthly Summary KPI Banner */}
+        <div className="grid grid-cols-4 gap-2 px-6 py-3 bg-slate-50 border-b border-gray-100">
+          <div className="bg-white rounded-lg p-2 border border-gray-200 shadow-2xs">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase">Month Total</p>
+            <p className="text-sm font-bold text-gray-900 leading-tight">
+              {monthCalendarData.monthTotalTrays} <span className="text-[10px] text-gray-500 font-normal">trays</span>
+            </p>
+          </div>
+          <div className="bg-white rounded-lg p-2 border border-emerald-100 shadow-2xs">
+            <p className="text-[10px] font-semibold text-emerald-600 uppercase">🟢 High Delivery</p>
+            <p className="text-sm font-bold text-emerald-700 leading-tight">
+              {monthCalendarData.greenCount} <span className="text-[10px] text-gray-400 font-normal">days</span>
+            </p>
+          </div>
+          <div className="bg-white rounded-lg p-2 border border-amber-100 shadow-2xs">
+            <p className="text-[10px] font-semibold text-amber-600 uppercase">🟠 Medium Delivery</p>
+            <p className="text-sm font-bold text-amber-700 leading-tight">
+              {monthCalendarData.orangeCount} <span className="text-[10px] text-gray-400 font-normal">days</span>
+            </p>
+          </div>
+          <div className="bg-white rounded-lg p-2 border border-red-100 shadow-2xs">
+            <p className="text-[10px] font-semibold text-red-600 uppercase">🔴 Low Delivery</p>
+            <p className="text-sm font-bold text-red-700 leading-tight">
+              {monthCalendarData.redCount} <span className="text-[10px] text-gray-400 font-normal">days</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Calendar Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          
+          {/* Weekday Headers */}
+          <div className="grid grid-cols-7 gap-1.5 text-center">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+              <div key={d} className="text-xs font-bold text-gray-400 uppercase tracking-wider py-1">
+                {d}
+              </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-2">
-            {DAYS.map((day, i) => {
-              const dayRoutes = routes.filter(r => r.weeklySchedule && r.weeklySchedule[day]);
+
+          {/* Month Day Cells */}
+          <div className="grid grid-cols-7 gap-1.5">
+            {/* Empty offset days */}
+            {Array.from({ length: monthCalendarData.firstDayIndex }).map((_, i) => (
+              <div key={`empty-${i}`} className="min-h-[64px] rounded-xl bg-gray-50/40 border border-transparent" />
+            ))}
+
+            {/* Actual Month Days */}
+            {monthCalendarData.days.map(d => {
+              const isSelected = selectedDayData?.dateStr === d.dateStr;
+
+              // Color styles based on tier
+              let colorClasses = "bg-white border-gray-200 text-gray-700 hover:border-gray-300";
+              let badgeColor = "bg-gray-100 text-gray-600";
+
+              if (d.tier === "high") {
+                colorClasses = "bg-emerald-50/80 border-emerald-300 text-emerald-900 hover:bg-emerald-100/80";
+                badgeColor = "bg-emerald-600 text-white";
+              } else if (d.tier === "medium") {
+                colorClasses = "bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100/80";
+                badgeColor = "bg-amber-600 text-white";
+              } else if (d.tier === "low") {
+                colorClasses = "bg-red-50/80 border-red-300 text-red-900 hover:bg-red-100/80";
+                badgeColor = "bg-red-600 text-white";
+              } else if (d.isFuture) {
+                colorClasses = "bg-gray-50/60 border-gray-100 text-gray-400 opacity-60";
+              }
+
               return (
-                <div key={day} className="bg-gray-50 rounded-xl p-2.5 min-h-[140px] border border-gray-100">
-                  <p className="text-[11px] font-bold text-gray-400 mb-2 text-center uppercase">{DAY_LABELS[i]}</p>
-                  <div className="flex flex-col gap-1.5">
-                    {dayRoutes.length === 0 ? (
-                      <p className="text-[10px] text-gray-300 text-center mt-3">—</p>
-                    ) : dayRoutes.map(r => {
-                      const color = r.priority?.color || "#6b7280";
-                      return (
-                        <div
-                          key={r.id || r.name}
-                          className="text-[10px] font-semibold rounded px-1.5 py-1 text-white truncate shadow-2xs"
-                          style={{ backgroundColor: color }}
-                          title={`${r.name}${r.description ? ` (${r.description})` : ""}`}
-                        >
-                          {r.name}
-                        </div>
-                      );
-                    })}
+                <button
+                  key={d.day}
+                  onClick={() => setSelectedDayData(d)}
+                  className={`min-h-[64px] p-1.5 rounded-xl border flex flex-col justify-between text-left transition-all cursor-pointer shadow-2xs relative ${colorClasses} ${
+                    isSelected ? "ring-2 ring-blue-500 shadow-md scale-[1.02]" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className={`text-xs font-black leading-none ${d.isToday ? "px-1.5 py-0.5 rounded-full bg-blue-600 text-white" : ""}`}>
+                      {d.day}
+                    </span>
+                    {d.totalTrays > 0 && (
+                      <span className={`text-[9px] font-bold px-1 py-0.2 rounded leading-none ${badgeColor}`}>
+                        {d.totalTrays} T
+                      </span>
+                    )}
                   </div>
-                </div>
+
+                  {d.delivered > 0 || d.checked > 0 ? (
+                    <div className="mt-1">
+                      <p className="text-[10px] font-semibold leading-tight truncate">
+                        {d.delivered} del · {d.checked} chk
+                      </p>
+                      <p className="text-[9px] text-gray-500 font-medium leading-none mt-0.5">
+                        {d.peakPercentage}% target
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-[9px] text-gray-300 font-medium">
+                      {d.isFuture ? "Scheduled" : "—"}
+                    </div>
+                  )}
+                </button>
               );
             })}
           </div>
-          {routes.filter(r => r.weeklySchedule).length === 0 && (
-            <div className="text-center py-10 text-gray-400">
-              <FiClock size={36} className="mx-auto mb-2 opacity-40 text-blue-500" />
-              <p className="text-sm font-medium text-gray-600">Weekly Route Schedules Overview</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-                Customer delivery schedules configured in Route Management automatically display active days here.
-              </p>
+
+          {/* Selected Day Inspector Panel */}
+          {selectedDayData && (
+            <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 mt-3 animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-blue-900 uppercase tracking-wide">
+                    {selectedDayData.dateStr} Details
+                  </span>
+                  {selectedDayData.isToday && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
+                      TODAY
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs font-bold text-blue-700">
+                  {selectedDayData.totalTrays} Trays Delivered
+                </span>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-center bg-white rounded-lg p-2.5 border border-blue-100 shadow-2xs">
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Delivered</p>
+                  <p className="text-xs font-bold text-emerald-600">{selectedDayData.delivered} cust</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Checked</p>
+                  <p className="text-xs font-bold text-amber-600">{selectedDayData.checked} cust</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Conversion</p>
+                  <p className="text-xs font-bold text-indigo-600">
+                    {selectedDayData.delivered + selectedDayData.checked > 0
+                      ? `${Math.round((selectedDayData.delivered / (selectedDayData.delivered + selectedDayData.checked)) * 100)}%`
+                      : "0%"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Peak Target</p>
+                  <p className="text-xs font-bold text-gray-800">{selectedDayData.peakPercentage}%</p>
+                </div>
+              </div>
+
+              {Object.keys(selectedDayData.routesBreakdown || {}).length > 0 && (
+                <div className="mt-2.5">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Top Active Routes</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(selectedDayData.routesBreakdown).map(([rName, rTrays]) => (
+                      <span
+                        key={rName}
+                        className="text-[10px] font-semibold bg-white border border-blue-200 px-2 py-0.5 rounded-md text-gray-700 shadow-2xs"
+                      >
+                        {rName}: <strong className="text-emerald-600">{rTrays} trays</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
+
+          {/* Color Legend */}
+          <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100 flex-wrap gap-2">
+            <span className="font-semibold text-gray-600">Legend:</span>
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-400 inline-block" />
+                <span>High Delivery (≥60%)</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-amber-100 border border-amber-400 inline-block" />
+                <span>Medium Delivery (25–59%)</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-red-100 border border-red-400 inline-block" />
+                <span>Low Delivery (&lt;25%)</span>
+              </span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -481,9 +826,22 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
   const agentSet = new Set(routes.flatMap(r => r.agents || []));
   const agentCount = agentSet.size || routes.reduce((s, r) => s + (r.agentCount || 0), 0);
   const totalCustomers = routes.reduce((s, r) => s + (r.customerCount || 0), 0);
+  const activeCustomers = routes.reduce((s, r) => s + (r.activeCustomers || 0), 0);
+  const deliveredCount = routes.reduce((s, r) => s + (r.deliveredCount || 0), 0);
+  const checkedCount = routes.reduce((s, r) => s + (r.checkedCount || 0), 0);
+  const pendingCount = Math.max(0, activeCustomers - deliveredCount - checkedCount);
   const totalPotentialAchieved = routes.reduce((s, r) => s + (r.potentialAchieved || 0), 0);
   const totalPeakPotential = routes.reduce((s, r) => s + (r.peakPotential || 0), 0);
   const totalLastWeekPotential = routes.reduce((s, r) => s + (r.lastWeekPotential || 0), 0);
+
+  const visitedCount = deliveredCount + checkedCount;
+  const conversionPercent = visitedCount > 0
+    ? ((deliveredCount / visitedCount) * 100).toFixed(1)
+    : (activeCustomers > 0 && deliveredCount > 0 ? ((deliveredCount / activeCustomers) * 100).toFixed(1) : "0.0");
+
+  const avgOrder = deliveredCount > 0
+    ? (totalPotentialAchieved / deliveredCount).toFixed(1)
+    : "0.0";
 
   const achievementPercentage = totalPeakPotential > 0
     ? Math.round((totalPotentialAchieved / totalPeakPotential) * 100)
@@ -495,7 +853,7 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
 
   return (
     <div
-      className="flex flex-col h-[520px] rounded-2xl border shadow-sm bg-white overflow-hidden w-full transition-all hover:shadow-md"
+      className="flex flex-col h-[600px] rounded-2xl border shadow-sm bg-white overflow-hidden w-full transition-all hover:shadow-md"
       style={{ borderColor: colorWithAlpha(color, 0.35) }}
     >
       {/* Column top header */}
@@ -532,47 +890,40 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
 
         <p className="text-xs text-gray-500 mb-3 truncate">{priority.description || "Priority delivery window"}</p>
 
-        {/* Stats card */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
-              <FiMapPin size={13} />
+        {/* Overview Row: Total Customers, Active Customers, Potential Achieved */}
+        <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-blue-50 text-blue-600">
+              <FiUsers size={12} />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-gray-400 font-medium truncate">Total Routes</p>
-              <p className="text-sm sm:text-base font-bold text-gray-800 leading-tight">{routes.length}</p>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Total Customers</p>
+              <p className="text-xs font-bold text-gray-800 leading-none">{totalCustomers}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
-              <FiUsers size={13} />
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-emerald-50 text-emerald-600">
+              <FiUserCheck size={12} />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-gray-400 font-medium truncate">Total Customers</p>
-              <p className="text-sm sm:text-base font-bold text-gray-800 leading-tight">{totalCustomers}</p>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Active Customers</p>
+              <p className="text-xs font-bold text-emerald-600 leading-none">{activeCustomers}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
-              <FiUserCheck size={13} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] text-gray-400 font-medium truncate">Assigned Agents</p>
-              <p className="text-sm sm:text-base font-bold text-gray-800 leading-tight">{agentCount}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
-              <FiTarget size={13} />
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
+              <FiTarget size={12} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] text-gray-400 font-medium truncate">Potential Achieved</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="text-sm sm:text-base font-bold text-emerald-600 leading-tight">
-                  {totalPotentialAchieved} <span className="text-[10px] text-gray-400 font-normal">trays</span>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Potential Achieved</p>
+              <div className="flex items-center gap-1 flex-wrap">
+                <p className="text-xs font-bold text-emerald-600 leading-none">
+                  {totalPotentialAchieved} <span className="text-[9px] text-gray-400 font-normal">trays</span>
                 </p>
                 <span
-                  className="text-[11px] font-bold px-1.5 py-0.5 rounded-md leading-none inline-flex items-center"
+                  className="text-[9px] font-bold px-1 py-0.2 rounded leading-none inline-flex items-center"
                   style={{
                     backgroundColor: achievementPercentage >= 100 ? '#ecfdf5' : achievementPercentage >= 70 ? '#fffbeb' : '#fef2f2',
                     color: achievementPercentage >= 100 ? '#059669' : achievementPercentage >= 70 ? '#d97706' : '#dc2626',
@@ -582,6 +933,82 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
                   {achievementPercentage}%
                 </span>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Execution Row: Delivered, Checked, Pending */}
+        <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-emerald-50 text-emerald-600">
+              <FiCheckCircle size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Delivered</p>
+              <p className="text-xs font-bold text-emerald-600 leading-none">{deliveredCount}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-amber-50 text-amber-600">
+              <FiEye size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Checked</p>
+              <p className="text-xs font-bold text-amber-600 leading-none">{checkedCount}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-slate-100 text-slate-600">
+              <FiClock size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Pending</p>
+              <p className="text-xs font-bold text-gray-700 leading-none">{pendingCount}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Efficiency & Resource Row: Conversion %, Avg Order, Routes, Agents */}
+        <div className="grid grid-cols-4 gap-1.5">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-indigo-50 text-indigo-600">
+              <FiTrendingUp size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Conversion</p>
+              <p className="text-xs font-bold text-indigo-600 leading-none">{conversionPercent}%</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-purple-50 text-purple-600">
+              <FiShoppingBag size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Avg Order</p>
+              <p className="text-xs font-bold text-purple-600 leading-none">{avgOrder} <span className="text-[9px] text-gray-400 font-normal">T</span></p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
+              <FiMapPin size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Routes</p>
+              <p className="text-xs font-bold text-gray-800 leading-none">{routes.length}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
+              <FiUserCheck size={12} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium truncate">Agents</p>
+              <p className="text-xs font-bold text-gray-800 leading-none">{agentCount}</p>
             </div>
           </div>
         </div>
@@ -720,32 +1147,50 @@ export default function PriorityWindow() {
     const potMap = {};
     const custPeakMap = {};
     const lastWeekPotMap = {};
+    const activeMap = {};
+    const deliveredMap = {};
+    const checkedMap = {};
 
     customers.forEach(customer => {
       const route = (customer.route || customer.routeName || "").toString().trim();
       if (!route) return;
 
-      custMap[route] = (custMap[route] || 0) + 1;
-      custMap[route.toLowerCase()] = (custMap[route.toLowerCase()] || 0) + 1;
+      const rKey = route;
+      const rKeyLower = route.toLowerCase();
+
+      custMap[rKey] = (custMap[rKey] || 0) + 1;
+      custMap[rKeyLower] = (custMap[rKeyLower] || 0) + 1;
 
       // Customer Peak Potential sum
       const cPeak = getCustomerPeakPotential(customer);
-      custPeakMap[route] = (custPeakMap[route] || 0) + cPeak;
-      custPeakMap[route.toLowerCase()] = (custPeakMap[route.toLowerCase()] || 0) + cPeak;
+      custPeakMap[rKey] = (custPeakMap[rKey] || 0) + cPeak;
+      custPeakMap[rKeyLower] = (custPeakMap[rKeyLower] || 0) + cPeak;
+
+      // Check today's active status
+      if (getTodayEffectiveStatus(customer, todayDate) === "ON") {
+        activeMap[rKey] = (activeMap[rKey] || 0) + 1;
+        activeMap[rKeyLower] = (activeMap[rKeyLower] || 0) + 1;
+      }
 
       const last8Days = customer.last8Days || {};
 
-      // Today's delivered trays
+      // Today's delivered trays and statuses
       const todayEntry = last8Days[todayDate];
       if (todayEntry) {
         const status = String(typeof todayEntry === "string" ? todayEntry : todayEntry?.status || "").trim().toLowerCase();
         if (status === "delivered") {
+          deliveredMap[rKey] = (deliveredMap[rKey] || 0) + 1;
+          deliveredMap[rKeyLower] = (deliveredMap[rKeyLower] || 0) + 1;
+
           const trays = todayEntry.traysDelivered ?? todayEntry.trays ?? todayEntry.quantity ?? todayEntry?.deliveredTrays ?? 0;
           const numTrays = Number(trays);
           if (Number.isFinite(numTrays) && numTrays > 0) {
-            potMap[route] = (potMap[route] || 0) + numTrays;
-            potMap[route.toLowerCase()] = (potMap[route.toLowerCase()] || 0) + numTrays;
+            potMap[rKey] = (potMap[rKey] || 0) + numTrays;
+            potMap[rKeyLower] = (potMap[rKeyLower] || 0) + numTrays;
           }
+        } else if (["checked", "reached", "price_mismatch", "stock_available", "other_vendor", "shop_closed", "confirmed_tomorrow"].includes(status)) {
+          checkedMap[rKey] = (checkedMap[rKey] || 0) + 1;
+          checkedMap[rKeyLower] = (checkedMap[rKeyLower] || 0) + 1;
         }
       }
 
@@ -757,8 +1202,8 @@ export default function PriorityWindow() {
           const trays = lastWeekEntry.traysDelivered ?? lastWeekEntry.trays ?? lastWeekEntry.quantity ?? lastWeekEntry?.deliveredTrays ?? 0;
           const numTrays = Number(trays);
           if (Number.isFinite(numTrays) && numTrays > 0) {
-            lastWeekPotMap[route] = (lastWeekPotMap[route] || 0) + numTrays;
-            lastWeekPotMap[route.toLowerCase()] = (lastWeekPotMap[route.toLowerCase()] || 0) + numTrays;
+            lastWeekPotMap[rKey] = (lastWeekPotMap[rKey] || 0) + numTrays;
+            lastWeekPotMap[rKeyLower] = (lastWeekPotMap[rKeyLower] || 0) + numTrays;
           }
         }
       }
@@ -769,6 +1214,9 @@ export default function PriorityWindow() {
       customerPeakByRoute: custPeakMap,
       potentialAchievedByRoute: potMap,
       lastWeekPotentialByRoute: lastWeekPotMap,
+      activeCustomersByRoute: activeMap,
+      deliveredByRoute: deliveredMap,
+      checkedByRoute: checkedMap,
     };
   }, [customers, todayDate, lastWeekDate]);
 
@@ -782,6 +1230,10 @@ export default function PriorityWindow() {
         const clientCount = routeStatsFromCustomers.customerCountByRoute[rName] ?? routeStatsFromCustomers.customerCountByRoute[rName.toLowerCase()];
         const count = clientCount !== undefined ? clientCount : (r.customerCount || 0);
 
+        const delivered = routeStatsFromCustomers.deliveredByRoute[rName] ?? routeStatsFromCustomers.deliveredByRoute[rName.toLowerCase()] ?? 0;
+        const checked = routeStatsFromCustomers.checkedByRoute[rName] ?? routeStatsFromCustomers.checkedByRoute[rName.toLowerCase()] ?? 0;
+        const active = routeStatsFromCustomers.activeCustomersByRoute[rName] ?? routeStatsFromCustomers.activeCustomersByRoute[rName.toLowerCase()] ?? 0;
+
         const clientPot = routeStatsFromCustomers.potentialAchievedByRoute[rName] ?? routeStatsFromCustomers.potentialAchievedByRoute[rName.toLowerCase()];
         const potAchieved = clientPot !== undefined ? clientPot : (r.potentialAchieved || 0);
 
@@ -793,6 +1245,9 @@ export default function PriorityWindow() {
         map[r.priorityId].push({
           ...r,
           customerCount: count,
+          activeCustomers: active,
+          deliveredCount: delivered,
+          checkedCount: checked,
           potentialAchieved: potAchieved,
           lastWeekPotential: lastWeekPot,
           peakPotential: peakPot,
@@ -950,6 +1405,8 @@ export default function PriorityWindow() {
         <CalendarModal
           priorities={priorities}
           routes={routes}
+          customers={customers}
+          categoryPeaks={categoryPeaks}
           onClose={() => setCalendarOpen(false)}
         />
       )}
