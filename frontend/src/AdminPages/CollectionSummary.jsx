@@ -1502,6 +1502,7 @@ const CollectionSummary = () => {
               format: (v) => `₹${v.toLocaleString("en-IN")}`,
               color: "border-t-purple-500",
               topRight: "Amt",
+              addType: "incentive",
             },
           ];
 
@@ -1635,7 +1636,6 @@ const CollectionSummary = () => {
               },
               color: "border-t-purple-500",
               topRight: "Amt",
-              addType: "incentive",
             },
             {
               label: "Cash Balance",
@@ -2008,23 +2008,6 @@ const CollectionSummary = () => {
                 </div>
               )}
 
-              {/* Entry Type Select */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
-                  Entry Type
-                </label>
-                <select
-                  value={addModalType}
-                  onChange={(e) => setAddModalType(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white cursor-pointer"
-                >
-                  {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
-                    <option key={key} value={key}>
-                      {cfg.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               {/* Date Selection */}
               <div>
