@@ -859,9 +859,19 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
       {/* Column top header */}
       <div className="p-4 flex-shrink-0" style={{ backgroundColor: bgLight, borderBottom: `1px solid ${colorWithAlpha(color, 0.18)}` }}>
         <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
             <h3 className="font-bold text-gray-900 text-base leading-tight truncate" title={priority.name}>{priority.name}</h3>
             <Badge active={priority.active} />
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-2xs"
+              style={{
+                backgroundColor: colorWithAlpha(color, 0.12),
+                color: color,
+                borderColor: colorWithAlpha(color, 0.25)
+              }}
+            >
+              <FiMapPin size={11} /> {routes.length} {routes.length === 1 ? "Route" : "Routes"}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <div
@@ -937,14 +947,14 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
           </div>
         </div>
 
-        {/* Execution Row: Delivered, Checked, Pending */}
-        <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+        {/* Execution Row: Delivered, Checked */}
+        <div className="grid grid-cols-2 gap-1.5 mb-1.5">
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
             <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-emerald-50 text-emerald-600">
               <FiCheckCircle size={12} />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Delivered</p>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Delivered</p>
               <p className="text-xs font-bold text-emerald-600 leading-none">{deliveredCount}</p>
             </div>
           </div>
@@ -954,30 +964,20 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
               <FiEye size={12} />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Checked</p>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Checked</p>
               <p className="text-xs font-bold text-amber-600 leading-none">{checkedCount}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-slate-100 text-slate-600">
-              <FiClock size={12} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Pending</p>
-              <p className="text-xs font-bold text-gray-700 leading-none">{pendingCount}</p>
             </div>
           </div>
         </div>
 
-        {/* Efficiency & Resource Row: Conversion %, Avg Order, Routes, Agents */}
-        <div className="grid grid-cols-4 gap-1.5">
+        {/* Efficiency Row: Conversion %, Avg Order */}
+        <div className="grid grid-cols-2 gap-1.5">
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
             <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-indigo-50 text-indigo-600">
               <FiTrendingUp size={12} />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Conversion</p>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Conversion</p>
               <p className="text-xs font-bold text-indigo-600 leading-none">{conversionPercent}%</p>
             </div>
           </div>
@@ -987,28 +987,8 @@ function PriorityColumn({ priority, routes, onEdit, onDelete, onAddRoute }) {
               <FiShoppingBag size={12} />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Avg Order</p>
+              <p className="text-[10px] text-gray-500 font-medium truncate">Avg Order</p>
               <p className="text-xs font-bold text-purple-600 leading-none">{avgOrder} <span className="text-[9px] text-gray-400 font-normal">T</span></p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
-              <FiMapPin size={12} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Routes</p>
-              <p className="text-xs font-bold text-gray-800 leading-none">{routes.length}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-gray-100 shadow-2xs min-w-0">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgMed, color }}>
-              <FiUserCheck size={12} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-medium truncate">Agents</p>
-              <p className="text-xs font-bold text-gray-800 leading-none">{agentCount}</p>
             </div>
           </div>
         </div>

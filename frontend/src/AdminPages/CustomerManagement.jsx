@@ -1035,6 +1035,7 @@ export default function CustomerManagement() {
         "Customer ID": c.custid || c.id,
         Name: getName(c),
         Zone: c.zone || "",
+        Route: c.route || c.routeName || c.route_name || c.Route || "",
         Peak_Potential: normalizePotential(c.potential),
         Peak_Frequency: getPeakFrequencyLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),

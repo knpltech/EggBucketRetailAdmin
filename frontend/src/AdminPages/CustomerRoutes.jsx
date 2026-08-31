@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2 } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
-import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
+import { getTodayEffectiveStatus, computeDeliveryGap, normalizeDeliveryGap, getDeliveryGapNumber } from "../utils/aiSuggestionEngine";
 
 export default function CustomerRoutes() {
   const [loading, setLoading] = useState(true);
@@ -18,6 +18,11 @@ export default function CustomerRoutes() {
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
   const [assignSelectedAgent, setAssignSelectedAgent] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
+
+  // Delivery Gap expandable state per route
+  const [expandedRouteGaps, setExpandedRouteGaps] = useState({});
+  const toggleRouteGaps = (routeName) =>
+    setExpandedRouteGaps((prev) => ({ ...prev, [routeName]: !prev[routeName] }));
 
   // Inline editing
   const [editingRoute, setEditingRoute] = useState(null);
@@ -81,7 +86,22 @@ export default function CustomerRoutes() {
         yesterdayActiveCustomers: 0,
         agentsAssigned: {},
         assignedAgent: "Unassigned",
-        assignedAgentName: "Unassigned"
+        assignedAgentName: "Unassigned",
+        gapCounts: {
+          G0: 0,
+          G1: 0,
+          G2: 0,
+          G3: 0,
+          G4: 0,
+          G5: 0,
+          G6: 0,
+          G7: 0,
+          "G7+": 0,
+          "G10+": 0,
+          "G15+": 0,
+          "G20+": 0,
+          "G30+": 0,
+        }
       };
     });
 
@@ -102,13 +122,32 @@ export default function CustomerRoutes() {
     }).format(yesterdayDateObj);
 
     const todayStart = new Date();
-    todayStart.setHours(0,0,0,0);
+    todayStart.setHours(0, 0, 0, 0);
 
     // Process customers
     customers.forEach(customer => {
       const route = customer.route;
       if (route && routeMap[route]) {
         routeMap[route].totalCustomers += 1;
+
+        // Track Delivery Gap Counts
+        const rawGap = customer.deliveryGap || computeDeliveryGap(customer.last8Days, todayDate);
+        const gapStr = normalizeDeliveryGap(rawGap);
+        const gapNum = getDeliveryGapNumber(gapStr);
+
+        if (gapNum === 0) routeMap[route].gapCounts.G0 += 1;
+        if (gapNum === 1) routeMap[route].gapCounts.G1 += 1;
+        if (gapNum === 2) routeMap[route].gapCounts.G2 += 1;
+        if (gapNum === 3) routeMap[route].gapCounts.G3 += 1;
+        if (gapNum === 4) routeMap[route].gapCounts.G4 += 1;
+        if (gapNum === 5) routeMap[route].gapCounts.G5 += 1;
+        if (gapNum === 6) routeMap[route].gapCounts.G6 += 1;
+        if (gapNum === 7) routeMap[route].gapCounts.G7 += 1;
+        if (gapNum >= 7) routeMap[route].gapCounts["G7+"] += 1;
+        if (gapNum >= 10) routeMap[route].gapCounts["G10+"] += 1;
+        if (gapNum >= 15) routeMap[route].gapCounts["G15+"] += 1;
+        if (gapNum >= 20) routeMap[route].gapCounts["G20+"] += 1;
+        if (gapNum >= 30) routeMap[route].gapCounts["G30+"] += 1;
 
         if (getTodayEffectiveStatus(customer) === "ON") {
           routeMap[route].activeCustomers += 1;
@@ -438,7 +477,7 @@ export default function CustomerRoutes() {
       return <span className="text-sm font-bold text-gray-400 ml-2 inline-flex items-center gap-1 whitespace-nowrap">▬ 0.00</span>;
     }
     if (previous === 0 && current === 0) return null;
-    
+
     const diff = (current - previous).toFixed(2);
     const numDiff = parseFloat(diff);
     if (numDiff > 0) {
@@ -505,6 +544,57 @@ export default function CustomerRoutes() {
     }
   };
 
+  // Compute Overall Delivery Gap summary across all routes
+  const overallGapCounts = useMemo(() => {
+    const counts = {
+      G0: 0,
+      G1: 0,
+      G2: 0,
+      G3: 0,
+      G4: 0,
+      G5: 0,
+      G6: 0,
+      G7: 0,
+      "G7+": 0,
+      "G10+": 0,
+      "G15+": 0,
+      "G20+": 0,
+      "G30+": 0,
+      total: 0
+    };
+
+    const todayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    customers.forEach(customer => {
+      if (!customer.route) return;
+      counts.total += 1;
+      const rawGap = customer.deliveryGap || computeDeliveryGap(customer.last8Days, todayDate);
+      const gapStr = normalizeDeliveryGap(rawGap);
+      const gapNum = getDeliveryGapNumber(gapStr);
+
+      if (gapNum === 0) counts.G0 += 1;
+      if (gapNum === 1) counts.G1 += 1;
+      if (gapNum === 2) counts.G2 += 1;
+      if (gapNum === 3) counts.G3 += 1;
+      if (gapNum === 4) counts.G4 += 1;
+      if (gapNum === 5) counts.G5 += 1;
+      if (gapNum === 6) counts.G6 += 1;
+      if (gapNum === 7) counts.G7 += 1;
+      if (gapNum >= 7) counts["G7+"] += 1;
+      if (gapNum >= 10) counts["G10+"] += 1;
+      if (gapNum >= 15) counts["G15+"] += 1;
+      if (gapNum >= 20) counts["G20+"] += 1;
+      if (gapNum >= 30) counts["G30+"] += 1;
+    });
+
+    return counts;
+  }, [customers]);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full font-sans">
       {/* HEADER & STATS */}
@@ -531,7 +621,7 @@ export default function CustomerRoutes() {
         </div>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
@@ -592,6 +682,8 @@ export default function CustomerRoutes() {
           </div>
         </div>
       </div>
+
+      {/* MAIN CONTENT AREA */}
       <div className="flex flex-col xl:flex-row gap-5 items-start w-full">
         {/* LEFT PANEL - ALL ROUTES (EXPANDED TO FULL AVAILABLE WIDTH) */}
         <div className="flex-1 min-w-0 w-full bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
@@ -642,7 +734,7 @@ export default function CustomerRoutes() {
               </div>
 
               {/* Rows */}
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2.5">
                 {loading ? (
                   <div className="text-center py-10 text-gray-500 text-xs">Loading...</div>
                 ) : routeData.length === 0 ? (
@@ -658,104 +750,150 @@ export default function CustomerRoutes() {
                       { border: "border-l-pink-500", text: "text-pink-600" },
                     ];
                     const color = colors[i % colors.length];
+                    const isExpanded = !!expandedRouteGaps[route.name];
 
                     return (
-                      <div key={route.name} className={`flex items-center bg-white shadow-xs border border-gray-100 border-l-4 ${color.border} rounded-xl px-3 py-2.5 hover:shadow-md transition-all`}>
-                        {/* Column 1: Priority */}
-                        <div style={{ width: "90px", flexShrink: 0 }} className="pr-2 flex items-center">
-                          <select
-                            value={route.priorityId || ""}
-                            onChange={(e) => handlePriorityChange(route.name, e.target.value)}
-                            className="w-full border border-gray-200 rounded-md px-1.5 py-1 bg-white font-bold cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 text-[11px] shadow-2xs transition-colors"
-                            style={{ color: route.priority?.color || "#6b7280" }}
-                          >
-                            <option value="">None</option>
-                            {availablePriorities.filter(p => p.active !== false).map(p => (
-                              <option key={p.id} value={p.id} style={{ color: p.color }}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
+                      <div key={route.name} className={`flex flex-col bg-white shadow-xs border border-gray-100 border-l-4 ${color.border} rounded-xl px-4 py-3.5 min-h-[76px] hover:shadow-md transition-all justify-center`}>
+                        <div className="flex items-center w-full">
+                          {/* Column 1: Priority */}
+                          <div style={{ width: "95px", flexShrink: 0 }} className="pr-3 flex items-center">
+                            <select
+                              value={route.priorityId || ""}
+                              onChange={(e) => handlePriorityChange(route.name, e.target.value)}
+                              className="w-full border border-gray-200 rounded-md px-1.5 py-1 bg-white font-bold cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 text-[11px] shadow-2xs transition-colors"
+                              style={{ color: route.priority?.color || "#6b7280" }}
+                            >
+                              <option value="">None</option>
+                              {availablePriorities.filter(p => p.active !== false).map(p => (
+                                <option key={p.id} value={p.id} style={{ color: p.color }}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Column 2: Route Name & View Gaps Button */}
+                          <div className="flex-1 min-w-0 pr-3">
+                            {editingRoute === route.name ? (
+                              <div className="flex flex-col gap-1 pr-1">
+                                <input
+                                  type="text"
+                                  value={editRouteValue}
+                                  onChange={(e) => setEditRouteValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveRouteName(route.name);
+                                    else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
+                                  }}
+                                  className={`border rounded px-2 py-1 text-xs outline-none font-bold ${color.text} w-full ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  autoFocus
+                                  disabled={isSavingRoute}
+                                />
+                                <div className="flex gap-2 text-xs">
+                                  <button onClick={() => saveRouteName(route.name)} disabled={isSavingRoute} className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}>
+                                    {isSavingRoute ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button onClick={() => setEditingRoute(null)} disabled={isSavingRoute} className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-start gap-1">
+                                  <p className={`font-bold text-xs sm:text-[13px] leading-snug break-words ${color.text}`} title={route.name}>{route.name}</p>
+                                  <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-0.5 cursor-pointer" title="Rename route">
+                                    <FiEdit2 size={11} />
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-medium">
+                                  <span>Route {i + 1}</span>
+                                  <button
+                                    onClick={() => toggleRouteGaps(route.name)}
+                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                                      isExpanded
+                                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                        : "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+                                    }`}
+                                    title="Click to view delivery gap breakdown"
+                                  >
+                                    <FiEye size={10} />
+                                    <span>{isExpanded ? "Hide Gaps" : "View Gaps"}</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Stat Columns */}
+                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-semibold text-gray-800">
+                            <span>{route.totalCustomers}</span>
+                            {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
+                          </div>
+                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
+                            <span>{route.activeCustomers}</span>
+                            {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
+                          </div>
+                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
+                            <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
+                          </div>
+                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
+                            <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
+                            {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
+                          </div>
+                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-teal-600">
+                            <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
+                            {renderEfficiencyDiff(
+                              route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
+                              route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
+                              true
+                            )}
+                          </div>
+
+                          {/* Assigned Agent Column */}
+                          <div style={{ width: "115px", flexShrink: 0 }} className="pl-2 flex items-center min-w-0">
+                            {route.assignedAgent === "Unassigned" ? (
+                              <span className="text-red-500 font-semibold text-[11px]">Unassigned</span>
+                            ) : (
+                              <div className="flex items-center gap-1.5 min-w-0" title={route.assignedAgentName}>
+                                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">
+                                  {route.assignedAgentName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase()}
+                                </div>
+                                <span className="text-[11px] font-medium text-gray-700 truncate">
+                                  {route.assignedAgentName}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        {/* Column 2: Route Name */}
-                        <div className="flex-1 min-w-0 pr-2">
-                          {editingRoute === route.name ? (
-                            <div className="flex flex-col gap-1 pr-1">
-                              <input
-                                type="text"
-                                value={editRouteValue}
-                                onChange={(e) => setEditRouteValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveRouteName(route.name);
-                                  else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
-                                }}
-                                className={`border rounded px-2 py-1 text-xs outline-none font-bold ${color.text} w-full ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                autoFocus
-                                disabled={isSavingRoute}
-                              />
-                              <div className="flex gap-2 text-xs">
-                                <button onClick={() => saveRouteName(route.name)} disabled={isSavingRoute} className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}>
-                                  {isSavingRoute ? 'Saving...' : 'Save'}
-                                </button>
-                                <button onClick={() => setEditingRoute(null)} disabled={isSavingRoute} className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}>
-                                  Cancel
-                                </button>
-                              </div>
+                        {/* Expanded Single-Row Delivery Gaps */}
+                        {isExpanded && (
+                          <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-2 overflow-x-auto text-xs py-1.5 px-2 bg-slate-50/80 rounded-lg">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap pl-1">
+                              Delivery Gaps:
+                            </span>
+                            <div className="flex items-center gap-2 flex-nowrap min-w-max">
+                              {["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+"].map((g) => {
+                                const count = route.gapCounts?.[g] || 0;
+                                return (
+                                  <span
+                                    key={g}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${
+                                      count > 0
+                                        ? "bg-white text-gray-800 border border-gray-200 shadow-2xs font-bold"
+                                        : "bg-gray-100/70 text-gray-400 border border-gray-200/50 font-normal"
+                                    }`}
+                                  >
+                                    <span className="text-gray-600 font-semibold">{g}</span>
+                                    <span className={count > 0 ? "text-blue-600 font-extrabold" : "text-gray-400"}>
+                                      ({count})
+                                    </span>
+                                  </span>
+                                );
+                              })}
                             </div>
-                          ) : (
-                            <>
-                              <div className="flex items-start gap-1">
-                                <p className={`font-bold text-xs sm:text-[13px] leading-snug break-words ${color.text}`} title={route.name}>{route.name}</p>
-                                <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-0.5" title="Rename route">
-                                  <FiEdit2 size={11} />
-                                </button>
-                              </div>
-                              <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-400 font-medium">
-                                <span>Route {i + 1}</span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Stat Columns */}
-                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-semibold text-gray-800">
-                          <span>{route.totalCustomers}</span>
-                          {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
-                        </div>
-                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
-                          <span>{route.activeCustomers}</span>
-                          {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
-                        </div>
-                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
-                          <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
-                        </div>
-                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
-                          <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
-                          {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
-                        </div>
-                        <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-teal-600">
-                          <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
-                          {renderEfficiencyDiff(
-                            route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
-                            route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
-                            true
-                          )}
-                        </div>
-
-                        {/* Assigned Agent Column */}
-                        <div style={{ width: "115px", flexShrink: 0 }} className="pl-2 flex items-center min-w-0">
-                          {route.assignedAgent === "Unassigned" ? (
-                            <span className="text-red-500 font-semibold text-[11px]">Unassigned</span>
-                          ) : (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[9px] flex-shrink-0">
-                                {getInitials(route.assignedAgentName)}
-                              </div>
-                              <span className="text-gray-700 text-[11px] font-medium truncate" title={route.assignedAgentName}>{route.assignedAgentName}</span>
-                            </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -855,11 +993,10 @@ export default function CustomerRoutes() {
             <button
               onClick={handleAssignAgent}
               disabled={isAssigning || !assignSelectedRoute || !assignSelectedAgent}
-              className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all ${
-                isAssigning || !assignSelectedRoute || !assignSelectedAgent
+              className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all ${isAssigning || !assignSelectedRoute || !assignSelectedAgent
                   ? "bg-blue-300 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700 cursor-pointer"
-              }`}
+                }`}
             >
               {isAssigning ? "Assigning..." : "Assign Agent"}
             </button>
