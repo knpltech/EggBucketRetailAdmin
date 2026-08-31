@@ -3,7 +3,14 @@ import axios from "axios";
 import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
-import { getTodayEffectiveStatus, computeDeliveryGap, normalizeDeliveryGap, getDeliveryGapNumber } from "../utils/aiSuggestionEngine";
+import {
+  getTodayEffectiveStatus,
+  computeDeliveryGap,
+  normalizeDeliveryGap,
+  getDeliveryGapNumber,
+  computeCurrentCategory,
+  normalizePeakFrequency,
+} from "../utils/aiSuggestionEngine";
 
 export default function CustomerRoutes() {
   const [loading, setLoading] = useState(true);
@@ -23,6 +30,11 @@ export default function CustomerRoutes() {
   const [expandedRouteGaps, setExpandedRouteGaps] = useState({});
   const toggleRouteGaps = (routeName) =>
     setExpandedRouteGaps((prev) => ({ ...prev, [routeName]: !prev[routeName] }));
+
+  // D0-D7 Category expandable state per route
+  const [expandedRouteCategories, setExpandedRouteCategories] = useState({});
+  const toggleRouteCategories = (routeName) =>
+    setExpandedRouteCategories((prev) => ({ ...prev, [routeName]: !prev[routeName] }));
 
   // Inline editing
   const [editingRoute, setEditingRoute] = useState(null);
@@ -87,6 +99,16 @@ export default function CustomerRoutes() {
         agentsAssigned: {},
         assignedAgent: "Unassigned",
         assignedAgentName: "Unassigned",
+        categoryCounts: {
+          D0: 0,
+          D1: 0,
+          D2: 0,
+          D3: 0,
+          D4: 0,
+          D5: 0,
+          D6: 0,
+          D7: 0,
+        },
         gapCounts: {
           G0: 0,
           G1: 0,
@@ -129,6 +151,15 @@ export default function CustomerRoutes() {
       const route = customer.route;
       if (route && routeMap[route]) {
         routeMap[route].totalCustomers += 1;
+
+        // Track D0-D7 Category Counts
+        const rawCategory = customer.category || customer.currentCategory || computeCurrentCategory(customer.last8Days);
+        const categoryStr = normalizePeakFrequency(rawCategory);
+        if (routeMap[route].categoryCounts[categoryStr] !== undefined) {
+          routeMap[route].categoryCounts[categoryStr] += 1;
+        } else {
+          routeMap[route].categoryCounts.D0 += 1;
+        }
 
         // Track Delivery Gap Counts
         const rawGap = customer.deliveryGap || computeDeliveryGap(customer.last8Days, todayDate);
@@ -751,6 +782,7 @@ export default function CustomerRoutes() {
                     ];
                     const color = colors[i % colors.length];
                     const isExpanded = !!expandedRouteGaps[route.name];
+                    const isCatExpanded = !!expandedRouteCategories[route.name];
 
                     return (
                       <div key={route.name} className={`flex flex-col bg-white shadow-xs border border-gray-100 border-l-4 ${color.border} rounded-xl px-4 py-3.5 min-h-[76px] hover:shadow-md transition-all justify-center`}>
@@ -772,7 +804,7 @@ export default function CustomerRoutes() {
                             </select>
                           </div>
 
-                          {/* Column 2: Route Name & View Gaps Button */}
+                          {/* Column 2: Route Name & View Gaps / D0-D7 Buttons */}
                           <div className="flex-1 min-w-0 pr-3">
                             {editingRoute === route.name ? (
                               <div className="flex flex-col gap-1 pr-1">
@@ -805,7 +837,7 @@ export default function CustomerRoutes() {
                                     <FiEdit2 size={11} />
                                   </button>
                                 </div>
-                                <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-medium">
+                                <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-medium flex-wrap">
                                   <span>Route {i + 1}</span>
                                   <button
                                     onClick={() => toggleRouteGaps(route.name)}
@@ -818,6 +850,18 @@ export default function CustomerRoutes() {
                                   >
                                     <FiEye size={10} />
                                     <span>{isExpanded ? "Hide Gaps" : "View Gaps"}</span>
+                                  </button>
+                                  <button
+                                    onClick={() => toggleRouteCategories(route.name)}
+                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                                      isCatExpanded
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                                        : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100"
+                                    }`}
+                                    title="Click to view D0-D7 category breakdown"
+                                  >
+                                    <FiEye size={10} />
+                                    <span>{isCatExpanded ? "Hide D0-D7" : "View D0-D7"}</span>
                                   </button>
                                 </div>
                               </>
@@ -886,6 +930,35 @@ export default function CustomerRoutes() {
                                   >
                                     <span className="text-gray-600 font-semibold">{g}</span>
                                     <span className={count > 0 ? "text-blue-600 font-extrabold" : "text-gray-400"}>
+                                      ({count})
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Expanded Single-Row D0-D7 Categories */}
+                        {isCatExpanded && (
+                          <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-2 overflow-x-auto text-xs py-1.5 px-2 bg-purple-50/60 rounded-lg">
+                            <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider whitespace-nowrap pl-1">
+                              Categories (D0-D7):
+                            </span>
+                            <div className="flex items-center gap-2 flex-nowrap min-w-max">
+                              {["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"].map((d) => {
+                                const count = route.categoryCounts?.[d] || 0;
+                                return (
+                                  <span
+                                    key={d}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${
+                                      count > 0
+                                        ? "bg-white text-gray-800 border border-purple-200 shadow-2xs font-bold"
+                                        : "bg-gray-100/70 text-gray-400 border border-gray-200/50 font-normal"
+                                    }`}
+                                  >
+                                    <span className="text-gray-600 font-semibold">{d}</span>
+                                    <span className={count > 0 ? "text-purple-600 font-extrabold" : "text-gray-400"}>
                                       ({count})
                                     </span>
                                   </span>

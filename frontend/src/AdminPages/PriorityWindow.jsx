@@ -79,11 +79,6 @@ function RouteCard({ route, color }) {
             ({route.peakPotential > 0 ? Math.round(((route.potentialAchieved || 0) / route.peakPotential) * 100) : 0}%)
           </span>
         </div>
-        <span className="text-gray-200">|</span>
-        <div className="text-right">
-          <span className="text-[11px] text-gray-400 mr-0.5">Agents:</span>
-          <span className="font-bold text-gray-700">{route.agentCount || 0}</span>
-        </div>
       </div>
     </div>
   );
