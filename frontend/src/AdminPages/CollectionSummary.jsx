@@ -1668,18 +1668,6 @@ const CollectionSummary = () => {
               addType: "food_allowance",
             },
             {
-              label: "UPI Balance",
-              value: upiBalance,
-              format: (v) => {
-                if (v < 0) {
-                  return `-₹${Math.abs(v).toLocaleString("en-IN")}`;
-                }
-                return `₹${v.toLocaleString("en-IN")}`;
-              },
-              color: "border-t-purple-500",
-              topRight: "Amt",
-            },
-            {
               label: "Cash Balance",
               value: diff,
               format: (v) => {
@@ -1689,6 +1677,18 @@ const CollectionSummary = () => {
                 return `₹${v.toLocaleString("en-IN")}`;
               },
               color: "border-t-orange-500",
+              topRight: "Amt",
+            },
+            {
+              label: "UPI Balance",
+              value: upiBalance,
+              format: (v) => {
+                if (v < 0) {
+                  return `-₹${Math.abs(v).toLocaleString("en-IN")}`;
+                }
+                return `₹${v.toLocaleString("en-IN")}`;
+              },
+              color: "border-t-purple-500",
               topRight: "Amt",
             },
           ];
