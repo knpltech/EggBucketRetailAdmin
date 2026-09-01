@@ -135,6 +135,7 @@ function App() {
         <Route index element={<AboutSPage />} />
         <Route path="customers" element={<SupCustomerInfo />} />
         <Route path="personnel" element={<SupPersonnelList />} />
+        <Route path="collections" element={<CollectionSummary />} />
         <Route path="report" element={<SupReport />} />
         <Route path="analytics" element={<SupAnalytics />} />
         <Route path="customer-management" element={<SupCustomerManagement />} />

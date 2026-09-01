@@ -2890,7 +2890,7 @@ const addInventoryEntry = async (req, res) => {
       dateKey,
       agentName,
       outletName,
-      supervisorName: "Admin (Web)",
+      supervisorName: req.body.supervisorName || "Admin (Web)",
       remarks: remarks || "",
       createdAt: timestamp,
       timestamp: timestamp,

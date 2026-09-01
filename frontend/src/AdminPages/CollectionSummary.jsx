@@ -9,6 +9,7 @@ import {
   Pencil,
   Check,
   X,
+  User,
 } from "lucide-react";
 import { FiTrendingUp } from "react-icons/fi";
 import * as XLSX from "xlsx";
@@ -89,11 +90,23 @@ const CollectionSummary = () => {
   const [addFormRemarks, setAddFormRemarks] = useState("");
   const [addFormSubmitting, setAddFormSubmitting] = useState(false);
   const [addFormError, setAddFormError] = useState("");
+  const [agentSelectHighlight, setAgentSelectHighlight] = useState(false);
+  const [agentWarningMessage, setAgentWarningMessage] = useState("");
 
   const openAddModal = (type) => {
+    // Check if an agent is selected from the top filter
+    if (!selectedAgent || selectedAgent === "all") {
+      setAgentWarningMessage("Please select a Delivery Agent from the top option first before entering data.");
+      setAgentSelectHighlight(true);
+      setTimeout(() => setAgentSelectHighlight(false), 3500);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setAgentWarningMessage("");
     setAddModalType(type);
     setAddFormDate(selectedDate || getTodayDateString());
-    setAddFormAgent("");
+    setAddFormAgent(selectedAgent);
     setAddFormValue("");
     setAddFormRemarks("");
     setAddFormError("");
@@ -121,8 +134,9 @@ const CollectionSummary = () => {
 
   const handleAddEntrySubmit = async (e) => {
     e.preventDefault();
-    if (!addFormAgent.trim()) {
-      setAddFormError("Please select a delivery agent.");
+    const currentAgent = (selectedAgent && selectedAgent !== "all") ? selectedAgent : addFormAgent;
+    if (!currentAgent || !currentAgent.trim() || currentAgent === "all") {
+      setAddFormError("Please select a delivery agent from the top filter.");
       return;
     }
     if (addFormValue === "" || isNaN(Number(addFormValue)) || Number(addFormValue) < 0) {
@@ -134,12 +148,14 @@ const CollectionSummary = () => {
     setAddFormError("");
 
     try {
+      const userRole = localStorage.getItem("userType") || "admin";
       const payload = {
         type: addModalType,
-        dateKey: addFormDate || selectedDate,
-        agentName: addFormAgent.trim(),
+        dateKey: selectedDate || getTodayDateString(),
+        agentName: currentAgent.trim(),
         value: Number(addFormValue),
         remarks: addFormRemarks.trim(),
+        supervisorName: userRole === "supervisor" ? "Supervisor (Web)" : "Admin (Web)",
       };
 
       const res = await axios.post(`${ADMIN_PATH}/add-inventory-entry`, payload);
@@ -149,7 +165,7 @@ const CollectionSummary = () => {
         setAddFormValue("");
         setAddFormRemarks("");
         // Refresh metrics & collection summary
-        await fetchInventoryMetrics(addFormDate || selectedDate);
+        await fetchInventoryMetrics(selectedDate || getTodayDateString());
         await fetchCollectionSummary();
       } else {
         setAddFormError(res.data?.message || "Failed to add inventory entry");
@@ -1302,6 +1318,26 @@ const CollectionSummary = () => {
         </div>
       </div>
 
+      {/* Alert banner if user tries to add entry without selecting agent */}
+      {agentWarningMessage && (
+        <div className="mb-5 bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="text-sm font-bold text-orange-900">Select Delivery Agent First</p>
+              <p className="text-xs text-orange-700 font-medium">{agentWarningMessage}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setAgentWarningMessage("")}
+            className="text-orange-500 hover:text-orange-800 p-1.5 rounded-lg hover:bg-orange-100 transition cursor-pointer"
+            title="Dismiss"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       {/* Filter Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap items-center">
         {["ALL", "CASH", "UPI"].map((tab) => (
@@ -1325,6 +1361,8 @@ const CollectionSummary = () => {
             onChange={(e) => {
               const newAgent = e.target.value;
               setSelectedAgent(newAgent);
+              setAgentWarningMessage("");
+              setAgentSelectHighlight(false);
               if (newAgent === "all") {
                 setSelectedOutlet("all");
               } else {
@@ -1336,7 +1374,11 @@ const CollectionSummary = () => {
                 }
               }
             }}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+            className={`border rounded-lg px-3 py-2 text-sm font-medium bg-white transition-all duration-300 ${
+              agentSelectHighlight
+                ? "border-orange-500 ring-4 ring-orange-300 shadow-md font-bold text-orange-900"
+                : "border-gray-300 focus:ring-2 focus:ring-purple-500"
+            }`}
           >
             <option value="all">All Delivery Agents</option>
             {deliveryAgentOptions.map((agent) => (
@@ -1989,12 +2031,17 @@ const CollectionSummary = () => {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 animate-in fade-in zoom-in duration-200">
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 flex items-center justify-between text-white">
-              <h3 className="text-lg font-bold">
-                Add {TYPE_CONFIG[addModalType]?.title || "Entry"}
-              </h3>
+              <div>
+                <h3 className="text-lg font-bold">
+                  Add {TYPE_CONFIG[addModalType]?.title || "Entry"}
+                </h3>
+                <p className="text-xs text-purple-100 mt-0.5">
+                  Direct data entry for {selectedAgent}
+                </p>
+              </div>
               <button
                 onClick={closeAddModal}
-                className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition cursor-pointer"
+                className="text-white/80 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition cursor-pointer"
               >
                 <X size={20} />
               </button>
@@ -2008,54 +2055,42 @@ const CollectionSummary = () => {
                 </div>
               )}
 
-
-              {/* Date Selection */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={addFormDate}
-                  onChange={(e) => setAddFormDate(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  required
-                />
-              </div>
-
-              {/* Delivery Agent Select */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
-                  Delivery Agent
-                </label>
-                <select
-                  value={addFormAgent}
-                  onChange={(e) => setAddFormAgent(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white cursor-pointer"
-                  required
-                >
-                  <option value="">-- Select Agent --</option>
-                  {agentOptionsList.map((agent) => (
-                    <option key={agent} value={agent}>
-                      {agent}
-                    </option>
-                  ))}
-                </select>
+              {/* Selected Agent & Date Display Banner */}
+              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-xl p-3.5 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <User size={15} className="text-purple-600" />
+                  <span className="font-semibold text-gray-500">Agent:</span>
+                  <span className="font-bold text-purple-900 bg-purple-100/80 px-2 py-0.5 rounded-md">
+                    {selectedAgent}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Calendar size={15} className="text-indigo-600" />
+                  <span className="font-semibold text-gray-500">Date:</span>
+                  <span className="font-bold text-indigo-900 bg-indigo-100/80 px-2 py-0.5 rounded-md">
+                    {new Date((selectedDate || getTodayDateString()) + "T00:00:00").toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric"
+                    })}
+                  </span>
+                </div>
               </div>
 
               {/* Quantity / Amount Input */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
-                  {TYPE_CONFIG[addModalType]?.label || "Quantity / Amount"}
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
+                  {TYPE_CONFIG[addModalType]?.label || "Quantity / Amount"} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   step="any"
                   min="0"
+                  autoFocus
                   placeholder={`Enter ${TYPE_CONFIG[addModalType]?.label || "value"}`}
                   value={addFormValue}
                   onChange={(e) => setAddFormValue(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  className="w-full border-2 border-purple-200 rounded-xl px-4 py-2.5 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:outline-none transition"
                   required
                 />
               </div>
@@ -2063,14 +2098,14 @@ const CollectionSummary = () => {
               {/* Remarks */}
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">
-                  Remarks / Notes
+                  Remarks / Notes (Optional)
                 </label>
                 <textarea
                   rows="2"
                   placeholder="Enter remarks (optional)"
                   value={addFormRemarks}
                   onChange={(e) => setAddFormRemarks(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none resize-none"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none resize-none"
                 />
               </div>
 
