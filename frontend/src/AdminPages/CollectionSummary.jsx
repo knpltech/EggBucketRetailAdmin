@@ -144,37 +144,92 @@ const CollectionSummary = () => {
       return;
     }
 
-    setAddFormSubmitting(true);
+    const valNum = Number(addFormValue);
+    const dateKey = selectedDate || getTodayDateString();
+    const userRole = localStorage.getItem("userType") || "admin";
+    const supervisorName = userRole === "supervisor" ? "Supervisor (Web)" : "Admin (Web)";
+
+    // Find outlet name if available
+    const partner = deliveryPartners.find((p) => (p.name || p.displayName) === currentAgent.trim()) ||
+                    salesPartners.find((p) => (p.name || p.displayName) === currentAgent.trim());
+    const outletName = partner?.outlet || "";
+
+    const optimisticEntry = {
+      dateKey,
+      agentName: currentAgent.trim(),
+      outletName,
+      supervisorName,
+      remarks: addFormRemarks.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    if (addModalType === "load" || addModalType === "return" || addModalType === "damage") {
+      optimisticEntry.quantity = valNum;
+    } else {
+      optimisticEntry.cash = valNum;
+      optimisticEntry.Cash = valNum;
+      if (addModalType === "upi_handover") {
+        optimisticEntry.amount = valNum;
+        optimisticEntry.upi = valNum;
+      }
+    }
+
+    // ⭐ Optimistic UI update: Immediately update local state with zero delay
+    setInventoryMetrics((prev) => {
+      const updated = { ...prev };
+      if (addModalType === "load") {
+        updated.loadingEntries = [...(prev.loadingEntries || []), optimisticEntry];
+        updated.totalLoad = (prev.totalLoad || 0) + valNum;
+        updated.nettSales = (updated.totalLoad || 0) - (prev.totalReturn || 0);
+      } else if (addModalType === "return") {
+        updated.returnEntries = [...(prev.returnEntries || []), optimisticEntry];
+        updated.totalReturn = (prev.totalReturn || 0) + valNum;
+        updated.nettSales = (prev.totalLoad || 0) - (updated.totalReturn || 0);
+      } else if (addModalType === "damage") {
+        updated.damageEntries = [...(prev.damageEntries || []), optimisticEntry];
+        updated.totalDamage = (prev.totalDamage || 0) + valNum;
+      } else if (addModalType === "cash_handover") {
+        updated.cashHandoverEntries = [...(prev.cashHandoverEntries || []), optimisticEntry];
+      } else if (addModalType === "upi_handover") {
+        updated.upiHandoverEntries = [...(prev.upiHandoverEntries || []), optimisticEntry];
+      } else if (addModalType === "food_allowance") {
+        updated.foodAllowanceEntries = [...(prev.foodAllowanceEntries || []), optimisticEntry];
+      } else if (addModalType === "incentive") {
+        updated.incentiveEntries = [...(prev.incentiveEntries || []), optimisticEntry];
+      }
+      return updated;
+    });
+
+    // Close modal immediately so UI feels instantaneous
+    setIsAddModalOpen(false);
+    setAddFormValue("");
+    setAddFormRemarks("");
     setAddFormError("");
 
+    // 🚀 Background Sync: Send request asynchronously and sync server data silently
     try {
-      const userRole = localStorage.getItem("userType") || "admin";
       const payload = {
         type: addModalType,
-        dateKey: selectedDate || getTodayDateString(),
+        dateKey,
         agentName: currentAgent.trim(),
-        value: Number(addFormValue),
+        value: valNum,
         remarks: addFormRemarks.trim(),
-        supervisorName: userRole === "supervisor" ? "Supervisor (Web)" : "Admin (Web)",
+        supervisorName,
       };
 
       const res = await axios.post(`${ADMIN_PATH}/add-inventory-entry`, payload);
 
       if (res.data && res.data.success) {
-        setIsAddModalOpen(false);
-        setAddFormValue("");
-        setAddFormRemarks("");
-        // Refresh metrics & collection summary
-        await fetchInventoryMetrics(selectedDate || getTodayDateString());
-        await fetchCollectionSummary();
+        // Silently sync latest inventory metrics in background
+        fetchInventoryMetrics(dateKey);
       } else {
-        setAddFormError(res.data?.message || "Failed to add inventory entry");
+        console.warn("Add inventory response:", res.data);
+        fetchInventoryMetrics(dateKey);
       }
     } catch (err) {
-      console.error("Add entry error:", err);
-      setAddFormError(err.response?.data?.message || err.message || "Failed to add inventory entry");
-    } finally {
-      setAddFormSubmitting(false);
+      console.error("Add entry background sync error:", err);
+      // Re-fetch to ensure UI displays true database state
+      fetchInventoryMetrics(dateKey);
     }
   };
 
@@ -940,8 +995,10 @@ const CollectionSummary = () => {
     return Array.from(agents).sort();
   }, [data, selectedDate]);
 
-  const fetchCollectionSummary = async () => {
-    setLoading(true);
+  const fetchCollectionSummary = async (showFullLoader = false) => {
+    if (showFullLoader || !data) {
+      setLoading(true);
+    }
     setRefreshing(true);
     setError("");
     try {
@@ -958,7 +1015,9 @@ const CollectionSummary = () => {
           success: true,
         });
       } else {
-        setError("Failed to fetch collection summary");
+        if (!data) {
+          setError("Failed to fetch collection summary");
+        }
       }
       setDeliveryPartners(delPartnersRes.data || []);
       setSalesPartners(salesPartnersRes.data || []);
@@ -968,7 +1027,9 @@ const CollectionSummary = () => {
       await fetchInventoryMetrics(selectedDate);
     } catch (err) {
       console.error("Fetch error:", err);
-      setError("Error fetching data. Please try again.");
+      if (!data) {
+        setError("Error fetching data. Please try again.");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1136,8 +1197,8 @@ const CollectionSummary = () => {
     setMinusAmounts(newMinusAmounts);
   };
 
-  // Loading state
-  if (loading) {
+  // Loading state (only for initial load before data is available)
+  if (loading && !data) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
         <div className="text-center">
