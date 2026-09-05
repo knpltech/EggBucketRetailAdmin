@@ -1432,11 +1432,11 @@ const updatePriority = async (req, res) => {
     if (!snap.exists) return res.status(404).json({ message: "Priority not found" });
 
     const updateData = {};
-    if (name       !== undefined) updateData.name        = name;
-    if (description!== undefined) updateData.description = description;
-    if (color      !== undefined) updateData.color       = color;
-    if (active     !== undefined) updateData.active      = active;
-    if (order      !== undefined) updateData.order       = Number(order);
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (color !== undefined) updateData.color = color;
+    if (active !== undefined) updateData.active = active;
+    if (order !== undefined) updateData.order = Number(order);
 
     await ref.update(updateData);
 
@@ -2924,6 +2924,48 @@ const addInventoryEntry = async (req, res) => {
   }
 };
 
+const batchUpdateCustomerRoutes = async (req, res) => {
+  try {
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ message: "Updates array is required" });
+    }
+
+    const db = getFirestore();
+    let batch = db.batch();
+    let count = 0;
+
+    for (const item of updates) {
+      if (!item.id || !item.route) continue;
+      const ref = db.collection("customers").doc(item.id);
+      batch.update(ref, { route: item.route });
+      count++;
+      if (count % 450 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
+    }
+
+    if (count % 450 !== 0) {
+      await batch.commit();
+    }
+
+    // Invalidate caches
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const customerInfoKeys = keys.filter((key) => key.startsWith("customerInfo:userInfo"));
+      if (customerInfoKeys.length > 0) cache.del(customerInfoKeys);
+    } catch (cacheErr) {
+      console.warn("Cache invalidate error:", cacheErr);
+    }
+
+    res.json({ message: `Successfully updated ${count} customer routes`, count });
+  } catch (err) {
+    console.error("batchUpdateCustomerRoutes error:", err);
+    res.status(500).json({ message: "Server error updating routes" });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -2955,6 +2997,7 @@ export {
   updatePriority,
   deletePriority,
   getPriorityDashboard,
+  batchUpdateCustomerRoutes,
 };
 
 
