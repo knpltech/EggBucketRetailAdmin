@@ -56,6 +56,7 @@ import {
   addRoute,
   updateRoute,
   getRoutes,
+  batchUpdateCustomerRoutes,
   getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getRetentionCustomers,
@@ -112,6 +113,7 @@ router.get("/zones", getZones);
 router.post("/routes/add", addRoute);
 router.put("/routes/update", updateRoute);
 router.get("/routes", getRoutes);
+router.post("/customers/batch-update-routes", batchUpdateCustomerRoutes);
 router.post("/business-types/add", addBusinessType);
 router.get("/business-types", getBusinessTypes);
 

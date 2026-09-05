@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye, FiChevronDown, FiChevronRight, FiZap, FiLayers } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
+import SubRouteOptimizationModal from "../components/SubRouteOptimizationModal";
+import { computeSubRouteReassignments } from "../utils/subRouteOptimization";
 import {
   getTodayEffectiveStatus,
   computeDeliveryGap,
@@ -11,6 +13,20 @@ import {
   computeCurrentCategory,
   normalizePeakFrequency,
 } from "../utils/aiSuggestionEngine";
+
+const extractParentRoute = (routeName) => {
+  if (!routeName) return "Other";
+  const trimmed = routeName.trim();
+  const match = trimmed.match(/^(R\d+)([A-Za-z])?(.*)$/i);
+  if (match) {
+    return match[1].toUpperCase();
+  }
+  const parts = trimmed.split(/[\s-]+/);
+  if (parts.length > 0 && parts[0]) {
+    return parts[0].toUpperCase();
+  }
+  return trimmed;
+};
 
 export default function CustomerRoutes() {
   const [loading, setLoading] = useState(true);
@@ -25,6 +41,20 @@ export default function CustomerRoutes() {
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
   const [assignSelectedAgent, setAssignSelectedAgent] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState(false);
+
+  // Parent route collapse state
+  const [collapsedParents, setCollapsedParents] = useState({});
+  const toggleParentCollapse = (parentKey) =>
+    setCollapsedParents((prev) => ({ ...prev, [parentKey]: !prev[parentKey] }));
+  const expandAll = () => setCollapsedParents({});
+  const collapseAll = () => {
+    const allCollapsed = {};
+    groupedRoutes.forEach((g) => {
+      allCollapsed[g.parentKey] = true;
+    });
+    setCollapsedParents(allCollapsed);
+  };
 
   // Delivery Gap expandable state per route
   const [expandedRouteGaps, setExpandedRouteGaps] = useState({});
@@ -267,6 +297,88 @@ export default function CustomerRoutes() {
     });
   }, [routes, customers, agents, categoryPeaks, availablePriorities, sortBy]);
 
+  // Group routes into Parent Routes with aggregated statistics
+  const groupedRoutes = useMemo(() => {
+    const groups = {};
+
+    routeData.forEach((route) => {
+      const parentKey = extractParentRoute(route.name);
+      if (!groups[parentKey]) {
+        groups[parentKey] = {
+          parentKey,
+          routes: [],
+          totalCustomers: 0,
+          activeCustomers: 0,
+          bestPotential: 0,
+          potentialAchieved: 0,
+          yesterdayTotalCustomers: 0,
+          yesterdayPotentialAchieved: 0,
+          yesterdayActiveCustomers: 0,
+          assignedAgentsMap: {},
+          highestPriority: null,
+        };
+      }
+      const group = groups[parentKey];
+      group.routes.push(route);
+      group.totalCustomers += route.totalCustomers;
+      group.activeCustomers += route.activeCustomers;
+      group.bestPotential += (route.bestPotential || 0);
+      group.potentialAchieved += (route.potentialAchieved || 0);
+      group.yesterdayTotalCustomers += (route.yesterdayTotalCustomers || 0);
+      group.yesterdayPotentialAchieved += (route.yesterdayPotentialAchieved || 0);
+      group.yesterdayActiveCustomers += (route.yesterdayActiveCustomers || 0);
+
+      if (route.assignedAgent && route.assignedAgent !== "Unassigned") {
+        const agentName = route.assignedAgentName || route.assignedAgent;
+        group.assignedAgentsMap[agentName] = (group.assignedAgentsMap[agentName] || 0) + 1;
+      }
+
+      const routeOrder = route.priority ? (route.priority.order || 99) : 99;
+      const currentHighestOrder = group.highestPriority ? (group.highestPriority.order || 99) : 99;
+      if (route.priority && routeOrder < currentHighestOrder) {
+        group.highestPriority = route.priority;
+      }
+    });
+
+    const groupList = Object.values(groups).map((group) => {
+      // Sort sub-routes within group
+      group.routes.sort((a, b) => {
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      });
+
+      // Analyze agents in this group
+      const agentNames = Object.keys(group.assignedAgentsMap);
+      if (agentNames.length === 0) {
+        group.agentSummary = "Unassigned";
+        group.agentSummaryType = "none";
+      } else if (agentNames.length === 1) {
+        group.agentSummary = agentNames[0];
+        group.agentSummaryType = "single";
+      } else {
+        group.agentSummary = `${agentNames.length} Agents`;
+        group.agentSummaryType = "multiple";
+        group.agentNames = agentNames;
+      }
+
+      return group;
+    });
+
+    return groupList.sort((a, b) => {
+      if (sortBy === "priority") {
+        const orderA = a.highestPriority ? (a.highestPriority.order || 99) : 99;
+        const orderB = b.highestPriority ? (b.highestPriority.order || 99) : 99;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.parentKey.localeCompare(b.parentKey, undefined, { numeric: true, sensitivity: "base" });
+      } else {
+        const nameComparison = a.parentKey.localeCompare(b.parentKey, undefined, { numeric: true, sensitivity: "base" });
+        if (nameComparison !== 0) return nameComparison;
+        const orderA = a.highestPriority ? (a.highestPriority.order || 99) : 99;
+        const orderB = b.highestPriority ? (b.highestPriority.order || 99) : 99;
+        return orderA - orderB;
+      }
+    });
+  }, [routeData, sortBy]);
+
   // Compute Agent stats for Right Sidebar
   const agentStats = useMemo(() => {
     return agents.map(agent => {
@@ -292,6 +404,42 @@ export default function CustomerRoutes() {
     });
   }, [agents, customers]);
 
+  // Compute pending sub-route optimizations based on D-category and Delivery Gap
+  const optimizationData = useMemo(() => {
+    if (!customers || customers.length === 0 || !routes || routes.length === 0) {
+      return { stats: {}, pendingChanges: [], allAnalyses: [] };
+    }
+    const todayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    return computeSubRouteReassignments(customers, routes, todayDate);
+  }, [customers, routes]);
+
+  const handleOptimizationSuccess = (appliedChanges) => {
+    const changeMap = new Map();
+    appliedChanges.forEach((item) => {
+      changeMap.set(item.customerId, item.targetRoute);
+    });
+
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (changeMap.has(c.id)) {
+          return {
+            ...c,
+            route: changeMap.get(c.id),
+          };
+        }
+        return c;
+      })
+    );
+
+    alert(`Successfully updated sub-routes for ${appliedChanges.length} customer(s)!`);
+  };
+
   const totalCustomersAssigned = routeData.reduce((sum, route) => sum + route.totalCustomers, 0);
   const totalActiveCustomers = routeData.reduce((sum, route) => sum + route.activeCustomers, 0);
   const totalAchievedPotential = routeData.reduce((sum, route) => sum + (route.potentialAchieved || 0), 0);
@@ -309,11 +457,30 @@ export default function CustomerRoutes() {
     setIsAssigning(true);
 
     try {
-      // Find all customers in this route
-      const customersInRoute = customers.filter(c => c.route === assignSelectedRoute);
+      // Find which routes are being targeted
+      let targetRouteNames = [];
+      const isParentAssign = assignSelectedRoute.startsWith("PARENT:");
+      if (isParentAssign) {
+        const parentKey = assignSelectedRoute.replace("PARENT:", "");
+        const group = groupedRoutes.find((g) => g.parentKey === parentKey);
+        if (group) {
+          targetRouteNames = group.routes.map((r) => r.name);
+        }
+      } else {
+        targetRouteNames = [assignSelectedRoute];
+      }
+
+      if (targetRouteNames.length === 0) {
+        alert("No route selected.");
+        setIsAssigning(false);
+        return;
+      }
+
+      // Find all customers in these target routes
+      const customersInRoute = customers.filter(c => targetRouteNames.includes(c.route));
 
       if (customersInRoute.length === 0) {
-        alert("No customers found in this route.");
+        alert("No customers found in the selected route(s).");
         setIsAssigning(false);
         return;
       }
@@ -332,18 +499,20 @@ export default function CustomerRoutes() {
         }));
       }
 
-      // Also assign the route to the delivery agent
-      await axios.put(`${ADMIN_PATH}/delivery/assign-route`, {
-        uid: assignSelectedAgent,
-        route: assignSelectedRoute
-      });
+      // Also assign each target route to the delivery agent
+      for (const routeName of targetRouteNames) {
+        await axios.put(`${ADMIN_PATH}/delivery/assign-route`, {
+          uid: assignSelectedAgent,
+          route: routeName
+        });
+      }
 
       // Clear the cache so next reload fetches fresh data
       invalidateClientUserInfoCache();
 
       // Update customers local state without full reload
       const updatedCustomers = customers.map(c => {
-        if (c.route === assignSelectedRoute) {
+        if (targetRouteNames.includes(c.route)) {
           return {
             ...c,
             assignedDeliverymen: assignSelectedAgent
@@ -356,36 +525,29 @@ export default function CustomerRoutes() {
       // Update agents local state to sync with backend behavior
       const updatedAgents = agents.map(a => {
         let currentRoute = a.route || "";
+        let routesList = currentRoute ? currentRoute.split(",").map(r => r.trim()).filter(Boolean) : [];
+
         if (a.id === assignSelectedAgent) {
-          let newRouteValue = assignSelectedRoute;
-          if (currentRoute) {
-            const routesList = currentRoute.split(",").map(r => r.trim()).filter(Boolean);
-            if (!routesList.includes(assignSelectedRoute)) {
-              routesList.push(assignSelectedRoute);
+          targetRouteNames.forEach(rName => {
+            if (!routesList.includes(rName)) {
+              routesList.push(rName);
             }
-            newRouteValue = routesList.join(",");
-          }
+          });
           return {
             ...a,
-            route: newRouteValue
+            route: routesList.join(",")
           };
         } else {
-          if (currentRoute) {
-            const routesList = currentRoute.split(",").map(r => r.trim()).filter(Boolean);
-            if (routesList.includes(assignSelectedRoute)) {
-              const updatedList = routesList.filter(r => r !== assignSelectedRoute);
-              return {
-                ...a,
-                route: updatedList.join(",")
-              };
-            }
-          }
-          return a;
+          const filtered = routesList.filter(r => !targetRouteNames.includes(r));
+          return {
+            ...a,
+            route: filtered.join(",")
+          };
         }
       });
       setAgents(updatedAgents);
 
-      alert("Agent assigned successfully!");
+      alert(`Agent assigned successfully to ${targetRouteNames.length} route(s)!`);
 
     } catch (err) {
       console.error("Error assigning agent to route:", err);
@@ -576,7 +738,7 @@ export default function CustomerRoutes() {
   };
 
   // Compute Overall Delivery Gap summary across all routes
-  const overallGapCounts = useMemo(() => {
+  const _overallGapCounts = useMemo(() => {
     const counts = {
       G0: 0,
       G1: 0,
@@ -719,8 +881,43 @@ export default function CustomerRoutes() {
         {/* LEFT PANEL - ALL ROUTES (EXPANDED TO FULL AVAILABLE WIDTH) */}
         <div className="flex-1 min-w-0 w-full bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
           <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
-            <h2 className="text-lg font-bold text-gray-800">All Routes</h2>
             <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-gray-800">All Routes</h2>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                {groupedRoutes.length} Groups • {routeData.length} Sub-routes
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setIsOptimizationModalOpen(true)}
+                className="text-[11px] font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-3 py-1 rounded-md shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Automatically reassign customers between sub-routes based on D-category and Delivery Gap"
+              >
+                <FiZap size={12} className="text-amber-300" />
+                <span>Auto-Sort Sub-Routes</span>
+                {optimizationData.stats.totalChanges > 0 && (
+                  <span className="ml-0.5 bg-amber-400 text-slate-900 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+                    {optimizationData.stats.totalChanges}
+                  </span>
+                )}
+              </button>
+              <div className="h-4 w-[1px] bg-gray-300 mx-0.5 hidden sm:block"></div>
+              <button
+                type="button"
+                onClick={expandAll}
+                className="text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={collapseAll}
+                className="text-[11px] font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
+              >
+                Collapse All
+              </button>
+              <div className="h-4 w-[1px] bg-gray-300 mx-1 hidden sm:block"></div>
               <label htmlFor="sort-routes" className="text-xs font-semibold text-gray-500 whitespace-nowrap">
                 Sort By:
               </label>
@@ -739,7 +936,7 @@ export default function CustomerRoutes() {
             <div className="w-full">
               {/* Header */}
               <div className="flex items-center px-3 py-2 mb-2 text-[11px] font-bold text-gray-500 sticky top-0 z-10 bg-gray-50 border-l-4 border-transparent">
-                <div style={{ width: "90px", flexShrink: 0 }} className="pr-2">Priority</div>
+                <div style={{ width: "95px", flexShrink: 0 }} className="pr-2">Priority / Code</div>
                 <div className="flex-1 min-w-0 pr-2">Route Name</div>
                 <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
                   <div>Total</div>
@@ -764,207 +961,358 @@ export default function CustomerRoutes() {
                 <div style={{ width: "115px", flexShrink: 0 }} className="pl-2">Assigned Agent</div>
               </div>
 
-              {/* Rows */}
-              <div className="flex flex-col gap-2.5">
+              {/* Grouped Rows */}
+              <div className="flex flex-col gap-3">
                 {loading ? (
                   <div className="text-center py-10 text-gray-500 text-xs">Loading...</div>
-                ) : routeData.length === 0 ? (
+                ) : groupedRoutes.length === 0 ? (
                   <div className="text-center py-10 text-gray-500 text-xs">No routes found.</div>
                 ) : (
-                  routeData.map((route, i) => {
-                    const colors = [
-                      { border: "border-l-blue-500", text: "text-blue-600" },
-                      { border: "border-l-green-500", text: "text-green-600" },
-                      { border: "border-l-orange-500", text: "text-orange-600" },
-                      { border: "border-l-purple-500", text: "text-purple-600" },
-                      { border: "border-l-teal-500", text: "text-teal-600" },
-                      { border: "border-l-pink-500", text: "text-pink-600" },
+                  groupedRoutes.map((group, groupIdx) => {
+                    const isParentCollapsed = !!collapsedParents[group.parentKey];
+                    const borderColors = [
+                      "border-l-blue-500",
+                      "border-l-green-500",
+                      "border-l-orange-500",
+                      "border-l-purple-500",
+                      "border-l-teal-500",
+                      "border-l-pink-500",
                     ];
-                    const color = colors[i % colors.length];
-                    const isExpanded = !!expandedRouteGaps[route.name];
-                    const isCatExpanded = !!expandedRouteCategories[route.name];
+                    const bgAccents = [
+                      "from-blue-50/60 via-white to-white",
+                      "from-emerald-50/60 via-white to-white",
+                      "from-amber-50/60 via-white to-white",
+                      "from-purple-50/60 via-white to-white",
+                      "from-teal-50/60 via-white to-white",
+                      "from-pink-50/60 via-white to-white",
+                    ];
+                    const themeBorder = borderColors[groupIdx % borderColors.length];
+                    const themeBg = bgAccents[groupIdx % bgAccents.length];
 
                     return (
-                      <div key={route.name} className={`flex flex-col bg-white shadow-xs border border-gray-100 border-l-4 ${color.border} rounded-xl px-4 py-3.5 min-h-[76px] hover:shadow-md transition-all justify-center`}>
-                        <div className="flex items-center w-full">
-                          {/* Column 1: Priority */}
-                          <div style={{ width: "95px", flexShrink: 0 }} className="pr-3 flex items-center">
-                            <select
-                              value={route.priorityId || ""}
-                              onChange={(e) => handlePriorityChange(route.name, e.target.value)}
-                              className="w-full border border-gray-200 rounded-md px-1.5 py-1 bg-white font-bold cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 text-[11px] shadow-2xs transition-colors"
-                              style={{ color: route.priority?.color || "#6b7280" }}
-                            >
-                              <option value="">None</option>
-                              {availablePriorities.filter(p => p.active !== false).map(p => (
-                                <option key={p.id} value={p.id} style={{ color: p.color }}>
-                                  {p.name}
-                                </option>
-                              ))}
-                            </select>
+                      <div
+                        key={group.parentKey}
+                        className="flex flex-col bg-white shadow-xs border border-gray-200 rounded-xl overflow-hidden transition-all hover:shadow-md"
+                      >
+                        {/* PARENT ROUTE HEADER ROW */}
+                        <div
+                          className={`flex items-center w-full px-4 py-3 bg-gradient-to-r ${themeBg} border-l-4 ${themeBorder} cursor-pointer hover:bg-gray-50/80 transition-colors select-none`}
+                          onClick={() => toggleParentCollapse(group.parentKey)}
+                        >
+                          {/* Column 1: Parent Code & Collapse Chevron */}
+                          <div style={{ width: "95px", flexShrink: 0 }} className="pr-3 flex items-center gap-1.5">
+                            <span className="text-gray-500 hover:text-gray-800 transition-transform">
+                              {isParentCollapsed ? <FiChevronRight size={16} /> : <FiChevronDown size={16} />}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[11px] font-extrabold bg-slate-800 text-white shadow-2xs">
+                              {group.parentKey}
+                            </span>
                           </div>
 
-                          {/* Column 2: Route Name & View Gaps / D0-D7 Buttons */}
-                          <div className="flex-1 min-w-0 pr-3">
-                            {editingRoute === route.name ? (
-                              <div className="flex flex-col gap-1 pr-1">
-                                <input
-                                  type="text"
-                                  value={editRouteValue}
-                                  onChange={(e) => setEditRouteValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveRouteName(route.name);
-                                    else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
-                                  }}
-                                  className={`border rounded px-2 py-1 text-xs outline-none font-bold ${color.text} w-full ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                  autoFocus
-                                  disabled={isSavingRoute}
-                                />
-                                <div className="flex gap-2 text-xs">
-                                  <button onClick={() => saveRouteName(route.name)} disabled={isSavingRoute} className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}>
-                                    {isSavingRoute ? 'Saving...' : 'Save'}
-                                  </button>
-                                  <button onClick={() => setEditingRoute(null)} disabled={isSavingRoute} className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}>
-                                    Cancel
-                                  </button>
-                                </div>
+                          {/* Column 2: Parent Name, sub-route pills & quick assign button */}
+                          <div className="flex-1 min-w-0 pr-3 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <span className="font-bold text-xs sm:text-[14px] text-gray-900 tracking-tight">
+                                Route {group.parentKey}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 rounded-full px-2 py-0.5 shadow-2xs">
+                                {group.routes.length} sub-{group.routes.length === 1 ? "route" : "routes"}
+                              </span>
+                              <div className="hidden md:flex items-center gap-1 flex-wrap">
+                                {group.routes.map(r => {
+                                  const subNameClean = r.name.replace(group.parentKey, "").replace(/^[\s-]+/, "") || r.name;
+                                  return (
+                                    <span
+                                      key={r.name}
+                                      className="text-[10px] font-medium text-gray-600 bg-gray-100/90 border border-gray-200/60 rounded px-1.5 py-0.5 truncate max-w-[110px]"
+                                      title={r.name}
+                                    >
+                                      {subNameClean}
+                                    </span>
+                                  );
+                                })}
                               </div>
-                            ) : (
-                              <>
-                                <div className="flex items-start gap-1">
-                                  <p className={`font-bold text-xs sm:text-[13px] leading-snug break-words ${color.text}`} title={route.name}>{route.name}</p>
-                                  <button onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }} className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-0.5 cursor-pointer" title="Rename route">
-                                    <FiEdit2 size={11} />
-                                  </button>
-                                </div>
-                                <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-medium flex-wrap">
-                                  <span>Route {i + 1}</span>
-                                  <button
-                                    onClick={() => toggleRouteGaps(route.name)}
-                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
-                                      isExpanded
-                                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                                        : "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
-                                    }`}
-                                    title="Click to view delivery gap breakdown"
-                                  >
-                                    <FiEye size={10} />
-                                    <span>{isExpanded ? "Hide Gaps" : "View Gaps"}</span>
-                                  </button>
-                                  <button
-                                    onClick={() => toggleRouteCategories(route.name)}
-                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
-                                      isCatExpanded
-                                        ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
-                                        : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100"
-                                    }`}
-                                    title="Click to view D0-D7 category breakdown"
-                                  >
-                                    <FiEye size={10} />
-                                    <span>{isCatExpanded ? "Hide D0-D7" : "View D0-D7"}</span>
-                                  </button>
-                                </div>
-                              </>
-                            )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAssignSelectedRoute(`PARENT:${group.parentKey}`);
+                              }}
+                              className={`flex-shrink-0 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer ${
+                                assignSelectedRoute === `PARENT:${group.parentKey}`
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                  : "bg-white text-blue-600 border-blue-200 hover:bg-blue-50"
+                              }`}
+                              title={`Assign delivery agent to all ${group.routes.length} sub-routes`}
+                            >
+                              <FiZap size={11} className="text-amber-500" />
+                              <span>Assign All</span>
+                            </button>
                           </div>
 
-                          {/* Stat Columns */}
-                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-semibold text-gray-800">
-                            <span>{route.totalCustomers}</span>
-                            {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
+                          {/* Stat Columns (Aggregated across sub-routes) */}
+                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-gray-800">
+                            <span>{group.totalCustomers}</span>
+                            {renderCountDiff(group.totalCustomers, group.yesterdayTotalCustomers, true)}
                           </div>
                           <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
-                            <span>{route.activeCustomers}</span>
-                            {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
+                            <span>{group.activeCustomers}</span>
+                            {renderCountDiff(group.activeCustomers, group.yesterdayActiveCustomers, true)}
                           </div>
                           <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
-                            <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
+                            <span>{group.bestPotential > 0 ? `T(${group.bestPotential})` : '-'}</span>
                           </div>
                           <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
-                            <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
-                            {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
+                            <span>{group.potentialAchieved > 0 ? group.potentialAchieved : '-'}</span>
+                            {group.potentialAchieved > 0 && renderCountDiff(group.potentialAchieved, group.yesterdayPotentialAchieved, true)}
                           </div>
                           <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-teal-600">
-                            <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
+                            <span>{group.totalCustomers > 0 ? (group.potentialAchieved / group.totalCustomers).toFixed(2) : '-'}</span>
                             {renderEfficiencyDiff(
-                              route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
-                              route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
+                              group.totalCustomers > 0 ? (group.potentialAchieved / group.totalCustomers) : 0,
+                              group.yesterdayTotalCustomers > 0 ? (group.yesterdayPotentialAchieved / group.yesterdayTotalCustomers) : 0,
                               true
                             )}
                           </div>
 
                           {/* Assigned Agent Column */}
                           <div style={{ width: "115px", flexShrink: 0 }} className="pl-2 flex items-center min-w-0">
-                            {route.assignedAgent === "Unassigned" ? (
+                            {group.agentSummaryType === "none" ? (
                               <span className="text-red-500 font-semibold text-[11px]">Unassigned</span>
-                            ) : (
-                              <div className="flex items-center gap-1.5 min-w-0" title={route.assignedAgentName}>
+                            ) : group.agentSummaryType === "single" ? (
+                              <div className="flex items-center gap-1.5 min-w-0" title={group.agentSummary}>
                                 <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">
-                                  {route.assignedAgentName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase()}
+                                  {getInitials(group.agentSummary)}
                                 </div>
                                 <span className="text-[11px] font-medium text-gray-700 truncate">
-                                  {route.assignedAgentName}
+                                  {group.agentSummary}
                                 </span>
                               </div>
+                            ) : (
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 truncate"
+                                title={group.agentNames.join(", ")}
+                              >
+                                {group.agentSummary}
+                              </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Expanded Single-Row Delivery Gaps */}
-                        {isExpanded && (
-                          <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-2 overflow-x-auto text-xs py-1.5 px-2 bg-slate-50/80 rounded-lg">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap pl-1">
-                              Delivery Gaps:
-                            </span>
-                            <div className="flex items-center gap-2 flex-nowrap min-w-max">
-                              {["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+"].map((g) => {
-                                const count = route.gapCounts?.[g] || 0;
-                                return (
-                                  <span
-                                    key={g}
-                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${
-                                      count > 0
-                                        ? "bg-white text-gray-800 border border-gray-200 shadow-2xs font-bold"
-                                        : "bg-gray-100/70 text-gray-400 border border-gray-200/50 font-normal"
-                                    }`}
-                                  >
-                                    <span className="text-gray-600 font-semibold">{g}</span>
-                                    <span className={count > 0 ? "text-blue-600 font-extrabold" : "text-gray-400"}>
-                                      ({count})
-                                    </span>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
+                        {/* EXPANDED SUB-ROUTES LIST */}
+                        {!isParentCollapsed && (
+                          <div className="bg-slate-50/70 p-2 sm:p-3 flex flex-col gap-2 border-t border-gray-100">
+                            {group.routes.map((route, subIdx) => {
+                              const isExpanded = !!expandedRouteGaps[route.name];
+                              const isCatExpanded = !!expandedRouteCategories[route.name];
 
-                        {/* Expanded Single-Row D0-D7 Categories */}
-                        {isCatExpanded && (
-                          <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-2 overflow-x-auto text-xs py-1.5 px-2 bg-purple-50/60 rounded-lg">
-                            <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider whitespace-nowrap pl-1">
-                              Categories (D0-D7):
-                            </span>
-                            <div className="flex items-center gap-2 flex-nowrap min-w-max">
-                              {["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"].map((d) => {
-                                const count = route.categoryCounts?.[d] || 0;
-                                return (
-                                  <span
-                                    key={d}
-                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${
-                                      count > 0
-                                        ? "bg-white text-gray-800 border border-purple-200 shadow-2xs font-bold"
-                                        : "bg-gray-100/70 text-gray-400 border border-gray-200/50 font-normal"
-                                    }`}
-                                  >
-                                    <span className="text-gray-600 font-semibold">{d}</span>
-                                    <span className={count > 0 ? "text-purple-600 font-extrabold" : "text-gray-400"}>
-                                      ({count})
-                                    </span>
-                                  </span>
-                                );
-                              })}
-                            </div>
+                              return (
+                                <div
+                                  key={route.name}
+                                  className="flex flex-col bg-white shadow-2xs border border-gray-200 rounded-lg px-3 py-2.5 hover:shadow-xs transition-all"
+                                >
+                                  <div className="flex items-center w-full">
+                                    {/* Column 1: Priority */}
+                                    <div style={{ width: "95px", flexShrink: 0 }} className="pr-3 flex items-center">
+                                      <select
+                                        value={route.priorityId || ""}
+                                        onChange={(e) => handlePriorityChange(route.name, e.target.value)}
+                                        className="w-full border border-gray-200 rounded-md px-1.5 py-1 bg-white font-bold cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 text-[11px] shadow-2xs transition-colors"
+                                        style={{ color: route.priority?.color || "#6b7280" }}
+                                      >
+                                        <option value="">None</option>
+                                        {availablePriorities.filter(p => p.active !== false).map(p => (
+                                          <option key={p.id} value={p.id} style={{ color: p.color }}>
+                                            {p.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    {/* Column 2: Route Name & View Gaps / D0-D7 Buttons */}
+                                    <div className="flex-1 min-w-0 pr-3">
+                                      {editingRoute === route.name ? (
+                                        <div className="flex flex-col gap-1 pr-1">
+                                          <input
+                                            type="text"
+                                            value={editRouteValue}
+                                            onChange={(e) => setEditRouteValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') saveRouteName(route.name);
+                                              else if (e.key === 'Escape' && !isSavingRoute) setEditingRoute(null);
+                                            }}
+                                            className="border border-blue-400 rounded px-2 py-1 text-xs outline-none font-bold text-gray-800 w-full"
+                                            autoFocus
+                                            disabled={isSavingRoute}
+                                          />
+                                          <div className="flex gap-2 text-xs">
+                                            <button
+                                              onClick={() => saveRouteName(route.name)}
+                                              disabled={isSavingRoute}
+                                              className={`text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded cursor-pointer ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-green-800'}`}
+                                            >
+                                              {isSavingRoute ? 'Saving...' : 'Save'}
+                                            </button>
+                                            <button
+                                              onClick={() => setEditingRoute(null)}
+                                              disabled={isSavingRoute}
+                                              className={`text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded cursor-pointer ${isSavingRoute ? 'opacity-50 cursor-not-allowed' : 'hover:text-gray-700'}`}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="flex items-start gap-1.5">
+                                            <p className="font-bold text-xs sm:text-[13px] leading-snug break-words text-gray-800" title={route.name}>
+                                              {route.name}
+                                            </p>
+                                            <button
+                                              onClick={() => { setEditingRoute(route.name); setEditRouteValue(route.name); }}
+                                              className="flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors mt-0.5 cursor-pointer"
+                                              title="Rename route"
+                                            >
+                                              <FiEdit2 size={11} />
+                                            </button>
+                                          </div>
+                                          <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-medium flex-wrap">
+                                            <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold">
+                                              Sub-route {subIdx + 1}
+                                            </span>
+                                            <button
+                                              onClick={() => toggleRouteGaps(route.name)}
+                                              className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                                                isExpanded
+                                                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                                  : "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+                                              }`}
+                                              title="Click to view delivery gap breakdown"
+                                            >
+                                              <FiEye size={10} />
+                                              <span>{isExpanded ? "Hide Gaps" : "View Gaps"}</span>
+                                            </button>
+                                            <button
+                                              onClick={() => toggleRouteCategories(route.name)}
+                                              className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                                                isCatExpanded
+                                                  ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                                                  : "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100"
+                                              }`}
+                                              title="Click to view D0-D7 category breakdown"
+                                            >
+                                              <FiEye size={10} />
+                                              <span>{isCatExpanded ? "Hide D0-D7" : "View D0-D7"}</span>
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+
+                                    {/* Stat Columns */}
+                                    <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-semibold text-gray-800">
+                                      <span>{route.totalCustomers}</span>
+                                      {renderCountDiff(route.totalCustomers, route.yesterdayTotalCustomers, true)}
+                                    </div>
+                                    <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
+                                      <span>{route.activeCustomers}</span>
+                                      {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
+                                    </div>
+                                    <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
+                                      <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
+                                    </div>
+                                    <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
+                                      <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>
+                                      {route.potentialAchieved > 0 && renderCountDiff(route.potentialAchieved, route.yesterdayPotentialAchieved, true)}
+                                    </div>
+                                    <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-teal-600">
+                                      <span>{route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers).toFixed(2) : '-'}</span>
+                                      {renderEfficiencyDiff(
+                                        route.totalCustomers > 0 ? (route.potentialAchieved / route.totalCustomers) : 0,
+                                        route.yesterdayTotalCustomers > 0 ? (route.yesterdayPotentialAchieved / route.yesterdayTotalCustomers) : 0,
+                                        true
+                                      )}
+                                    </div>
+
+                                    {/* Assigned Agent Column */}
+                                    <div style={{ width: "115px", flexShrink: 0 }} className="pl-2 flex items-center min-w-0">
+                                      {route.assignedAgent === "Unassigned" ? (
+                                        <span className="text-red-500 font-semibold text-[11px]">Unassigned</span>
+                                      ) : (
+                                        <div className="flex items-center gap-1.5 min-w-0" title={route.assignedAgentName}>
+                                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">
+                                            {route.assignedAgentName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase()}
+                                          </div>
+                                          <span className="text-[11px] font-medium text-gray-700 truncate">
+                                            {route.assignedAgentName}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Expanded Single-Row Delivery Gaps */}
+                                  {isExpanded && (
+                                    <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-2 overflow-x-auto text-xs py-1.5 px-2 bg-slate-50/80 rounded-lg">
+                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap pl-1">
+                                        Delivery Gaps:
+                                      </span>
+                                      <div className="flex items-center gap-2 flex-nowrap min-w-max">
+                                        {["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+"].map((g) => {
+                                          const count = route.gapCounts?.[g] || 0;
+                                          return (
+                                            <span
+                                              key={g}
+                                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${
+                                                count > 0
+                                                  ? "bg-white text-gray-800 border border-gray-200 shadow-2xs font-bold"
+                                                  : "bg-gray-100/70 text-gray-400 border border-gray-200/50 font-normal"
+                                              }`}
+                                            >
+                                              <span className="text-gray-600 font-semibold">{g}</span>
+                                              <span className={count > 0 ? "text-blue-600 font-extrabold" : "text-gray-400"}>
+                                                ({count})
+                                              </span>
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Expanded Single-Row D0-D7 Categories */}
+                                  {isCatExpanded && (
+                                    <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-2 overflow-x-auto text-xs py-1.5 px-2 bg-purple-50/60 rounded-lg">
+                                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider whitespace-nowrap pl-1">
+                                        Categories (D0-D7):
+                                      </span>
+                                      <div className="flex items-center gap-2 flex-nowrap min-w-max">
+                                        {["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"].map((d) => {
+                                          const count = route.categoryCounts?.[d] || 0;
+                                          return (
+                                            <span
+                                              key={d}
+                                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${
+                                                count > 0
+                                                  ? "bg-white text-gray-800 border border-purple-200 shadow-2xs font-bold"
+                                                  : "bg-gray-100/70 text-gray-400 border border-gray-200/50 font-normal"
+                                              }`}
+                                            >
+                                              <span className="text-gray-600 font-semibold">{d}</span>
+                                              <span className={count > 0 ? "text-purple-600 font-extrabold" : "text-gray-400"}>
+                                                ({count})
+                                              </span>
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -977,15 +1325,17 @@ export default function CustomerRoutes() {
 
           <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-sm font-medium text-gray-700 rounded-b-xl mt-auto">
             <div className="flex flex-col items-center flex-1">
-              <span className="text-gray-500 text-xs">Total Routes</span>
-              <span className="text-base font-bold text-gray-800">{routeData.length}</span>
+              <span className="text-gray-500 text-xs">Total Parent Routes</span>
+              <span className="text-base font-bold text-gray-800">
+                {groupedRoutes.length} <span className="text-xs font-semibold text-gray-500">({routeData.length} Sub-routes)</span>
+              </span>
             </div>
             <div className="flex flex-col items-center flex-1 border-l border-gray-300">
               <span className="text-gray-500 text-xs">Total Customers</span>
               <span className="text-base font-bold text-gray-800">{routeData.reduce((sum, r) => sum + r.totalCustomers, 0)}</span>
             </div>
             <div className="flex flex-col items-center flex-1 border-l border-gray-300 text-blue-600">
-              <span className="text-gray-500 text-xs text-blue-600/70">Assigned Agents</span>
+              <span className="text-gray-500 text-xs text-blue-600/70">Assigned Sub-routes</span>
               <span className="text-base font-bold">{routeData.filter(r => r.assignedAgent !== "Unassigned").length}/{routeData.length}</span>
             </div>
           </div>
@@ -1004,13 +1354,29 @@ export default function CustomerRoutes() {
                 onChange={(e) => setAssignSelectedRoute(e.target.value)}
               >
                 <option value="">Choose a route</option>
-                {routes.map(r => {
-                  const routeName = typeof r === "string" ? r : r.name;
-                  return (
-                    <option key={routeName} value={routeName}>{routeName}</option>
-                  );
-                })}
+                {groupedRoutes.map((group) => (
+                  <optgroup key={group.parentKey} label={`Route ${group.parentKey} (${group.routes.length} sub-routes)`}>
+                    {group.routes.length > 1 && (
+                      <option value={`PARENT:${group.parentKey}`} className="font-bold text-blue-700">
+                        ⚡ Assign All {group.parentKey} ({group.routes.length} sub-routes)
+                      </option>
+                    )}
+                    {group.routes.map((r) => (
+                      <option key={r.name} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
+              {assignSelectedRoute.startsWith("PARENT:") && (
+                <div className="mt-1.5 p-1.5 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-700 font-semibold flex items-center gap-1">
+                  <FiZap size={12} className="text-amber-500 flex-shrink-0" />
+                  <span>
+                    Will assign all {groupedRoutes.find(g => g.parentKey === assignSelectedRoute.replace("PARENT:", ""))?.routes.length || 0} sub-routes of {assignSelectedRoute.replace("PARENT:", "")}!
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="mb-4">
@@ -1122,6 +1488,15 @@ export default function CustomerRoutes() {
           </div>
         </div>
       </div>
+
+      {/* AUTO-OPTIMIZE SUB-ROUTES MODAL */}
+      <SubRouteOptimizationModal
+        isOpen={isOptimizationModalOpen}
+        onClose={() => setIsOptimizationModalOpen(false)}
+        pendingChanges={optimizationData.pendingChanges}
+        stats={optimizationData.stats}
+        onSuccess={handleOptimizationSuccess}
+      />
     </div>
   );
 }
