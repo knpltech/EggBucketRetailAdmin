@@ -4,7 +4,11 @@ import { ADMIN_PATH } from "../constant";
 import { FaTrash, FaEdit } from "react-icons/fa";
 import { FiEdit2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
-import { getCachedUserInfo } from "../utils/customerInfoClientCache";
+import {
+  getCachedUserInfo,
+  patchCachedUserInfoCustomer,
+  invalidateClientUserInfoCache,
+} from "../utils/customerInfoClientCache";
 import * as XLSX from "xlsx";
 
 const PAGE_SIZE = 25;
@@ -77,7 +81,7 @@ const CustomerInfo = () => {
       let responseCustomers = [];
       let pagination = {};
 
-      if (requestedSort === "zone" || requestedSort === "businessType") {
+      if (requestedSort === "zone" || requestedSort === "route" || requestedSort === "businessType") {
         const userInfoData = await getCachedUserInfo();
         const rows = Array.isArray(userInfoData?.customers)
           ? userInfoData.customers
@@ -96,6 +100,21 @@ const CustomerInfo = () => {
             if (isUnassignedA) return 1;
             if (isUnassignedB) return -1;
             return zoneA.localeCompare(zoneB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+          }
+
+          if (requestedSort === "route") {
+            const routeA = String(a?.route || "").trim();
+            const routeB = String(b?.route || "").trim();
+            const isUnassignedA = !routeA || routeA.toUpperCase() === "UNASSIGNED";
+            const isUnassignedB = !routeB || routeB.toUpperCase() === "UNASSIGNED";
+
+            if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+            if (isUnassignedA) return 1;
+            if (isUnassignedB) return -1;
+            return (
+              routeA.localeCompare(routeB, undefined, { numeric: true, sensitivity: "base" }) ||
+              String(a?.name || "").localeCompare(String(b?.name || ""))
+            );
           }
 
           if (requestedSort === "businessType") {
@@ -239,6 +258,7 @@ const CustomerInfo = () => {
         zone,
       });
 
+      patchCachedUserInfoCustomer(id, (prev) => ({ ...prev, zone }));
       await fetchCustomers({ page: currentPage });
     } finally {
       setAssigningZoneId(null);
@@ -286,6 +306,7 @@ const CustomerInfo = () => {
         route: routeName,
       });
 
+      patchCachedUserInfoCustomer(id, (prev) => ({ ...prev, route: routeName }));
       await fetchCustomers({ page: currentPage });
     } finally {
       setAssigningRouteId(null);
@@ -326,6 +347,11 @@ const CustomerInfo = () => {
         businessType,
       });
 
+      patchCachedUserInfoCustomer(id, (prev) => ({
+        ...prev,
+        businessType,
+        business: businessType,
+      }));
       await fetchCustomers({ page: currentPage });
     } finally {
       setAssigningTypeId(null);
@@ -339,6 +365,8 @@ const CustomerInfo = () => {
       await axios.delete(`${ADMIN_PATH}/customer/delete`, {
         data: { id },
       });
+
+      invalidateClientUserInfoCache();
 
       const nextPage = customers.length === 1 && currentPage > 1
         ? currentPage - 1
@@ -443,7 +471,7 @@ const CustomerInfo = () => {
     if (sortOption === "createdAt") {
       return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
     }
-    if (sortOption === "zone" || sortOption === "businessType") {
+    if (sortOption === "zone" || sortOption === "route" || sortOption === "businessType") {
       return 0; // Already sorted in fetchCustomers
     }
 
@@ -509,6 +537,7 @@ const CustomerInfo = () => {
             <option value="createdAt">Created Date</option>
             <option value="name">Name</option>
             <option value="zone">Zone</option>
+            <option value="route">Route</option>
             <option value="businessType">Business</option>
           </select>
 

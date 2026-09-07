@@ -10,6 +10,15 @@ import {
 } from "../utils/customerInfoClientCache";
 import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
+import {
+  LOGIC_1_PURCHASE_CADENCE,
+  LOGIC_2_CUSTOMER_STATE,
+  LOGIC_3_PURCHASE_INTENT,
+  DEFAULT_LOGIC_1,
+  DEFAULT_LOGIC_2,
+  DEFAULT_LOGIC_3,
+  resolveCleanPattern,
+} from "../utils/dummyAiSuggestionEngine";
 
 // TABS
 const TABS = [
@@ -115,6 +124,9 @@ export default function CustomerManagement() {
   const [activeWeekdayTab, setActiveWeekdayTab] = useState("ALL CUSTOMERS");
   const [activeStatusTab, setActiveStatusTab] = useState("ALL STATUS");
   const [activeRemarkTab, setActiveRemarkTab] = useState("ALL");
+  const [activeCadenceFilter, setActiveCadenceFilter] = useState("ALL");
+  const [activeStateFilter, setActiveStateFilter] = useState("ALL");
+  const [activeIntentFilter, setActiveIntentFilter] = useState("ALL");
   const [zones, setZones] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -305,7 +317,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, activeRemarkTab]);
+  }, [activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, activeRemarkTab, activeCadenceFilter, activeStateFilter, activeIntentFilter]);
 
   // ─── Close dropdown on outside click ──────────────────────────────────────
   useEffect(() => {
@@ -325,7 +337,8 @@ export default function CustomerManagement() {
     const last8Days = customer.last8Days || {};
     let count = 0;
     const today = new Date();
-    for (let i = 1; i <= 7; i++) {
+    // Today + last 7 days (8 days total: i = 0 through 7)
+    for (let i = 0; i <= 7; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -333,7 +346,7 @@ export default function CustomerManagement() {
       const status = typeof entry === "string" ? entry : entry?.status;
       if (status === "delivered") count++;
     }
-    return count;
+    return Math.min(count, 7);
   };
 
   const getLatestStatus = (customer) => {
@@ -414,7 +427,7 @@ export default function CustomerManagement() {
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => {
         const count = c.deliveredCount ?? getDeliveredCount(c);
-        return count === targetDays;
+        return targetDays === 7 ? count >= 7 : count === targetDays;
       });
     }
 
@@ -522,6 +535,27 @@ export default function CustomerManagement() {
       });
     }
 
+    if (activeCadenceFilter !== "ALL") {
+      list = list.filter((c) => {
+        const val = resolveCleanPattern(c.purchaseCadence || c.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
+        return val === activeCadenceFilter;
+      });
+    }
+
+    if (activeStateFilter !== "ALL") {
+      list = list.filter((c) => {
+        const val = resolveCleanPattern(c.customerState, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
+        return val === activeStateFilter;
+      });
+    }
+
+    if (activeIntentFilter !== "ALL") {
+      list = list.filter((c) => {
+        const val = resolveCleanPattern(c.purchaseIntent, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
+        return val === activeIntentFilter;
+      });
+    }
+
     if (sortBy === "name") {
       list.sort((a, b) =>
         getName(a).toLowerCase().localeCompare(getName(b).toLowerCase()),
@@ -610,11 +644,29 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
+    } else if (sortBy === "purchaseCadence") {
+      list.sort((a, b) => {
+        const valA = resolveCleanPattern(a.purchaseCadence || a.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
+        const valB = resolveCleanPattern(b.purchaseCadence || b.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
+        return valA.localeCompare(valB);
+      });
+    } else if (sortBy === "customerState") {
+      list.sort((a, b) => {
+        const valA = resolveCleanPattern(a.customerState, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
+        const valB = resolveCleanPattern(b.customerState, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
+        return valA.localeCompare(valB);
+      });
+    } else if (sortBy === "purchaseIntent") {
+      list.sort((a, b) => {
+        const valA = resolveCleanPattern(a.purchaseIntent, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
+        const valB = resolveCleanPattern(b.purchaseIntent, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
+        return valA.localeCompare(valB);
+      });
     } else {
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return list;
-  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents, activeRemarkTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, activeTab, activeBusinessTab, activeZoneTab, activeRouteTab, activeAgentTab, activeWeekdayTab, activeStatusTab, activeGapTab, sortBy, todayDate, agents, activeRemarkTab, activeCadenceFilter, activeStateFilter, activeIntentFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredActiveCount = useMemo(() => {
     return filtered.filter((c) => getTodayEffectiveStatus(c) === "ON").length;
@@ -634,7 +686,7 @@ export default function CustomerManagement() {
       const last8Days = customer.last8Days || {};
       let count = 0;
       const today = new Date();
-      for (let i = 2; i <= 7; i++) {
+      for (let i = 1; i <= 7; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
         const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -665,7 +717,7 @@ export default function CustomerManagement() {
       });
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
-      list = list.filter((c) => getYesterdayDeliveredCount(c) === targetDays);
+      list = list.filter((c) => targetDays === 7 ? getYesterdayDeliveredCount(c) >= 7 : getYesterdayDeliveredCount(c) === targetDays);
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -1044,6 +1096,9 @@ export default function CustomerManagement() {
       if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") {
         baseData.Current_Category = getCurrentCategory(c);
       }
+      baseData["Purchase Cadence"] = resolveCleanPattern(c.purchaseCadence || c.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
+      baseData["Customer State"] = resolveCleanPattern(c.customerState, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
+      baseData["Purchase Intent"] = resolveCleanPattern(c.purchaseIntent, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
       baseData.Status = getLatestStatus(c);
       baseData.Remarks = getRemarkDisplay(c);
       return baseData;
@@ -1101,6 +1156,9 @@ export default function CustomerManagement() {
               <option value="status">Status </option>
               <option value="remarks">Remarks </option>
               <option value="weeklySchedule">Weekly Schedule</option>
+              <option value="purchaseCadence">Purchase Cadence</option>
+              <option value="customerState">Customer State</option>
+              <option value="purchaseIntent">Purchase Intent</option>
             </select>
 
             {canDownloadExcel && (
@@ -1383,6 +1441,87 @@ export default function CustomerManagement() {
             {tab.label}
           </button>
         ))}
+      </div>
+
+      {/* AI EVALUATION LOGIC FILTERS */}
+      <div className="bg-white p-4 rounded-xl shadow mb-6 border border-indigo-100 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 text-indigo-950 font-bold text-sm">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+          AI Logics Filter:
+        </div>
+
+        {/* Logic 1: Purchase Cadence */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Purchase Cadence:
+          </label>
+          <select
+            value={activeCadenceFilter}
+            onChange={(e) => setActiveCadenceFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL CADENCES</option>
+            {LOGIC_1_PURCHASE_CADENCE.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 2: Customer State */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Customer State:
+          </label>
+          <select
+            value={activeStateFilter}
+            onChange={(e) => setActiveStateFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL STATES</option>
+            {LOGIC_2_CUSTOMER_STATE.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 3: Purchase Intent */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Purchase Intent:
+          </label>
+          <select
+            value={activeIntentFilter}
+            onChange={(e) => setActiveIntentFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL INTENTS</option>
+            {LOGIC_3_PURCHASE_INTENT.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Clear Filters Button */}
+        {(activeCadenceFilter !== "ALL" ||
+          activeStateFilter !== "ALL" ||
+          activeIntentFilter !== "ALL") && (
+          <button
+            onClick={() => {
+              setActiveCadenceFilter("ALL");
+              setActiveStateFilter("ALL");
+              setActiveIntentFilter("ALL");
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors ml-auto"
+          >
+            Reset AI Logic Filters
+          </button>
+        )}
       </div>
 
       {/* TABLE */}
@@ -1857,8 +1996,8 @@ function getDeliveredCountForCustomer(customer) {
   let count = 0;
   const today = new Date();
 
-  // Check last 7 days (excluding today: yesterday through 7 days ago)
-  for (let i = 1; i <= 7; i++) {
+  // Check last 8 days (today + last 7 days: i = 0 through 7)
+  for (let i = 0; i <= 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -1870,7 +2009,7 @@ function getDeliveredCountForCustomer(customer) {
     }
   }
 
-  return count;
+  return Math.min(count, 7);
 }
 
 function getPeakFrequencyColor(customer) {
@@ -1978,7 +2117,7 @@ function computePeakFrequency(last8Days) {
   let count = 0;
   const today = new Date();
 
-  for (let i = 0; i <= 6; i++) {
+  for (let i = 0; i <= 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");

@@ -11,6 +11,7 @@ import {
 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
+import { isExcludedRoute } from "../utils/subRouteOptimization";
 
 export default function SubRouteOptimizationModal({
   isOpen,
@@ -19,8 +20,15 @@ export default function SubRouteOptimizationModal({
   stats = {},
   onSuccess,
 }) {
+  // Sanitize pending changes to ensure no route with N or X is ever included
+  const validPendingChanges = useMemo(() => {
+    return (pendingChanges || []).filter(
+      (item) => !isExcludedRoute(item.currentRoute) && !isExcludedRoute(item.targetRoute)
+    );
+  }, [pendingChanges]);
+
   const [selectedIds, setSelectedIds] = useState(() =>
-    new Set(pendingChanges.map((c) => c.customerId))
+    new Set(validPendingChanges.map((c) => c.customerId))
   );
   const [parentFilter, setParentFilter] = useState("ALL");
   const [tierFilter, setTierFilter] = useState("ALL");
@@ -28,20 +36,20 @@ export default function SubRouteOptimizationModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // Sync selectedIds when pendingChanges change
+  // Sync selectedIds when validPendingChanges change
   React.useEffect(() => {
-    setSelectedIds(new Set(pendingChanges.map((c) => c.customerId)));
-  }, [pendingChanges]);
+    setSelectedIds(new Set(validPendingChanges.map((c) => c.customerId)));
+  }, [validPendingChanges]);
 
   // Extract unique parent routes in the pending list
   const parentRoutes = useMemo(() => {
-    const set = new Set(pendingChanges.map((c) => c.parentKey));
+    const set = new Set(validPendingChanges.map((c) => c.parentKey));
     return Array.from(set).sort();
-  }, [pendingChanges]);
+  }, [validPendingChanges]);
 
   // Filter pending changes based on controls
   const filteredChanges = useMemo(() => {
-    return pendingChanges.filter((item) => {
+    return validPendingChanges.filter((item) => {
       if (parentFilter !== "ALL" && item.parentKey !== parentFilter) return false;
       if (tierFilter !== "ALL" && item.tier !== tierFilter) return false;
       if (searchQuery.trim()) {
@@ -54,7 +62,7 @@ export default function SubRouteOptimizationModal({
       }
       return true;
     });
-  }, [pendingChanges, parentFilter, tierFilter, searchQuery]);
+  }, [validPendingChanges, parentFilter, tierFilter, searchQuery]);
 
   const isAllFilteredSelected =
     filteredChanges.length > 0 &&
@@ -81,7 +89,7 @@ export default function SubRouteOptimizationModal({
   };
 
   const handleApply = async () => {
-    const selectedChanges = pendingChanges.filter((item) => selectedIds.has(item.customerId));
+    const selectedChanges = validPendingChanges.filter((item) => selectedIds.has(item.customerId));
     if (selectedChanges.length === 0) {
       alert("No customers selected for update.");
       return;
@@ -155,7 +163,7 @@ export default function SubRouteOptimizationModal({
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
                 Auto-Sort Customer Sub-Routes
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                  {pendingChanges.length} Pending Moves
+                  {validPendingChanges.length} Pending Moves
                 </span>
               </h2>
             </div>
@@ -191,7 +199,7 @@ export default function SubRouteOptimizationModal({
         <div className="p-4 sm:p-5 border-b border-gray-100 grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white">
           <div className="bg-slate-50 border border-gray-200/80 rounded-xl p-3 flex flex-col justify-center">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Changes</span>
-            <span className="text-xl font-extrabold text-gray-900 mt-0.5">{pendingChanges.length}</span>
+            <span className="text-xl font-extrabold text-gray-900 mt-0.5">{validPendingChanges.length}</span>
           </div>
           <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 flex flex-col justify-center">
             <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">To Sub-Route A</span>
@@ -277,7 +285,7 @@ export default function SubRouteOptimizationModal({
         <div className="flex-1 overflow-y-auto p-3 sm:p-5">
           {filteredChanges.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-xs">
-              {pendingChanges.length === 0
+              {validPendingChanges.length === 0
                 ? "All customers are already in their optimal sub-routes! No changes needed."
                 : "No customers match the current filter criteria."}
             </div>

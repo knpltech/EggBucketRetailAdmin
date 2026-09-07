@@ -1270,6 +1270,23 @@ const updateCustomerMeta = async (req, res) => {
     // ✅ CALL STATUS
     if (callStatus !== undefined) updateData.callStatus = callStatus;
 
+    // ✅ AI LOGICS / PATTERNS
+    if (req.body.purchaseCadence !== undefined) {
+      updateData.purchaseCadence = String(req.body.purchaseCadence).trim();
+    }
+    if (req.body.customerState !== undefined) {
+      updateData.customerState = String(req.body.customerState).trim();
+    }
+    if (req.body.purchaseIntent !== undefined) {
+      updateData.purchaseIntent = String(req.body.purchaseIntent).trim();
+    }
+    if (req.body.pattern !== undefined) {
+      updateData.pattern = String(req.body.pattern).trim();
+      if (!updateData.purchaseCadence) {
+        updateData.purchaseCadence = updateData.pattern;
+      }
+    }
+
     console.log("updateCustomerMeta updateData:", updateData);
 
     if (Object.keys(updateData).length === 0) {
@@ -2966,6 +2983,72 @@ const batchUpdateCustomerRoutes = async (req, res) => {
   }
 };
 
+const batchUpdateCustomerLogics = async (req, res) => {
+  try {
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ message: "Updates array required" });
+    }
+
+    const db = getFirestore();
+    const batchSize = 500;
+    let count = 0;
+
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const chunk = updates.slice(i, i + batchSize);
+      const batch = db.batch();
+
+      chunk.forEach((item) => {
+        if (!item.id) return;
+        const ref = db.collection("customers").doc(item.id);
+        const data = {};
+        if (item.purchaseCadence !== undefined) {
+          data.purchaseCadence = String(item.purchaseCadence).trim();
+        }
+        if (item.customerState !== undefined) {
+          data.customerState = String(item.customerState).trim();
+        }
+        if (item.purchaseIntent !== undefined) {
+          data.purchaseIntent = String(item.purchaseIntent).trim();
+        }
+        if (item.pattern !== undefined) {
+          data.pattern = String(item.pattern).trim();
+          if (!data.purchaseCadence) data.purchaseCadence = data.pattern;
+        }
+
+        if (Object.keys(data).length > 0) {
+          batch.update(ref, data);
+          count++;
+        }
+      });
+
+      await batch.commit();
+    }
+
+    try {
+      const keys = typeof cache.keys === "function" ? cache.keys() : [];
+      const customerInfoKeys = keys.filter((key) =>
+        key.startsWith("customerInfo:userInfo"),
+      );
+      if (customerInfoKeys.length > 0) cache.del(customerInfoKeys);
+      const allDeliveriesKeys = keys.filter((key) =>
+        key.startsWith("allCustomerDeliveries"),
+      );
+      if (allDeliveriesKeys.length > 0) cache.del(allDeliveriesKeys);
+    } catch (cacheError) {
+      console.warn("Failed to invalidate customer caches:", cacheError);
+    }
+
+    return res.status(200).json({
+      message: `Successfully updated AI logics for ${count} customer(s)`,
+      count,
+    });
+  } catch (err) {
+    console.error("batchUpdateCustomerLogics error:", err);
+    return res.status(500).json({ message: "Server error updating AI logics" });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -2998,6 +3081,7 @@ export {
   deletePriority,
   getPriorityDashboard,
   batchUpdateCustomerRoutes,
+  batchUpdateCustomerLogics,
 };
 
 

@@ -180,6 +180,11 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   const peakPotential = peakPotentialNum > 0 ? `T${peakPotentialNum}` : "T1";
   const savedPeakPotential = String(customerData.Peak_Potential || "").trim();
 
+  // AI Evaluation Logics
+  const purchaseCadence = String(customerData.purchaseCadence || customerData.pattern || "Learning").trim();
+  const customerState = String(customerData.customerState || "Onboarding").trim();
+  const purchaseIntent = String(customerData.purchaseIntent || "Unknown").trim();
+
   // Build update object — only include fields that need saving
   const updateFields = {};
   if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeakFreq)) {
@@ -187,6 +192,15 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   }
   if (peakPotential !== savedPeakPotential) {
     updateFields.Peak_Potential = peakPotential;
+  }
+  if (!customerData.purchaseCadence && !customerData.pattern) {
+    updateFields.purchaseCadence = purchaseCadence;
+  }
+  if (!customerData.customerState) {
+    updateFields.customerState = customerState;
+  }
+  if (!customerData.purchaseIntent) {
+    updateFields.purchaseIntent = purchaseIntent;
   }
   if (Object.keys(updateFields).length > 0) {
     peakUpdates.push({ ref: doc.ref, ...updateFields });
@@ -198,6 +212,9 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   return {
     id: doc.id,
     ...customerData,
+    purchaseCadence,
+    customerState,
+    purchaseIntent,
     Peak_Frequency: peakFrequency,
     Peak_Potential: peakPotential,
     customerType, // Include synced customerType in response
@@ -335,7 +352,11 @@ const normalizeSortBy = (value) => {
   const raw = String(value || "")
     .trim()
     .toLowerCase();
-  return raw === "createdat" ? "createdAt" : "name";
+  if (raw === "createdat") return "createdAt";
+  if (raw === "route") return "route";
+  if (raw === "zone") return "zone";
+  if (raw === "businesstype" || raw === "business") return "businessType";
+  return "name";
 };
 
 const sortCustomers = (customers, sortBy) => {
@@ -343,6 +364,51 @@ const sortCustomers = (customers, sortBy) => {
 
   if (sortBy === "createdAt") {
     sorted.sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+    return sorted;
+  }
+
+  if (sortBy === "route") {
+    sorted.sort((a, b) => {
+      const routeA = String(a?.route || "").trim();
+      const routeB = String(b?.route || "").trim();
+      const isUnassignedA = !routeA || routeA.toUpperCase() === "UNASSIGNED";
+      const isUnassignedB = !routeB || routeB.toUpperCase() === "UNASSIGNED";
+      if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+      if (isUnassignedA) return 1;
+      if (isUnassignedB) return -1;
+      return (
+        routeA.localeCompare(routeB, undefined, { numeric: true, sensitivity: "base" }) ||
+        String(a?.name || "").localeCompare(String(b?.name || ""))
+      );
+    });
+    return sorted;
+  }
+
+  if (sortBy === "zone") {
+    sorted.sort((a, b) => {
+      const zoneA = String(a?.zone || "").trim();
+      const zoneB = String(b?.zone || "").trim();
+      const isUnassignedA = !zoneA || zoneA.toUpperCase() === "UNASSIGNED";
+      const isUnassignedB = !zoneB || zoneB.toUpperCase() === "UNASSIGNED";
+      if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+      if (isUnassignedA) return 1;
+      if (isUnassignedB) return -1;
+      return zoneA.localeCompare(zoneB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+    });
+    return sorted;
+  }
+
+  if (sortBy === "businessType") {
+    sorted.sort((a, b) => {
+      const bizA = String(a?.business || "").trim();
+      const bizB = String(b?.business || "").trim();
+      const isUnassignedA = !bizA || bizA.toUpperCase() === "UNASSIGNED";
+      const isUnassignedB = !bizB || bizB.toUpperCase() === "UNASSIGNED";
+      if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+      if (isUnassignedA) return 1;
+      if (isUnassignedB) return -1;
+      return bizA.localeCompare(bizB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+    });
     return sorted;
   }
 

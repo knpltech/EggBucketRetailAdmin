@@ -40,6 +40,59 @@ const getDeliveryStatusForDate = (customer, dateStr) => {
   return "pending";
 };
 
+export const getLatestDeliveryStatus = (customer, dateStr) => {
+  const status = getDeliveryStatusForDate(customer, dateStr);
+  if (status === "delivered") return "Delivered";
+  if (status === "checked") return "Checked";
+  return "Pending";
+};
+
+export const formatReasonLabel = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+export const getCustomerRemarkDisplay = (customer, dateStr) => {
+  const last8Days = customer?.last8Days || {};
+  const entry = last8Days[dateStr];
+  const entryObj = typeof entry === "object" && entry !== null ? entry : {};
+  const status = getLatestDeliveryStatus(customer, dateStr);
+  if (status === "Delivered") {
+    const trays =
+      entryObj.traysDelivered ??
+      entryObj.trays ??
+      entryObj.quantity ??
+      entryObj.deliveredTrays ??
+      0;
+    if (trays && Number(trays) > 0) {
+      const count = Number(trays);
+      return count === 1 ? "1 tray" : `${count} trays`;
+    }
+    return "";
+  }
+  if (status === "Checked") return formatReasonLabel(entryObj.reason || "");
+  return "";
+};
+
+export const getStatusBadgeColor = (value) => {
+  const status = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  switch (status) {
+    case "delivered":
+      return "bg-green-100 text-green-800 border border-green-300";
+    case "checked":
+      return "bg-yellow-100 text-yellow-800 border border-yellow-300";
+    default:
+      return "bg-red-100 text-red-800 border border-red-300";
+  }
+};
+
 // --- Buying Pattern Functions ---
 
 const everyDayBuyer = (customer) => {

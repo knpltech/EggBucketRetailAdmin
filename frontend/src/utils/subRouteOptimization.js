@@ -21,6 +21,49 @@ export const extractParentRoute = (routeName) => {
 };
 
 /**
+ * Check if a route is an excluded administrative route (letter N or X, e.g. R001N, R001X, On-Boarding, Out of Service).
+ * These routes must NEVER receive suggestions or be suggested for route changes in auto route sort.
+ */
+export const isExcludedRoute = (routeName) => {
+  if (!routeName || typeof routeName !== "string") return false;
+  const trimmed = routeName.trim();
+  if (!trimmed) return false;
+
+  // 1. Check if route has sub-route tier/letter N or X (e.g. R001N, R001X, R001N-..., R001-N, R001 X)
+  const match = trimmed.match(/^(R\d+)[\s\-_]*([A-Za-z])/i);
+  if (match && match[2]) {
+    const subRouteLetter = match[2].toUpperCase();
+    if (subRouteLetter === "N" || subRouteLetter === "X") {
+      return true;
+    }
+  }
+
+  // 2. Direct N or X routes (e.g. "N", "X", "Route N", "Route X", "R-N", "R-X")
+  if (/^(ROUTE\s*(\d+[\s\-_]*)?|R[\s\-_]*)[NX](?=[^A-Za-z]|$)/i.test(trimmed)) {
+    return true;
+  }
+
+  // 3. Standalone N or X
+  if (/^[NX]$/i.test(trimmed)) {
+    return true;
+  }
+
+  // 4. Common keywords for N and X administrative routes (On-Boarding, Out of Service)
+  const upper = trimmed.toUpperCase();
+  if (
+    upper.includes("OUT OF SERVICE") ||
+    upper.includes("OUT_OF_SERVICE") ||
+    upper.includes("ON_BOARDING") ||
+    upper.includes("ON BOARDING") ||
+    upper.includes("ONBOARDING")
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Determine recommended tier (A, B, C, D) strictly based on customer metrics:
  * - Route 1 A: Current Category D4 to D5 customers Only
  * - Route 1 B: Current Category D1 to D3 Customers Only
@@ -91,13 +134,18 @@ export function resolveTargetSubRoute(customer, allRoutes, todayDate) {
   const currentRouteName = (customer.route || "").trim();
   if (!currentRouteName) return null;
 
+  // Exclude customers who are in N or X routes (e.g., R001N, R001X, On-Boarding, Out of Service)
+  if (isExcludedRoute(currentRouteName)) {
+    return null;
+  }
+
   const parentKey = extractParentRoute(currentRouteName);
   if (!parentKey || parentKey === "Other") return null;
 
-  // Strictly filter routes belonging to the EXACT SAME parent route
+  // Strictly filter routes belonging to the EXACT SAME parent route, excluding N and X routes
   const parentSubRoutes = allRoutes.filter((r) => {
     const rName = typeof r === "string" ? r : r.name;
-    return extractParentRoute(rName) === parentKey;
+    return extractParentRoute(rName) === parentKey && !isExcludedRoute(rName);
   });
 
   // If there is only 1 sub-route or none under this parent, cannot reassign
@@ -126,6 +174,11 @@ export function resolveTargetSubRoute(customer, allRoutes, todayDate) {
   }
 
   const matchedRouteName = typeof matchedRouteObj === "string" ? matchedRouteObj : matchedRouteObj.name;
+
+  // Target route must not be an excluded N or X route
+  if (isExcludedRoute(matchedRouteName)) {
+    return null;
+  }
 
   return {
     customerId: customer.id,
