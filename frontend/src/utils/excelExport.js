@@ -42,8 +42,10 @@ export const exportToExcel = (sortedData, logicOption) => {
     };
 
     return {
+      'Status': item.customerStatus || customer.customerStatus || '',
       'Customer ID': customer.custid || '',
       'Customer Name': customer.name || '',
+      'Route': customer.route || '',
       'Business': customer.business || '',
       'Phone': customer.phone || '',
       'Peak Frequency': resolvePeakFrequency(customer) || '',

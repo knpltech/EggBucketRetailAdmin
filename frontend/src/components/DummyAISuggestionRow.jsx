@@ -12,6 +12,9 @@ import {
   DEFAULT_LOGIC_1,
   DEFAULT_LOGIC_2,
   DEFAULT_LOGIC_3,
+  getLatestDeliveryStatus,
+  getCustomerRemarkDisplay,
+  getStatusBadgeColor,
 } from "../utils/dummyAiSuggestionEngine";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
@@ -294,6 +297,9 @@ const DummyAISuggestionRow = ({
     suggestionData.score
   );
 
+  const customerStatus = customer?.customerStatus || getLatestDeliveryStatus(customer, todayDate);
+  const customerRemark = customer?.customerRemark !== undefined ? customer.customerRemark : getCustomerRemarkDisplay(customer, todayDate);
+
   return (
     <tr className={`border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors ${calendarOpen ? 'relative z-50' : ''}`}>
       <td className="px-1.5 py-2 text-xs text-gray-600 font-medium">{customer.custid}</td>
@@ -400,6 +406,22 @@ const DummyAISuggestionRow = ({
           <span className="text-xs text-gray-700 font-medium">
             {isTodayOn ? "ON" : "OFF"}
           </span>
+        </div>
+      </td>
+
+      {/* Customer Status Column (Delivered / Pending / Checked) */}
+      <td className="px-1.5 py-2 text-center">
+        <div className="flex flex-col items-center gap-0.5">
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${getStatusBadgeColor(customerStatus)}`}
+          >
+            {customerStatus}
+          </span>
+          {customerRemark ? (
+            <span className="text-[10px] text-gray-500 font-medium leading-tight whitespace-nowrap">
+              {customerRemark}
+            </span>
+          ) : null}
         </div>
       </td>
 

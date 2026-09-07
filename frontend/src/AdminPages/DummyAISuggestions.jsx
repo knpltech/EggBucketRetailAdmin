@@ -23,6 +23,8 @@ import {
   DEFAULT_LOGIC_2,
   DEFAULT_LOGIC_3,
   resolveCleanPattern,
+  getLatestDeliveryStatus,
+  getCustomerRemarkDisplay,
 } from "../utils/dummyAiSuggestionEngine";
 import {
   getCachedUserInfo,
@@ -65,6 +67,7 @@ const DummyAISuggestions = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState([]);
   const [priorities, setPriorities] = useState([]);
   const [routePriorityMap, setRoutePriorityMap] = useState({});
@@ -117,32 +120,61 @@ const DummyAISuggestions = () => {
     }
   });
 
-  const handlePatternChange = useCallback((customerId, newPattern) => {
+  const handlePatternChange = useCallback(async (customerId, newPattern) => {
     setRowPatterns((prev) => {
       const updated = { ...prev, [customerId]: newPattern };
-      setTimeout(() => {
-        try {
-          localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
-        } catch {
-          // ignore storage write errors
-        }
-      }, 0);
+      try {
+        localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
+      } catch {}
       return updated;
     });
+
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customerId ? { ...c, purchaseCadence: newPattern, pattern: newPattern } : c))
+    );
+
+    patchCachedUserInfoCustomer(customerId, (row) => ({
+      ...row,
+      purchaseCadence: newPattern,
+      pattern: newPattern,
+    }));
+
+    try {
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id: customerId,
+        purchaseCadence: newPattern,
+      });
+    } catch (err) {
+      console.error("Failed to save purchaseCadence to DB:", err);
+    }
   }, []);
 
-  const handleSecondaryPatternChange = useCallback((customerId, newPattern) => {
+  const handleSecondaryPatternChange = useCallback(async (customerId, newPattern) => {
     setRowSecondaryPatterns((prev) => {
       const updated = { ...prev, [customerId]: newPattern };
-      setTimeout(() => {
-        try {
-          localStorage.setItem("dummyAISecondaryPatterns", JSON.stringify(updated));
-        } catch {
-          // ignore storage write errors
-        }
-      }, 0);
+      try {
+        localStorage.setItem("dummyAISecondaryPatterns", JSON.stringify(updated));
+      } catch {}
       return updated;
     });
+
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customerId ? { ...c, customerState: newPattern } : c))
+    );
+
+    patchCachedUserInfoCustomer(customerId, (row) => ({
+      ...row,
+      customerState: newPattern,
+    }));
+
+    try {
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id: customerId,
+        customerState: newPattern,
+      });
+    } catch (err) {
+      console.error("Failed to save customerState to DB:", err);
+    }
   }, []);
 
   const [rowTertiaryPatterns, setRowTertiaryPatterns] = useState(() => {
@@ -154,18 +186,32 @@ const DummyAISuggestions = () => {
     }
   });
 
-  const handleTertiaryPatternChange = useCallback((customerId, newPattern) => {
+  const handleTertiaryPatternChange = useCallback(async (customerId, newPattern) => {
     setRowTertiaryPatterns((prev) => {
       const updated = { ...prev, [customerId]: newPattern };
-      setTimeout(() => {
-        try {
-          localStorage.setItem("dummyAITertiaryPatterns", JSON.stringify(updated));
-        } catch {
-          // ignore storage write errors
-        }
-      }, 0);
+      try {
+        localStorage.setItem("dummyAITertiaryPatterns", JSON.stringify(updated));
+      } catch {}
       return updated;
     });
+
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customerId ? { ...c, purchaseIntent: newPattern } : c))
+    );
+
+    patchCachedUserInfoCustomer(customerId, (row) => ({
+      ...row,
+      purchaseIntent: newPattern,
+    }));
+
+    try {
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id: customerId,
+        purchaseIntent: newPattern,
+      });
+    } catch (err) {
+      console.error("Failed to save purchaseIntent to DB:", err);
+    }
   }, []);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -238,6 +284,53 @@ const DummyAISuggestions = () => {
       // Show all customers without exclusions
       const validCustomers = allCustomers.filter((c) => !!c);
 
+      // Read logics for each customer from the DB
+      const dbCadence = {};
+      const dbSecondary = {};
+      const dbTertiary = {};
+      validCustomers.forEach((c) => {
+        if (c.purchaseCadence || c.pattern) {
+          dbCadence[c.id] = c.purchaseCadence || c.pattern;
+        }
+        if (c.customerState) {
+          dbSecondary[c.id] = c.customerState;
+        }
+        if (c.purchaseIntent) {
+          dbTertiary[c.id] = c.purchaseIntent;
+        }
+      });
+      setRowPatterns((prev) => ({ ...dbCadence, ...prev }));
+      setRowSecondaryPatterns((prev) => ({ ...dbSecondary, ...prev }));
+      setRowTertiaryPatterns((prev) => ({ ...dbTertiary, ...prev }));
+
+      // Sync any existing unsaved localStorage values to DB
+      try {
+        const localCadence = JSON.parse(localStorage.getItem("dummyAIPatterns") || "{}");
+        const localSecondary = JSON.parse(localStorage.getItem("dummyAISecondaryPatterns") || "{}");
+        const localTertiary = JSON.parse(localStorage.getItem("dummyAITertiaryPatterns") || "{}");
+
+        const updates = [];
+        validCustomers.forEach((c) => {
+          const needsCadence = localCadence[c.id] && localCadence[c.id] !== c.purchaseCadence;
+          const needsSecondary = localSecondary[c.id] && localSecondary[c.id] !== c.customerState;
+          const needsTertiary = localTertiary[c.id] && localTertiary[c.id] !== c.purchaseIntent;
+          if (needsCadence || needsSecondary || needsTertiary) {
+            updates.push({
+              id: c.id,
+              purchaseCadence: localCadence[c.id] || c.purchaseCadence || "Learning",
+              customerState: localSecondary[c.id] || c.customerState || "Onboarding",
+              purchaseIntent: localTertiary[c.id] || c.purchaseIntent || "Unknown",
+            });
+          }
+        });
+
+        if (updates.length > 0) {
+          axios.post(`${ADMIN_PATH}/customers/batch-update-logics`, { updates }).catch(console.error);
+        }
+      } catch (err) {
+        console.warn("Storage sync check error:", err);
+      }
+
       // 2. Store valid customers (Suggestions are dynamically generated by useMemo)
       setCustomers(validCustomers);
     } catch (err) {
@@ -251,12 +344,10 @@ const DummyAISuggestions = () => {
   const baseCustomerData = useMemo(() => {
     const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
-    const activeCustomers = customers.filter((customer) => {
-      const todayStatus = getTodayDeliveryStatus(customer, todayDate);
-      return todayStatus !== "delivered" && todayStatus !== "checked";
-    });
+    return customers.map((customer) => {
+      const customerStatus = getLatestDeliveryStatus(customer, todayDate);
+      const customerRemark = getCustomerRemarkDisplay(customer, todayDate);
 
-    return activeCustomers.map((customer) => {
       // Precompute expensive values for sorting & filtering once
       const currentCategory = computeCurrentCategory(customer.last8Days);
       const currentCategoryNumber = getCurrentCategoryNumber(currentCategory);
@@ -273,9 +364,13 @@ const DummyAISuggestions = () => {
       return {
         customer: {
           ...customer,
+          customerStatus,
+          customerRemark,
           deliveryGapStr,
           deliveryGapNumber,
         },
+        customerStatus,
+        customerRemark,
         currentCategory,
         currentCategoryNumber,
         peakFrequencyStr,
@@ -289,11 +384,11 @@ const DummyAISuggestions = () => {
 
   const processedData = useMemo(() => {
     const data = baseCustomerData.map((item) => {
-      const saved1 = rowPatterns[item.customer.id];
+      const saved1 = rowPatterns[item.customer.id] || item.customer.purchaseCadence || item.customer.pattern;
       const customerPattern = resolveCleanPattern(saved1, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
-      const saved2 = rowSecondaryPatterns[item.customer.id];
+      const saved2 = rowSecondaryPatterns[item.customer.id] || item.customer.customerState;
       const secondaryPattern = resolveCleanPattern(saved2, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
-      const saved3 = rowTertiaryPatterns[item.customer.id];
+      const saved3 = rowTertiaryPatterns[item.customer.id] || item.customer.purchaseIntent;
       const tertiaryPattern = resolveCleanPattern(saved3, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
 
       return {
@@ -411,9 +506,16 @@ const DummyAISuggestions = () => {
         else if (activeGapTab === "G30+") matchesGap = gapNum >= 30;
       }
 
+      // Status filter (All Customers, Delivered, Checked, Pending)
+      const matchesStatus =
+        statusFilter === "ALL" ||
+        String(item.customerStatus || "").toLowerCase() === statusFilter.toLowerCase();
+
+      if (!matchesStatus) return false;
+
       return matchesSearch && matchesPriority && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
+  }, [processedData, searchQuery, statusFilter, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -600,6 +702,17 @@ const DummyAISuggestions = () => {
             Download Excel
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+            >
+              <option value="ALL">All Customers</option>
+              <option value="Delivered">Delivered</option>
+              <option value="Checked">Checked</option>
+              <option value="Pending">Pending</option>
+            </select>
+
             <div className="relative" ref={priorityDropdownRef}>
               <button
                 onClick={() => setIsPriorityDropdownOpen(!isPriorityDropdownOpen)}
