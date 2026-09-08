@@ -21,35 +21,19 @@ export const extractParentRoute = (routeName) => {
 };
 
 /**
- * Check if a route is an excluded administrative route (letter N or X, e.g. R001N, R001X, On-Boarding, Out of Service).
- * These routes must NEVER receive suggestions or be suggested for route changes in auto route sort.
+ * Check if a route is excluded from auto sub-route optimization.
+ * Auto sub-route is allowed for ONLY sub-routes A, B, C, and D.
+ * If any other sub-route letters/words exist (like N, X, Q, Out of Service, On-Boarding, etc.),
+ * they are strictly excluded (no suggestions).
  */
 export const isExcludedRoute = (routeName) => {
-  if (!routeName || typeof routeName !== "string") return false;
+  if (!routeName || typeof routeName !== "string") return true;
   const trimmed = routeName.trim();
-  if (!trimmed) return false;
+  if (!trimmed) return true;
 
-  // 1. Check if route has sub-route tier/letter N or X (e.g. R001N, R001X, R001N-..., R001-N, R001 X)
-  const match = trimmed.match(/^(R\d+)[\s\-_]*([A-Za-z])/i);
-  if (match && match[2]) {
-    const subRouteLetter = match[2].toUpperCase();
-    if (subRouteLetter === "N" || subRouteLetter === "X") {
-      return true;
-    }
-  }
-
-  // 2. Direct N or X routes (e.g. "N", "X", "Route N", "Route X", "R-N", "R-X")
-  if (/^(ROUTE\s*(\d+[\s\-_]*)?|R[\s\-_]*)[NX](?=[^A-Za-z]|$)/i.test(trimmed)) {
-    return true;
-  }
-
-  // 3. Standalone N or X
-  if (/^[NX]$/i.test(trimmed)) {
-    return true;
-  }
-
-  // 4. Common keywords for N and X administrative routes (On-Boarding, Out of Service)
   const upper = trimmed.toUpperCase();
+
+  // 1. Common keywords for administrative or non-optimizable routes
   if (
     upper.includes("OUT OF SERVICE") ||
     upper.includes("OUT_OF_SERVICE") ||
@@ -60,6 +44,18 @@ export const isExcludedRoute = (routeName) => {
     return true;
   }
 
+  // 2. Must match standard parent route with sub-route tier letter (e.g. R001A, R001-B, Route 1 C)
+  const match = trimmed.match(/^(?:ROUTE\s*|R)[\s\-_]*(\d+)[\s\-_]*([A-Za-z])/i);
+  if (!match || !match[2]) {
+    return true;
+  }
+
+  const subRouteLetter = match[2].toUpperCase();
+  // Strictly allow ONLY A, B, C, D. Any other sub-routes (such as N, X, Q, etc.) -> excluded (no suggestions)
+  if (!["A", "B", "C", "D"].includes(subRouteLetter)) {
+    return true;
+  }
+
   return false;
 };
 
@@ -67,7 +63,7 @@ export const isExcludedRoute = (routeName) => {
  * Determine recommended tier (A, B, C, D) strictly based on customer metrics:
  * - Route 1 A: Current Category D4 to D5 customers Only
  * - Route 1 B: Current Category D1 to D3 Customers Only
- * - Route 1 C: Delivery Gap G7 to G10 Customers Only
+ * - Route 1 C: Delivery Gap G8 to G10 Customers Only
  * - Route 1 D: Delivery Gap G10+ Customers Only
  */
 export function evaluateSubRouteTier(customer, todayDate) {
@@ -90,11 +86,11 @@ export function evaluateSubRouteTier(customer, todayDate) {
     };
   }
 
-  // Rule 2: Delivery Gap G7 to G10 -> Route C Only (7 <= gap <= 10)
-  if (gapNum >= 7 && gapNum <= 10) {
+  // Rule 2: Delivery Gap G8 to G10 -> Route C Only (8 <= gap <= 10)
+  if (gapNum >= 8 && gapNum <= 10) {
     return {
       tier: "C",
-      tierLabel: "Route C (Gap G7-G10)",
+      tierLabel: "Route C (Gap G8-G10)",
       reason: `Delivery Gap is ${gapStr}`,
       category: categoryStr,
       gap: gapStr,
@@ -142,7 +138,7 @@ export function resolveTargetSubRoute(customer, allRoutes, todayDate) {
   const parentKey = extractParentRoute(currentRouteName);
   if (!parentKey || parentKey === "Other") return null;
 
-  // Strictly filter routes belonging to the EXACT SAME parent route, excluding N and X routes
+  // Strictly filter routes belonging to the EXACT SAME parent route, excluding any non-ABCD routes
   const parentSubRoutes = allRoutes.filter((r) => {
     const rName = typeof r === "string" ? r : r.name;
     return extractParentRoute(rName) === parentKey && !isExcludedRoute(rName);
@@ -163,7 +159,7 @@ export function resolveTargetSubRoute(customer, allRoutes, todayDate) {
   // Pattern: starts with parentKey + targetLetter, e.g. R001A, R001B, R001C, R001D
   const matchedRouteObj = parentSubRoutes.find((r) => {
     const rName = (typeof r === "string" ? r : r.name).trim().toUpperCase();
-    const regex = new RegExp(`^${parentKey}${targetLetter}`, "i");
+    const regex = new RegExp(`^${parentKey}[\\s\\-_]*${targetLetter}`, "i");
     return regex.test(rName);
   });
 
@@ -175,7 +171,7 @@ export function resolveTargetSubRoute(customer, allRoutes, todayDate) {
 
   const matchedRouteName = typeof matchedRouteObj === "string" ? matchedRouteObj : matchedRouteObj.name;
 
-  // Target route must not be an excluded N or X route
+  // Target route must be an allowed ABCD sub-route
   if (isExcludedRoute(matchedRouteName)) {
     return null;
   }

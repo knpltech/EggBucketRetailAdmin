@@ -74,7 +74,9 @@ const DummyAISuggestions = () => {
   const [businessTypeFilter, setBusinessTypeFilter] = useState("ALL");
   const [businessTypes, setBusinessTypes] = useState([]);
   const [suggestionFilterOption, setSuggestionFilterOption] = useState("ALL");
-  const [patternFilter, setPatternFilter] = useState("ALL");
+  const [activeCadenceFilter, setActiveCadenceFilter] = useState("ALL");
+  const [activeStateFilter, setActiveStateFilter] = useState("ALL");
+  const [activeIntentFilter, setActiveIntentFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [routeFilter, setRouteFilter] = useState([]);
   const [activeGapTab, setActiveGapTab] = useState("ALL");
@@ -221,7 +223,19 @@ const DummyAISuggestions = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [priorityFilter, businessTypeFilter, suggestionFilterOption, sortOption, activeGapTab, patternFilter, categoryFilter, routeFilter]);
+  }, [
+    statusFilter,
+    priorityFilter,
+    businessTypeFilter,
+    suggestionFilterOption,
+    sortOption,
+    activeGapTab,
+    activeCadenceFilter,
+    activeStateFilter,
+    activeIntentFilter,
+    categoryFilter,
+    routeFilter,
+  ]);
 
   useEffect(() => {
     fetchData();
@@ -456,18 +470,24 @@ const DummyAISuggestions = () => {
         String(normalizedCustomerType).trim().toLowerCase() ===
         String(businessTypeFilter).trim().toLowerCase();
 
-      // Pattern filter (Logic Sets)
-      const saved1 = rowPatterns[item.customer.id];
-      const customerPattern = resolveCleanPattern(saved1, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
-      const saved2 = rowSecondaryPatterns[item.customer.id];
-      const secondaryPattern = resolveCleanPattern(saved2, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
-      const saved3 = rowTertiaryPatterns[item.customer.id];
-      const tertiaryPattern = resolveCleanPattern(saved3, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
-      const matchesPattern =
-        patternFilter === "ALL" ||
-        customerPattern === patternFilter ||
-        secondaryPattern === patternFilter ||
-        tertiaryPattern === patternFilter;
+      // AI Logics Filters (Purchase Cadence, Customer State, Purchase Intent)
+      if (activeCadenceFilter !== "ALL") {
+        const saved1 = rowPatterns[item.customer.id] || item.customer.purchaseCadence || item.customer.pattern;
+        const customerCadence = resolveCleanPattern(saved1, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
+        if (customerCadence !== activeCadenceFilter) return false;
+      }
+
+      if (activeStateFilter !== "ALL") {
+        const saved2 = rowSecondaryPatterns[item.customer.id] || item.customer.customerState;
+        const customerState = resolveCleanPattern(saved2, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
+        if (customerState !== activeStateFilter) return false;
+      }
+
+      if (activeIntentFilter !== "ALL") {
+        const saved3 = rowTertiaryPatterns[item.customer.id] || item.customer.purchaseIntent;
+        const customerIntent = resolveCleanPattern(saved3, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
+        if (customerIntent !== activeIntentFilter) return false;
+      }
 
       // Category filter (All Current Category, D0-D7, D1 to D3, D5 to D7)
       const currentCategory = item.currentCategory;
@@ -506,16 +526,22 @@ const DummyAISuggestions = () => {
         else if (activeGapTab === "G30+") matchesGap = gapNum >= 30;
       }
 
-      // Status filter (All Customers, Delivered, Checked, Pending)
-      const matchesStatus =
-        statusFilter === "ALL" ||
-        String(item.customerStatus || "").toLowerCase() === statusFilter.toLowerCase();
+      // Status filter (All Customers, Delivered, Checked, Pending, Undelivered)
+      let matchesStatus = true;
+      if (statusFilter !== "ALL") {
+        const s = String(item.customerStatus || "").toLowerCase();
+        if (statusFilter.toLowerCase() === "undelivered") {
+          matchesStatus = s === "checked" || s === "pending";
+        } else {
+          matchesStatus = s === statusFilter.toLowerCase();
+        }
+      }
 
       if (!matchesStatus) return false;
 
-      return matchesSearch && matchesPriority && matchesCustomerType && matchesPattern && matchesCategory && matchesRoute && matchesGap;
+      return matchesSearch && matchesPriority && matchesCustomerType && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, statusFilter, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, patternFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
+  }, [processedData, searchQuery, statusFilter, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, activeCadenceFilter, activeStateFilter, activeIntentFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -711,6 +737,7 @@ const DummyAISuggestions = () => {
               <option value="Delivered">Delivered</option>
               <option value="Checked">Checked</option>
               <option value="Pending">Pending</option>
+              <option value="Undelivered">Undelivered</option>
             </select>
 
             <div className="relative" ref={priorityDropdownRef}>
@@ -832,34 +859,6 @@ const DummyAISuggestions = () => {
               )}
             </div>
 
-            <select
-              value={patternFilter}
-              onChange={(e) => setPatternFilter(e.target.value)}
-              className="border border-gray-300 px-3 py-1.5 rounded-lg text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
-            >
-              <option value="ALL">All Logic Sets</option>
-              <optgroup label="Purchase Cadence">
-                {LOGIC_1_PURCHASE_CADENCE.map((pattern) => (
-                  <option key={pattern} value={pattern}>
-                    {pattern}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Customer State">
-                {LOGIC_2_CUSTOMER_STATE.map((pattern) => (
-                  <option key={pattern} value={pattern}>
-                    {pattern}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Purchase Intent">
-                {LOGIC_3_PURCHASE_INTENT.map((pattern) => (
-                  <option key={pattern} value={pattern}>
-                    {pattern}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
 
 
 
@@ -895,7 +894,7 @@ const DummyAISuggestions = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {/* Card 1 */}
+        {/* Card 1 - Total Customers */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -908,39 +907,7 @@ const DummyAISuggestions = () => {
           </div>
         </div>
 
-        {/* Card 2 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09l2.846.813-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-            </svg>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[13px] font-bold text-gray-800">AI Suggest ON</span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-3xl font-extrabold text-gray-900">{suggestOnCount}</span>
-              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">{suggestOnPercentage}%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3 */}
-        <div className="bg-white rounded-xl shadow-sm border border-red-100 p-5 flex items-center gap-4 bg-gradient-to-r from-red-50/30 to-white">
-          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600 border border-red-100">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[13px] font-bold text-gray-800">AI Suggest OFF</span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-3xl font-extrabold text-gray-900">{suggestOffCount}</span>
-              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">{suggestOffPercentage}%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4 - Current Toggle ON */}
+        {/* Card 2 - Current Toggle ON */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -956,7 +923,7 @@ const DummyAISuggestions = () => {
           </div>
         </div>
 
-        {/* Card 5 - Current Toggle OFF */}
+        {/* Card 3 - Current Toggle OFF */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-600 border border-gray-100">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -968,6 +935,38 @@ const DummyAISuggestions = () => {
             <div className="flex items-center gap-2 mt-1">
               <span className="text-3xl font-extrabold text-gray-900">{currentOffCount}</span>
               <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-700">{currentOffPercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4 - AI Suggest ON */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09l2.846.813-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">AI Suggest ON</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{suggestOnCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">{suggestOnPercentage}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5 - AI Suggest OFF */}
+        <div className="bg-white rounded-xl shadow-sm border border-red-100 p-5 flex items-center gap-4 bg-gradient-to-r from-red-50/30 to-white">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600 border border-red-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-800">AI Suggest OFF</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">{suggestOffCount}</span>
+              <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">{suggestOffPercentage}%</span>
             </div>
           </div>
         </div>
@@ -997,6 +996,87 @@ const DummyAISuggestions = () => {
             {gap}
           </button>
         ))}
+      </div>
+
+      {/* AI EVALUATION LOGIC FILTERS */}
+      <div className="bg-white p-4 rounded-xl shadow mb-6 border border-indigo-100 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 text-indigo-950 font-bold text-sm">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+          AI Logics Filter:
+        </div>
+
+        {/* Logic 1: Purchase Cadence */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Purchase Cadence:
+          </label>
+          <select
+            value={activeCadenceFilter}
+            onChange={(e) => setActiveCadenceFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL CADENCES</option>
+            {LOGIC_1_PURCHASE_CADENCE.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 2: Customer State */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Customer State:
+          </label>
+          <select
+            value={activeStateFilter}
+            onChange={(e) => setActiveStateFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL STATES</option>
+            {LOGIC_2_CUSTOMER_STATE.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 3: Purchase Intent */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Purchase Intent:
+          </label>
+          <select
+            value={activeIntentFilter}
+            onChange={(e) => setActiveIntentFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL INTENTS</option>
+            {LOGIC_3_PURCHASE_INTENT.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Clear Filters Button */}
+        {(activeCadenceFilter !== "ALL" ||
+          activeStateFilter !== "ALL" ||
+          activeIntentFilter !== "ALL") && (
+          <button
+            onClick={() => {
+              setActiveCadenceFilter("ALL");
+              setActiveStateFilter("ALL");
+              setActiveIntentFilter("ALL");
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors ml-auto"
+          >
+            Reset AI Logic Filters
+          </button>
+        )}
       </div>
 
       {error && (
