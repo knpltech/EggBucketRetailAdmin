@@ -148,7 +148,9 @@ export default function CustomerRoutes() {
           G5: 0,
           G6: 0,
           G7: 0,
-          "G7+": 0,
+          G8: 0,
+          G9: 0,
+          G10: 0,
           "G10+": 0,
           "G15+": 0,
           "G20+": 0,
@@ -204,7 +206,9 @@ export default function CustomerRoutes() {
         if (gapNum === 5) routeMap[route].gapCounts.G5 += 1;
         if (gapNum === 6) routeMap[route].gapCounts.G6 += 1;
         if (gapNum === 7) routeMap[route].gapCounts.G7 += 1;
-        if (gapNum >= 7) routeMap[route].gapCounts["G7+"] += 1;
+        if (gapNum === 8) routeMap[route].gapCounts.G8 += 1;
+        if (gapNum === 9) routeMap[route].gapCounts.G9 += 1;
+        if (gapNum === 10) routeMap[route].gapCounts.G10 += 1;
         if (gapNum >= 10) routeMap[route].gapCounts["G10+"] += 1;
         if (gapNum >= 15) routeMap[route].gapCounts["G15+"] += 1;
         if (gapNum >= 20) routeMap[route].gapCounts["G20+"] += 1;
@@ -1258,7 +1262,7 @@ export default function CustomerRoutes() {
                                         Delivery Gaps:
                                       </span>
                                       <div className="flex items-center gap-2 flex-nowrap min-w-max">
-                                        {["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+"].map((g) => {
+                                        {["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G10+", "G15+", "G20+"].map((g) => {
                                           const count = route.gapCounts?.[g] || 0;
                                           return (
                                             <span

@@ -378,7 +378,7 @@ export const LOGIC_1_PURCHASE_CADENCE = [
   "Alternate Day",
   "2 Alternate Day",
   "Weekly",
-  "For Night",
+  "FortNight",
   "No Pattern",
 ];
 
@@ -424,12 +424,12 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
   const matched = validList.find((item) => item.toLowerCase() === lower);
   if (matched) return matched;
 
-  // For Night aliases
+  // FortNight aliases
   if (
-    validList.includes("For Night") &&
+    (validList.includes("FortNight") || validList.includes("For Night")) &&
     ["fortnight", "fort night", "for night", "fort-night"].includes(lower)
   ) {
-    return "For Night";
+    return validList.includes("FortNight") ? "FortNight" : "For Night";
   }
 
   // Everyday aliases

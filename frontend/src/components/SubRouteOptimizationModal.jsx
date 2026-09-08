@@ -187,7 +187,7 @@ export default function SubRouteOptimizationModal({
               Route B: Current Category D1 to D3
             </span>
             <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-              Route C: Delivery Gap G7 to G10
+              Route C: Delivery Gap G8 to G10
             </span>
             <span className="inline-flex items-center gap-1 font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
               Route D: Delivery Gap G10+
@@ -259,7 +259,7 @@ export default function SubRouteOptimizationModal({
                 <option value="ALL">All Routes</option>
                 <option value="A">Route A (Current Category D4-D5)</option>
                 <option value="B">Route B (Current Category D1-D3)</option>
-                <option value="C">Route C (Delivery Gap G7-G10)</option>
+                <option value="C">Route C (Delivery Gap G8-G10)</option>
                 <option value="D">Route D (Delivery Gap G10+)</option>
               </select>
             </div>
