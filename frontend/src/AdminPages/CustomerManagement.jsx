@@ -1712,31 +1712,31 @@ export default function CustomerManagement() {
                     const isOpen = openScheduleId === c.id;
                     const isUpdating = updatingScheduleId === c.id;
                     const schedule = c.weeklySchedule || {
+                      sun: true,
                       mon: true,
                       tue: true,
                       wed: true,
                       thu: true,
                       fri: true,
                       sat: true,
-                      sun: true,
                     };
                     const days = [
+                      "sun",
                       "mon",
                       "tue",
                       "wed",
                       "thu",
                       "fri",
                       "sat",
-                      "sun",
                     ];
                     const labels = {
+                      sun: "SUN",
                       mon: "MON",
                       tue: "TUE",
                       wed: "WED",
                       thu: "THU",
                       fri: "FRI",
                       sat: "SAT",
-                      sun: "SUN",
                     };
                     const activeDaysCount =
                       Object.values(schedule).filter(Boolean).length;

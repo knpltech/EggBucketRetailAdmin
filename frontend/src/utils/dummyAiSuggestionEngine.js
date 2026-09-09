@@ -386,21 +386,14 @@ export const LOGIC_2_CUSTOMER_STATE = [
   "Onboarding",
   "Active",
   "At Risk",
-  "Reactivating",
-  "Need Credit",
-  "Pricing Issue",
-  "Other Vendor",
-  "On Call",
-  "Ceased Operations Temporarily",
-  "Ceased Operations Permanently",
+  "Inactive",
 ];
 
 export const LOGIC_3_PURCHASE_INTENT = [
   "Unknown",
   "Stable Purchase",
-  "Growing Purchase",
-  "Declining Purchase",
   "Variable Purchase",
+  "Declining Purchase",
 ];
 
 export const DEFAULT_LOGIC_1 = LOGIC_1_PURCHASE_CADENCE[0];
@@ -435,6 +428,16 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
   // Everyday aliases
   if (validList.includes("Everyday") && lower === "every day") {
     return "Everyday";
+  }
+
+  // Inactive aliases (ceased operations, need credit, etc.)
+  if (
+    validList.includes("Inactive") &&
+    (lower.includes("inactive") ||
+      lower.includes("ceased") ||
+      ["need credit", "other vendor"].includes(lower))
+  ) {
+    return "Inactive";
   }
 
   return defaultVal;
@@ -505,6 +508,13 @@ const evaluatePattern = (customer, pattern) => {
         confidence: 100,
         reason: "Customer State: At Risk (Always ON)",
       };
+    case "Inactive":
+    case "Inactive (Always OFF)":
+      return {
+        suggestion: "TURN_OFF_TODAY",
+        confidence: 100,
+        reason: "Customer State: Inactive (Always OFF)",
+      };
     case "Reactivating":
     case "Reactivating (Always ON)":
       return {
@@ -568,13 +578,12 @@ const evaluatePattern = (customer, pattern) => {
         confidence: 100,
         reason: "Purchase Intent: Stable Purchase (Always ON)",
       };
-    case "Growing Purchase":
-    case "Growing Purchase (Always On)":
-    case "Growing Purchase (Always ON)":
+    case "Variable Purchase":
+    case "Variable Purchase (Always ON)":
       return {
         suggestion: "TURN_ON_TODAY",
         confidence: 100,
-        reason: "Purchase Intent: Growing Purchase (Always ON)",
+        reason: "Purchase Intent: Variable Purchase (Always ON)",
       };
     case "Declining Purchase":
     case "Declining Purchase (Always OFF)":
@@ -582,13 +591,6 @@ const evaluatePattern = (customer, pattern) => {
         suggestion: "TURN_OFF_TODAY",
         confidence: 100,
         reason: "Purchase Intent: Declining Purchase (Always OFF)",
-      };
-    case "Variable Purchase":
-    case "Variable Purchase (Always ON)":
-      return {
-        suggestion: "TURN_ON_TODAY",
-        confidence: 100,
-        reason: "Purchase Intent: Variable Purchase (Always ON)",
       };
 
     // Legacy fallbacks
