@@ -216,6 +216,36 @@ const DummyAISuggestions = () => {
     }
   }, []);
 
+  const [assigningRouteId, setAssigningRouteId] = useState(null);
+  const [editingRouteId, setEditingRouteId] = useState(null);
+
+  const handleAssignRoute = useCallback(async (customerId, routeName) => {
+    if (!routeName || assigningRouteId === customerId) return;
+
+    try {
+      setAssigningRouteId(customerId);
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id: customerId,
+        route: routeName,
+      });
+
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === customerId ? { ...c, route: routeName } : c))
+      );
+
+      patchCachedUserInfoCustomer(customerId, (row) => ({
+        ...row,
+        route: routeName,
+      }));
+    } catch (err) {
+      console.error("Failed to assign route:", err);
+      alert("Failed to assign route");
+    } finally {
+      setAssigningRouteId(null);
+      setEditingRouteId(null);
+    }
+  }, [assigningRouteId]);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
@@ -1096,6 +1126,11 @@ const DummyAISuggestions = () => {
         <DummyAISuggestionTable
           data={currentData}
           loading={loading}
+          routes={routes}
+          onAssignRoute={handleAssignRoute}
+          assigningRouteId={assigningRouteId}
+          editingRouteId={editingRouteId}
+          setEditingRouteId={setEditingRouteId}
           onApplySuggestion={handleApplySuggestion}
           updatingSuggestionId={updatingSuggestionId}
           rowPatterns={rowPatterns}

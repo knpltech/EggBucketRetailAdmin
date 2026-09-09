@@ -10,7 +10,25 @@ import {
   resolveCleanPattern,
 } from "../utils/dummyAiSuggestionEngine";
 
-const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSuggestionId, rowPatterns, onPatternChange, rowSecondaryPatterns, onSecondaryPatternChange, rowTertiaryPatterns, onTertiaryPatternChange, updatingScheduleId, onUpdateSchedule }) => {
+const DummyAISuggestionTable = ({
+  data,
+  loading,
+  routes = [],
+  onAssignRoute,
+  assigningRouteId,
+  editingRouteId,
+  setEditingRouteId,
+  onApplySuggestion,
+  updatingSuggestionId,
+  rowPatterns,
+  onPatternChange,
+  rowSecondaryPatterns,
+  onSecondaryPatternChange,
+  rowTertiaryPatterns,
+  onTertiaryPatternChange,
+  updatingScheduleId,
+  onUpdateSchedule,
+}) => {
   if (loading) {
     return (
       <div className="overflow-x-auto bg-white shadow rounded mt-6">
@@ -99,6 +117,11 @@ const DummyAISuggestionTable = ({ data, loading, onApplySuggestion, updatingSugg
                 key={item.customer.id}
                 customer={item.customer}
                 suggestionData={item.suggestion}
+                routes={routes}
+                onAssignRoute={onAssignRoute}
+                assigningRouteId={assigningRouteId}
+                editingRouteId={editingRouteId}
+                setEditingRouteId={setEditingRouteId}
                 onApplySuggestion={onApplySuggestion}
                 isUpdating={updatingSuggestionId === item.customer.id}
                 customerPattern={resolveCleanPattern(rowPatterns[item.customer.id] || item.customer.purchaseCadence || item.customer.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1)}

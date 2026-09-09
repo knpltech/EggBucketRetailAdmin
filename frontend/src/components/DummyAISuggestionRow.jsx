@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FiCalendar } from "react-icons/fi";
+import { FiCalendar, FiEdit2 } from "react-icons/fi";
 import {
   computeCurrentCategory,
   getTodayEffectiveStatus,
@@ -268,6 +268,11 @@ function getDeliveryGapColor(value) {
 const DummyAISuggestionRow = ({
   customer,
   suggestionData,
+  routes = [],
+  onAssignRoute,
+  assigningRouteId,
+  editingRouteId,
+  setEditingRouteId,
   onApplySuggestion,
   isUpdating = false,
   customerPattern = DEFAULT_LOGIC_1,
@@ -304,18 +309,72 @@ const DummyAISuggestionRow = ({
     <tr className={`border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors ${calendarOpen ? 'relative z-50' : ''}`}>
       <td className="px-1.5 py-2 text-xs text-gray-600 font-medium">{customer.custid}</td>
       <td className="px-1.5 py-2 text-xs text-gray-900 font-bold uppercase leading-tight min-w-[80px]">{customer.name}</td>
-      <td className="px-1.5 py-2 text-[10.5px] text-gray-700 font-medium max-w-[110px] break-words whitespace-normal leading-tight">{customer.route || "-"}</td>
+      <td
+        className="px-1.5 py-2 text-[10.5px] text-gray-700 font-medium max-w-[130px] break-words whitespace-normal leading-tight"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!customer.route || customer.route === "UNASSIGNED" ? (
+          <select
+            disabled={assigningRouteId === customer.id}
+            onChange={(e) => onAssignRoute && onAssignRoute(customer.id, e.target.value)}
+            className="border border-gray-300 rounded px-1.5 py-0.5 w-full text-[11px] bg-white text-gray-900 cursor-pointer shadow-sm"
+          >
+            <option value="">Assign</option>
+            {routes.map((r) => {
+              const rName = typeof r === "string" ? r : r?.name;
+              if (!rName) return null;
+              return (
+                <option key={rName} value={rName}>
+                  {rName}
+                </option>
+              );
+            })}
+          </select>
+        ) : editingRouteId === customer.id ? (
+          <select
+            autoFocus
+            defaultValue={customer.route}
+            onBlur={() => setEditingRouteId && setEditingRouteId(null)}
+            onChange={async (e) => {
+              if (onAssignRoute) await onAssignRoute(customer.id, e.target.value);
+              if (setEditingRouteId) setEditingRouteId(null);
+            }}
+            className="border border-gray-300 rounded px-1.5 py-0.5 w-full text-[11px] bg-white text-gray-900 cursor-pointer shadow-sm"
+          >
+            {routes.map((r) => {
+              const rName = typeof r === "string" ? r : r?.name;
+              if (!rName) return null;
+              return (
+                <option key={rName} value={rName}>
+                  {rName}
+                </option>
+              );
+            })}
+          </select>
+        ) : (
+          <div className="flex items-center justify-center gap-1.5">
+            <span>{customer.route}</span>
+            <button
+              onClick={() => setEditingRouteId && setEditingRouteId(customer.id)}
+              className="text-gray-400 hover:text-gray-700 p-0.5 rounded hover:bg-gray-100 transition-colors inline-flex items-center justify-center flex-shrink-0"
+              title="Edit Route"
+            >
+              <FiEdit2 size={11} />
+            </button>
+          </div>
+        )}
+      </td>
 
       <td className="px-1.5 py-2 text-gray-700 font-medium">
         {(() => {
           const isOpen = openSchedule;
           const isUpdating = updatingScheduleId === customer.id;
           const schedule = customer?.weeklySchedule || {
-            mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true,
+            sun: true, mon: true, tue: true, wed: true, thu: true, fri: true, sat: true,
           };
-          const days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+          const days = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
           const labels = {
-            mon: "MON", tue: "TUE", wed: "WED", thu: "THU", fri: "FRI", sat: "SAT", sun: "SUN",
+            sun: "SUN", mon: "MON", tue: "TUE", wed: "WED", thu: "THU", fri: "FRI", sat: "SAT",
           };
           const activeDaysCount = Object.values(schedule).filter(Boolean).length;
           return (
