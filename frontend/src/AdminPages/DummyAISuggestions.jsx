@@ -12,8 +12,6 @@ import {
   getTodayDeliveryStatus,
   normalizeDeliveryGap,
   resolvePeakFrequency,
-} from "../utils/aiSuggestionEngine";
-import {
   generateDummyAISuggestion,
   BUYING_PATTERNS,
   LOGIC_1_PURCHASE_CADENCE,

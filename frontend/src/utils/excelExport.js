@@ -8,7 +8,7 @@ import {
   getDateStringInTimeZone,
   computeDeliveryGap,
   computeCurrentCategory,
-} from './aiSuggestionEngine';
+} from './dummyAiSuggestionEngine';
 
 /**
  * Export AI Suggestions to Excel

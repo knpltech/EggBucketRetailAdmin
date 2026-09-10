@@ -18,7 +18,6 @@ export default function AdminViewDashboard() {
 
     { label: "View Personnel", path: "/admin-view/personalView" },
     { label: "Report", path: "/admin-view/reportView" },
-    { label: "Analytics", path: "/admin-view/analyticsView" },
     { label: "Customer Management", path: "/admin-view/cutM_V" },
     { label: "Customer Map", path: "/admin-view/cutstomerMapView" },
   ];

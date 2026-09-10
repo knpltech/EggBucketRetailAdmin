@@ -8,8 +8,6 @@ import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
-import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
-import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 import {
   LOGIC_1_PURCHASE_CADENCE,
   LOGIC_2_CUSTOMER_STATE,
@@ -18,6 +16,7 @@ import {
   DEFAULT_LOGIC_2,
   DEFAULT_LOGIC_3,
   resolveCleanPattern,
+  getTodayEffectiveStatus as resolveTodayEffectiveStatus,
 } from "../utils/dummyAiSuggestionEngine";
 
 // TABS

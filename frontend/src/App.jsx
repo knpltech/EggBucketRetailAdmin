@@ -10,9 +10,7 @@ import AddCustomer from "./AdminPages/AddCustomer";
 import PersonnelList from "./AdminPages/PersonnelList";
 import Customer from "./AdminPages/Customer";
 import Report from "./AdminPages/Report";
-import Analytics from "./AdminPages/Analytics";
 import CustomerRetention from "./AdminPages/CustomerRetention";
-import AISuggestions from "./AdminPages/AISuggestions";
 import DummyAISuggestions from "./AdminPages/DummyAISuggestions";
 import CollectionSummary from "./AdminPages/CollectionSummary";
 import BusinessStatistics from "./AdminPages/BusinessStatistics/index";
@@ -20,7 +18,6 @@ import CustomerView from "./Admin-View/CustomerView";
 import CustomerDetails from "./CustomerPages/CustomerDetails";
 import PersonnelView from "./Admin-View/PersonalView";
 import ReportView from "./Admin-View/ReportView";
-import AnalyticsView from "./Admin-View/AnalyticsView";
 import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
@@ -36,7 +33,6 @@ import SupCustomerInfo from "./Supervisor/sup.customerInfo";
 
 import SupPersonnelList from "./Supervisor/sup.PersonalList";
 import SupReport from "./Supervisor/sup.report";
-import SupAnalytics from "./Supervisor/sup.analytics";
 import SupCustomerManagement from "./Supervisor/sup.customerManagement";
 import SupcustomerMap from "./Supervisor/sup.customerMap";
 
@@ -90,9 +86,7 @@ function App() {
         <Route path="personnel" element={<PersonnelList />} />
         <Route path="customer-info/:id" element={<Customer />} />
         <Route path="report" element={<Report />} />
-        <Route path="analytics" element={<Analytics />} />
         <Route path="customer-retention" element={<CustomerRetention />} />
-        <Route path="ai-suggestions" element={<AISuggestions />} />
         <Route path="dummy-ai-suggestions" element={<DummyAISuggestions />} />
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
@@ -118,7 +112,6 @@ function App() {
         <Route path="customerView" element={<CustomerView />} />
         <Route path="personalView" element={<PersonnelView />} />
         <Route path="reportView" element={<ReportView />} />
-        <Route path="analyticsView" element={<AnalyticsView />} />
         <Route path="about" element={<AboutVPage />} />
         <Route path="cutM_V" element={<CustomerManagementV />} />
         <Route path="cutstomerMapView" element={<CustomerMapV />} />
@@ -137,7 +130,6 @@ function App() {
         <Route path="personnel" element={<SupPersonnelList />} />
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="report" element={<SupReport />} />
-        <Route path="analytics" element={<SupAnalytics />} />
         <Route path="customer-management" element={<SupCustomerManagement />} />
         <Route path="customer-map" element={<SupcustomerMap />} />
       </Route>

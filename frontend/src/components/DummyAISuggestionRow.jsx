@@ -3,8 +3,6 @@ import { FiCalendar, FiEdit2 } from "react-icons/fi";
 import {
   computeCurrentCategory,
   getTodayEffectiveStatus,
-} from "../utils/aiSuggestionEngine";
-import {
   BUYING_PATTERNS,
   LOGIC_1_PURCHASE_CADENCE,
   LOGIC_2_CUSTOMER_STATE,
