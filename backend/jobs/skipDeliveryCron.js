@@ -62,8 +62,6 @@ const safeJson = (value) => {
 
 const invalidateSkipRelatedCaches = () => {
   try {
-    cache.del("analytics:last8:v2");
-    cache.del("analytics:last8:v10");
     cache.del("customerMapStatus:today");
     cache.del("latestRemarks");
 

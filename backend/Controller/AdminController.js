@@ -1844,91 +1844,6 @@ const getBusinessTypes = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-const getAnalyticsLast8 = async (req, res) => {
-  const cacheKey = "analytics:last8:v2";
-
-  // CHECK CACHE FIRST (avoid Firestore read)
-  const cachedData = cache.get(cacheKey);
-  if (cachedData) {
-    return res.status(200).json({ customers: cachedData });
-  }
-
-  try {
-    const db = getFirestore();
-
-    // ONLY 1 READ: Fetch all customers
-    const customersSnap = await db.collection("customers").get();
-
-    if (customersSnap.empty) {
-      return res.status(200).json({ customers: [] });
-    }
-
-    // TRANSFORM: Use denormalized last8Days (no subcollection reads!)
-    const customers = customersSnap.docs.map((doc) => {
-      const c = doc.data();
-      const customerId = doc.id;
-
-      // SAFE DEFAULT: {} is valid (means 0 deliveries in last 8 days)
-      const last8Days = c.last8Days || {};
-
-      // Convert to deliveries array for frontend compatibility
-      // Handle BOTH old format (string) and new format (object with status field)
-      const deliveries = Object.entries(last8Days).map(([date, entry]) => {
-        const entryObj =
-          typeof entry === "string" ? { status: entry } : entry || {};
-
-        const type = resolveLast8DaysDeliveryType(entryObj);
-        const reason = String(entryObj.reason || entryObj.checkReason || "")
-          .trim();
-
-        const traysDeliveredRaw =
-          entryObj.traysDelivered ??
-          entryObj.trays ??
-          entryObj.quantity ??
-          entryObj.trayCount ??
-          null;
-
-        const traysDelivered = Number.isFinite(Number(traysDeliveredRaw))
-          ? Number(traysDeliveredRaw)
-          : null;
-
-        return {
-          id: date,
-          type,
-          reason,
-          traysDelivered,
-          time: entryObj.time || entryObj.timestamp || null,
-        };
-      });
-
-      return {
-        id: customerId,
-        name: c.name,
-        custid: c.custid,
-        imageUrl: c.imageUrl || "",
-        createdAt: c.createdAt,
-        zone: c.zone || "UNASSIGNED",
-        remarks: c.remarks || "",
-        latestRemark: c.latestRemark || "",
-        last8DaysUpdatedAt: c.last8DaysUpdatedAt || null,
-        todayOverride: c.todayOverride || null,
-        skipConfig: c.skipConfig || null,
-        Peak_Frequency:
-          c.Peak_Frequency || c.peakFrequency || c.peak_frequency || null,
-        deliveries,
-      };
-    });
-
-    // CACHE for 30 minutes
-    cache.set(cacheKey, customers, 1800);
-
-    return res.status(200).json({ customers });
-  } catch (err) {
-    console.error("Analytics API error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
 // Get deliveries between date range (For Excel)
 // NOTE: Moved to frontend - no longer needed
 
@@ -3063,7 +2978,6 @@ export {
   getRoutes,
   addBusinessType,
   getBusinessTypes,
-  getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getCustomersByDeliveryCount,
   getRetentionCustomers,

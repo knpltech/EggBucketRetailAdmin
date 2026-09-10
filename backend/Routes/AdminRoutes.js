@@ -58,7 +58,6 @@ import {
   getRoutes,
   batchUpdateCustomerRoutes,
   batchUpdateCustomerLogics,
-  getAnalyticsLast8,
   getCustomersByDeliveryDays,
   getRetentionCustomers,
   resetRetentionCustomer,
@@ -133,7 +132,6 @@ router.get("/analytics/payment", getPaymentAnalytics);
 router.get("/analytics/inventory", getInventoryAnalytics);
 router.get("/analytics/customer-conversion", getCustomerConversionAnalytics);
 
-router.get("/analytics/last8", getAnalyticsLast8);
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);
 router.get("/customer/latest-remarks", getLatestRemarks);
