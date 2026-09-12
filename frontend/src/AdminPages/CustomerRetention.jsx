@@ -6,10 +6,14 @@ import { ADMIN_PATH } from "../constant";
 
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All" },
-  { value: "stock_available", label: "Stock Available" },
   { value: "shop_closed", label: "Shop Closed" },
-  { value: "other_vendor", label: "Other Vendor" },
+  { value: "stock_available", label: "Stock Available" },
   { value: "confirmed_tomorrow", label: "Confirmed Tomorrow" },
+  { value: "price_issue", label: "Price Issue" },
+  { value: "other_vendor", label: "Other Vendor" },
+  { value: "need_credit", label: "Need Credit" },
+  { value: "quality_issue", label: "Quality Issue" },
+  { value: "owner_not_available", label: "Owner Not Available" },
 ];
 const SORT_OPTIONS = [
   { value: "name", label: "Name" },
@@ -20,10 +24,15 @@ const SORT_OPTIONS = [
 const CHECKED_TYPES = [
   "reached",
   "price_mismatch",
+  "price_issue",
   "shop_closed",
   "stock_available",
   "other_vendor",
   "confirmed_tomorrow",
+  "confirmed_for_tomorrow",
+  "need_credit",
+  "quality_issue",
+  "owner_not_available",
 ];
 const ROWS_PER_PAGE = 25;
 const RETENTION_CACHE_TTL_MS = 60 * 60 * 1000; // 1 HOUR - super aggressive caching to minimize API calls
@@ -158,8 +167,8 @@ const normalizeRetentionRemark = (value = "") => {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (normalized === "price mismatch" || normalized === "shop closed") {
-    return "Shop Closed";
+  if (normalized === "price mismatch") {
+    return "Price Issue";
   }
 
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
@@ -234,11 +243,17 @@ const getStatusFromDelivery = (delivery) => {
   const checkedCategories = [
     "stock_available",
     "shop_closed",
-    "other_vendor",
     "confirmed_tomorrow",
+    "confirmed_for_tomorrow",
+    "price_issue",
+    "price_mismatch",
+    "other_vendor",
+    "need_credit",
+    "quality_issue",
+    "owner_not_available",
   ];
-  const normalizedType = type === "price_mismatch" ? "shop_closed" : type;
-  const normalizedReasonLabel = normalizedReason === "price_mismatch" ? "shop_closed" : normalizedReason;
+  const normalizedType = type === "price_mismatch" ? "price_issue" : (type === "confirmed_for_tomorrow" ? "confirmed_tomorrow" : type);
+  const normalizedReasonLabel = normalizedReason === "price_mismatch" ? "price_issue" : (normalizedReason === "confirmed_for_tomorrow" ? "confirmed_tomorrow" : normalizedReason);
   const category = checkedCategories.includes(normalizedType)
     ? normalizedType
     : checkedCategories.includes(normalizedReasonLabel)
@@ -262,13 +277,21 @@ const getStatusFromDelivery = (delivery) => {
     const finalCategoryLabel =
       finalCategory === "stock_available"
         ? "Stock Available"
-        : (finalCategory === "shop_closed" || finalCategory === "price_mismatch")
+        : finalCategory === "shop_closed"
           ? "Shop Closed"
-          : finalCategory === "other_vendor"
-            ? "Other Vendor"
-            : finalCategory === "confirmed_tomorrow"
+          : (finalCategory === "price_issue" || finalCategory === "price_mismatch")
+            ? "Price Issue"
+            : (finalCategory === "confirmed_tomorrow" || finalCategory === "confirmed_for_tomorrow")
               ? "Confirmed Tomorrow"
-              : "";
+              : finalCategory === "other_vendor"
+                ? "Other Vendor"
+                : finalCategory === "need_credit"
+                  ? "Need Credit"
+                  : finalCategory === "quality_issue"
+                    ? "Quality Issue"
+                    : finalCategory === "owner_not_available"
+                      ? "Owner Not Available"
+                      : normalizeRetentionRemark(finalCategory);
 
     return {
       key: "checked",

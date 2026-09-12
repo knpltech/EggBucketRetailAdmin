@@ -367,10 +367,15 @@ const getStatusAndReasonFromType = (type, checkReason) => {
 
 const RETENTION_CATEGORIES = [
   "stock_available",
+  "price_issue",
   "price_mismatch",
   "shop_closed",
   "other_vendor",
   "confirmed_tomorrow",
+  "confirmed_for_tomorrow",
+  "need_credit",
+  "quality_issue",
+  "owner_not_available",
 ];
 
 const normalizeRetentionCategory = (value) => {
@@ -380,7 +385,7 @@ const normalizeRetentionCategory = (value) => {
     .replace(/\s+/g, "_");
 
   if (RETENTION_CATEGORIES.includes(raw)) {
-    return raw;
+    return raw === "price_mismatch" ? "price_issue" : (raw === "confirmed_for_tomorrow" ? "confirmed_tomorrow" : raw);
   }
 
   return "all";
@@ -392,7 +397,7 @@ const getRetentionCategoryFromDelivery = (delivery = {}) => {
     .toLowerCase();
 
   if (RETENTION_CATEGORIES.includes(type)) {
-    return type;
+    return type === "price_mismatch" ? "price_issue" : (type === "confirmed_for_tomorrow" ? "confirmed_tomorrow" : type);
   }
 
   const reason = String(delivery.checkReason || delivery.reason || "")
@@ -401,18 +406,21 @@ const getRetentionCategoryFromDelivery = (delivery = {}) => {
     .replace(/\s+/g, "_");
 
   if (RETENTION_CATEGORIES.includes(reason)) {
-    return reason;
+    return reason === "price_mismatch" ? "price_issue" : (reason === "confirmed_for_tomorrow" ? "confirmed_tomorrow" : reason);
   }
 
   return "";
 };
 
 const getRetentionCategoryLabel = (category) => {
-  if (category === "price_mismatch" || category === "shop_closed")
-    return "Shop Closed";
+  if (category === "shop_closed") return "Shop Closed";
   if (category === "stock_available") return "Stock Available";
+  if (category === "price_issue" || category === "price_mismatch") return "Price Issue";
   if (category === "other_vendor") return "Other Vendor";
-  if (category === "confirmed_tomorrow") return "Confirmed Tomorrow";
+  if (category === "confirmed_tomorrow" || category === "confirmed_for_tomorrow") return "Confirmed Tomorrow";
+  if (category === "need_credit") return "Need Credit";
+  if (category === "quality_issue") return "Quality Issue";
+  if (category === "owner_not_available") return "Owner Not Available";
   return "-";
 };
 
@@ -755,10 +763,14 @@ const getRetentionCustomers = async (req, res) => {
     const counts = {
       all: 0,
       stock_available: 0,
+      price_issue: 0,
       price_mismatch: 0,
       shop_closed: 0,
       other_vendor: 0,
       confirmed_tomorrow: 0,
+      need_credit: 0,
+      quality_issue: 0,
+      owner_not_available: 0,
     };
     const todayDeliveriesMap = {};
     const customerCategories = {};
@@ -811,19 +823,31 @@ const getRetentionCustomers = async (req, res) => {
     const buildEmptyCategoryStats = () => ({
       stockAvailable: 0,
       shopClosed: 0,
+      priceIssue: 0,
       otherVendor: 0,
       confirmedTomorrow: 0,
+      needCredit: 0,
+      qualityIssue: 0,
+      ownerNotAvailable: 0,
       totalShops: 0,
     });
     const addCategoryToStats = (stats, category) => {
       if (category === "stock_available") {
         stats.stockAvailable += 1;
-      } else if (category === "price_mismatch" || category === "shop_closed") {
+      } else if (category === "shop_closed") {
         stats.shopClosed += 1;
+      } else if (category === "price_issue" || category === "price_mismatch") {
+        stats.priceIssue += 1;
       } else if (category === "other_vendor") {
         stats.otherVendor += 1;
-      } else if (category === "confirmed_tomorrow") {
+      } else if (category === "confirmed_tomorrow" || category === "confirmed_for_tomorrow") {
         stats.confirmedTomorrow += 1;
+      } else if (category === "need_credit") {
+        stats.needCredit += 1;
+      } else if (category === "quality_issue") {
+        stats.qualityIssue += 1;
+      } else if (category === "owner_not_available") {
+        stats.ownerNotAvailable += 1;
       }
       stats.totalShops += 1;
     };

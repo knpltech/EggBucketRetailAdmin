@@ -345,8 +345,11 @@ export default function CustomerRoutes() {
     });
 
     const groupList = Object.values(groups).map((group) => {
-      // Sort sub-routes within group
+      // Sort sub-routes within group by priority order first, then by route name
       group.routes.sort((a, b) => {
+        const orderA = a.priority && Number.isFinite(a.priority.order) ? a.priority.order : 999;
+        const orderB = b.priority && Number.isFinite(b.priority.order) ? b.priority.order : 999;
+        if (orderA !== orderB) return orderA - orderB;
         return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
       });
 
