@@ -125,7 +125,7 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
-      } catch {}
+      } catch { }
       return updated;
     });
 
@@ -154,7 +154,7 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAISecondaryPatterns", JSON.stringify(updated));
-      } catch {}
+      } catch { }
       return updated;
     });
 
@@ -191,7 +191,7 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAITertiaryPatterns", JSON.stringify(updated));
-      } catch {}
+      } catch { }
       return updated;
     });
 
@@ -608,6 +608,16 @@ const DummyAISuggestions = () => {
         return dataToSort.sort((a, b) => {
           return a.deliveryGapNumber - b.deliveryGapNumber || compareByName(a, b);
         });
+      case "REMARKS":
+        return dataToSort.sort((a, b) => {
+          const aRemark = String(a.customerRemark || a.customer?.customerRemark || "").trim();
+          const bRemark = String(b.customerRemark || b.customer?.customerRemark || "").trim();
+          if (aRemark && !bRemark) return -1;
+          if (!aRemark && bRemark) return 1;
+          if (!aRemark && !bRemark) return compareByName(a, b);
+          const cmp = aRemark.localeCompare(bRemark);
+          return cmp !== 0 ? cmp : compareByName(a, b);
+        });
       case "DEFAULT":
       default:
         return dataToSort;
@@ -843,17 +853,17 @@ const DummyAISuggestions = () => {
                 </span>
                 <svg className="w-4 h-4 ml-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
               </button>
-              
+
               {isRouteDropdownOpen && (
                 <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto right-0">
                   <div className="p-2 flex gap-2 border-b border-gray-100 sticky top-0 bg-white z-20">
-                    <button 
+                    <button
                       onClick={() => setRouteFilter([...routes])}
                       className="flex-1 text-xs bg-blue-50 text-blue-600 font-semibold py-1.5 rounded hover:bg-blue-100"
                     >
                       Check All
                     </button>
-                    <button 
+                    <button
                       onClick={() => setRouteFilter([])}
                       className="flex-1 text-xs bg-gray-50 text-gray-600 font-semibold py-1.5 rounded hover:bg-gray-100"
                     >
@@ -904,6 +914,7 @@ const DummyAISuggestions = () => {
               <option value="CURRENT_CATEGORY">Current Category (D7 to D0)</option>
               <option value="PEAK_POTENTIAL">Peak Potential</option>
               <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
+              <option value="REMARKS">Remarks</option>
             </select>
 
             <select
@@ -1094,17 +1105,17 @@ const DummyAISuggestions = () => {
         {(activeCadenceFilter !== "ALL" ||
           activeStateFilter !== "ALL" ||
           activeIntentFilter !== "ALL") && (
-          <button
-            onClick={() => {
-              setActiveCadenceFilter("ALL");
-              setActiveStateFilter("ALL");
-              setActiveIntentFilter("ALL");
-            }}
-            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors ml-auto"
-          >
-            Reset AI Logic Filters
-          </button>
-        )}
+            <button
+              onClick={() => {
+                setActiveCadenceFilter("ALL");
+                setActiveStateFilter("ALL");
+                setActiveIntentFilter("ALL");
+              }}
+              className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors ml-auto"
+            >
+              Reset AI Logic Filters
+            </button>
+          )}
       </div>
 
       {error && (

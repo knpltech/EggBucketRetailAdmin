@@ -247,10 +247,16 @@ const commitCustomerTypeUpdates = async (db, customerTypeUpdates = []) => {
 
 const getStatusAndReasonFromType = (type, checkReason = "") => {
   const DELIVERY_REASON_MAP = {
-    price_mismatch: "Price Mismatch",
+    price_issue: "Price Issue",
+    price_mismatch: "Price Issue",
     stock_available: "Stock Available",
+    shop_closed: "Shop Closed",
     other_vendor: "Other Vendor",
     confirmed_tomorrow: "Confirmed Tomorrow",
+    confirmed_for_tomorrow: "Confirmed Tomorrow",
+    need_credit: "Need Credit",
+    quality_issue: "Quality Issue",
+    owner_not_available: "Owner Not Available",
   };
 
   const normalizeReasonLabel = (value = "") => {
