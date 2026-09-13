@@ -607,7 +607,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v19:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v20:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -690,10 +690,15 @@ const getRetentionCustomers = async (req, res) => {
         "checked",
         "reached",
         "price_mismatch",
+        "price_issue",
         "shop_closed",
         "stock_available",
         "other_vendor",
         "confirmed_tomorrow",
+        "confirmed_for_tomorrow",
+        "need_credit",
+        "quality_issue",
+        "owner_not_available",
       ];
       if (checkedStatuses.includes(status)) {
         return "checked";
