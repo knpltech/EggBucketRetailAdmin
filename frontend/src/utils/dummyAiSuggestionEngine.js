@@ -619,9 +619,11 @@ export const LOGIC_2_CUSTOMER_STATE = [
 
 export const LOGIC_3_PURCHASE_INTENT = [
   "Unknown",
-  "Stable Purchase",
-  "Variable Purchase",
-  "Declining Purchase",
+  "Everyday",
+  "Alternate Day",
+  "2 Alterate Day",
+  "Weekly",
+  "Fortnight",
 ];
 
 export const DEFAULT_LOGIC_1 = LOGIC_1_PURCHASE_CADENCE[0];
@@ -645,12 +647,22 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
   const matched = validList.find((item) => item.toLowerCase() === lower);
   if (matched) return matched;
 
-  // FortNight aliases
+  // Fortnight aliases
   if (
-    (validList.includes("FortNight") || validList.includes("For Night")) &&
+    (validList.includes("Fortnight") || validList.includes("FortNight") || validList.includes("For Night")) &&
     ["fortnight", "fort night", "for night", "fort-night"].includes(lower)
   ) {
-    return validList.includes("FortNight") ? "FortNight" : "For Night";
+    if (validList.includes("Fortnight")) return "Fortnight";
+    if (validList.includes("FortNight")) return "FortNight";
+    return "For Night";
+  }
+
+  // 2 Alternate / Alterate Day aliases
+  if (
+    (validList.includes("2 Alterate Day") || validList.includes("2 Alternate Day")) &&
+    ["2 alterate day", "2 alternate day", "2-alterate day", "2-alternate day", "2 alterate", "2 alternate"].includes(lower)
+  ) {
+    return validList.includes("2 Alterate Day") ? "2 Alterate Day" : "2 Alternate Day";
   }
 
   // Everyday aliases
@@ -689,6 +701,7 @@ const evaluatePattern = (customer, pattern) => {
     case "Alternate Day Buyer":
       return alternateDayBuyer(customer);
     case "2 Alternate Day":
+    case "2 Alterate Day":
       return twoAlternateDayBuyer(customer);
     case "Weekly":
     case "Weekly (Delivery Gap greater then G5)":

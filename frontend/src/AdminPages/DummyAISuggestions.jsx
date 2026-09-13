@@ -1063,25 +1063,6 @@ const DummyAISuggestions = () => {
           </select>
         </div>
 
-        {/* Logic 2: Customer State */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-            Customer State:
-          </label>
-          <select
-            value={activeStateFilter}
-            onChange={(e) => setActiveStateFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="ALL">ALL STATES</option>
-            {LOGIC_2_CUSTOMER_STATE.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Logic 3: Purchase Intent */}
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
@@ -1094,6 +1075,25 @@ const DummyAISuggestions = () => {
           >
             <option value="ALL">ALL INTENTS</option>
             {LOGIC_3_PURCHASE_INTENT.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 2: Customer State */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Customer State:
+          </label>
+          <select
+            value={activeStateFilter}
+            onChange={(e) => setActiveStateFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL STATES</option>
+            {LOGIC_2_CUSTOMER_STATE.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>

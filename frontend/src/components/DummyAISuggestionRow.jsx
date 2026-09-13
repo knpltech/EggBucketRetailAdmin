@@ -497,19 +497,6 @@ const DummyAISuggestionRow = ({
 
       <td className="px-1.5 py-2">
         <select
-          value={secondaryPattern || DEFAULT_LOGIC_2}
-          onChange={(e) => onSecondaryPatternChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
-          title={secondaryPattern || DEFAULT_LOGIC_2}
-        >
-          {LOGIC_2_CUSTOMER_STATE.map(pattern => (
-            <option key={`sec-${pattern}`} value={pattern}>{pattern}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="px-1.5 py-2">
-        <select
           value={tertiaryPattern || DEFAULT_LOGIC_3}
           onChange={(e) => onTertiaryPatternChange(customer.id, e.target.value)}
           className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
@@ -517,6 +504,19 @@ const DummyAISuggestionRow = ({
         >
           {LOGIC_3_PURCHASE_INTENT.map(pattern => (
             <option key={`ter-${pattern}`} value={pattern}>{pattern}</option>
+          ))}
+        </select>
+      </td>
+
+      <td className="px-1.5 py-2">
+        <select
+          value={secondaryPattern || DEFAULT_LOGIC_2}
+          onChange={(e) => onSecondaryPatternChange(customer.id, e.target.value)}
+          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
+          title={secondaryPattern || DEFAULT_LOGIC_2}
+        >
+          {LOGIC_2_CUSTOMER_STATE.map(pattern => (
+            <option key={`sec-${pattern}`} value={pattern}>{pattern}</option>
           ))}
         </select>
       </td>
