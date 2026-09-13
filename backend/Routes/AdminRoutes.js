@@ -72,6 +72,8 @@ import {
   getBusinessTypes,
   getInventoryMetrics,
   addInventoryEntry,
+  toggleAgentDayLock,
+  getAgentDayLockStatus,
   getPriorities,
   addPriority,
   updatePriority,
@@ -144,6 +146,8 @@ router.get("/customer/retention", getRetentionCustomers);
 router.post("/customer/retention/reset", resetRetentionCustomer);
 router.get("/inventory-metrics", getInventoryMetrics);
 router.post("/add-inventory-entry", addInventoryEntry);
+router.post("/agent-day-lock", toggleAgentDayLock);
+router.get("/agent-day-lock-status", getAgentDayLockStatus);
 
 
 // Delivery partner related routes

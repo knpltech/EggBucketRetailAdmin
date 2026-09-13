@@ -2530,6 +2530,8 @@ const recalculateCollectionData = async (req, res) => {
 
 // Update customer payment information for a specific date
 
+// Update customer payment information for a specific date
+
 const updateCustomerPayment = async (req, res) => {
   try {
     const { docId, date, quantity, cashAmount, upiAmount, totalAmount } =
@@ -2542,6 +2544,29 @@ const updateCustomerPayment = async (req, res) => {
     }
     const db = getFirestore();
     const customerRef = db.collection("customers").doc(docId);
+
+    // 🔒 Lock Guard Check: Verify if agent assigned to this delivery is locked on this date
+    const customerSnap = await customerRef.get();
+    if (customerSnap.exists) {
+      const custData = customerSnap.data();
+      const dayEntry = custData.last8Days?.[date];
+      const entryAgent = typeof dayEntry === "object"
+        ? (dayEntry.agentName || (typeof dayEntry.deliveryMan === "object" ? dayEntry.deliveryMan.name : dayEntry.deliveryMan))
+        : null;
+
+      if (entryAgent && typeof entryAgent === "string" && entryAgent.trim()) {
+        const inventoryApp = getInventoryApp();
+        const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+        const lockDocId = `${date}_${entryAgent.toLowerCase().trim().replace(/[^a-z0-9]/g, "_")}`;
+        const lockSnap = await invDb.collection("daily_agent_locks").doc(lockDocId).get();
+        if (lockSnap.exists && lockSnap.data()?.isLocked) {
+          return res.status(403).json({
+            success: false,
+            message: `Data for agent "${entryAgent}" on date ${date} is locked and finalized. Edits are not allowed.`,
+          });
+        }
+      }
+    }
 
     // Prepare update object with dynamic field paths
     const updateData = {
@@ -2605,7 +2630,17 @@ const getInventoryMetrics = async (req, res) => {
     const inventoryApp = getInventoryApp();
     const db = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
 
-    const [loadingSnap, returnSnap, damageSnap, cashHandoverSnap, foodAllowanceSnap, incentiveSnap, upiHandoverSnap] = await Promise.all([
+    const [
+      loadingSnap,
+      returnSnap,
+      damageSnap,
+      cashHandoverSnap,
+      foodAllowanceSnap,
+      incentiveSnap,
+      upiHandoverSnap,
+      penaltySnap,
+      locksSnap,
+    ] = await Promise.all([
       db.collection("loading_entries").where("dateKey", "==", date).get(),
       db.collection("return_load_entries").where("dateKey", "==", date).get(),
       db.collection("damage_reports").where("dateKey", "==", date).get(),
@@ -2613,6 +2648,8 @@ const getInventoryMetrics = async (req, res) => {
       db.collection("food_allowance_entries").where("dateKey", "==", date).get(),
       db.collection("incentive_entries").where("dateKey", "==", date).get(),
       db.collection("upi_handover_entries").where("dateKey", "==", date).get(),
+      db.collection("penalty_entries").where("dateKey", "==", date).get(),
+      db.collection("daily_agent_locks").where("dateKey", "==", date).get(),
     ]);
 
     let totalLoad = 0;
@@ -2757,6 +2794,44 @@ const getInventoryMetrics = async (req, res) => {
       });
     });
 
+    const penaltyEntries = [];
+    penaltySnap.forEach((doc) => {
+      const data = doc.data();
+      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : 0));
+      let cashVal = 0;
+      if (typeof val === "number" && !isNaN(val)) {
+        cashVal = val;
+      } else if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed)) cashVal = parsed;
+      }
+      penaltyEntries.push({
+        cash: cashVal,
+        agentName: data.agentName || "",
+        outletName: data.outletName || "",
+        supervisorName: data.supervisorName || "",
+        remarks: data.remarks || "",
+        createdAt: data.createdAt || null,
+      });
+    });
+
+    const lockedAgents = {};
+    locksSnap.forEach((doc) => {
+      const data = doc.data();
+      const key = (data.agentName || "").toLowerCase().trim();
+      if (key) {
+        lockedAgents[key] = {
+          isLocked: Boolean(data.isLocked),
+          lockedAt: data.lockedAt || null,
+          lockedBy: data.lockedBy || "",
+          agentName: data.agentName || "",
+          outletName: data.outletName || "",
+          summarySnapshot: data.summarySnapshot || null,
+          remarks: data.remarks || "",
+        };
+      }
+    });
+
     const nettSales = totalLoad - totalReturn;
 
     return res.status(200).json({
@@ -2770,6 +2845,8 @@ const getInventoryMetrics = async (req, res) => {
       foodAllowanceEntries,
       incentiveEntries,
       upiHandoverEntries,
+      penaltyEntries,
+      lockedAgents,
       loadingEntries,
       returnEntries,
       damageEntries,
@@ -2812,6 +2889,7 @@ const addInventoryEntry = async (req, res) => {
       upi_handover: "upi_handover_entries",
       food_allowance: "food_allowance_entries",
       incentive: "incentive_entries",
+      penalty: "penalty_entries",
     };
 
     const collectionName = collectionMap[type];
@@ -2825,6 +2903,16 @@ const addInventoryEntry = async (req, res) => {
     const inventoryApp = getInventoryApp();
     const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
     const primaryDb = getFirestore();
+
+    // 🔒 Lock Guard Check: Verify if agent data is locked for this date
+    const lockDocId = `${dateKey}_${agentName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_")}`;
+    const lockSnap = await invDb.collection("daily_agent_locks").doc(lockDocId).get();
+    if (lockSnap.exists && lockSnap.data()?.isLocked) {
+      return res.status(403).json({
+        success: false,
+        message: `Data for agent "${agentName}" on date ${dateKey} is locked and finalized. Adding new entries is not allowed.`,
+      });
+    }
 
     // Look up agent details for outletName if possible
     let outletName = "";
@@ -2988,6 +3076,142 @@ const batchUpdateCustomerLogics = async (req, res) => {
   }
 };
 
+// Controller to lock or unlock an agent's daily entries
+const toggleAgentDayLock = async (req, res) => {
+  try {
+    const { dateKey, agentName, isLocked, summarySnapshot, remarks } = req.body;
+
+    if (!dateKey || !agentName) {
+      return res.status(400).json({
+        success: false,
+        message: "dateKey and agentName are required",
+      });
+    }
+
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+    const primaryDb = getFirestore();
+
+    // Look up agent details for outletName if possible
+    let outletName = "";
+    try {
+      const delPartnerSnap = await primaryDb
+        .collection("DeliveryMan")
+        .where("name", "==", agentName)
+        .get();
+      if (!delPartnerSnap.empty) {
+        outletName = delPartnerSnap.docs[0].data().outlet || "";
+      }
+    } catch (e) {
+      console.warn("Could not lookup agent outlet:", e);
+    }
+
+    const lockDocId = `${dateKey}_${agentName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_")}`;
+    const timestamp = new Date().toISOString();
+    const userRole = req.body.supervisorName || "Admin (Web)";
+
+    const lockData = {
+      dateKey,
+      agentName,
+      outletName,
+      isLocked: Boolean(isLocked),
+      updatedAt: timestamp,
+    };
+
+    if (isLocked) {
+      lockData.lockedAt = timestamp;
+      lockData.lockedBy = userRole;
+      if (summarySnapshot) {
+        lockData.summarySnapshot = summarySnapshot;
+      }
+    } else {
+      lockData.unlockedAt = timestamp;
+      lockData.unlockedBy = userRole;
+    }
+
+    if (remarks) {
+      lockData.remarks = remarks;
+    }
+
+    await invDb.collection("daily_agent_locks").doc(lockDocId).set(lockData, { merge: true });
+
+    return res.status(200).json({
+      success: true,
+      message: isLocked
+        ? `Data locked successfully for ${agentName} on ${dateKey}`
+        : `Data unlocked successfully for ${agentName} on ${dateKey}`,
+      lockData,
+    });
+  } catch (err) {
+    console.error("toggleAgentDayLock error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to toggle agent lock status",
+      error: err.message,
+    });
+  }
+};
+
+// Controller to get lock status for a specific date/agent
+const getAgentDayLockStatus = async (req, res) => {
+  try {
+    const { date, agentName } = req.query;
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "Date is required",
+      });
+    }
+
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+
+    if (agentName && agentName !== "all") {
+      const lockDocId = `${date}_${agentName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_")}`;
+      const docSnap = await invDb.collection("daily_agent_locks").doc(lockDocId).get();
+      if (!docSnap.exists) {
+        return res.status(200).json({
+          success: true,
+          isLocked: false,
+          lockData: null,
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        isLocked: Boolean(docSnap.data()?.isLocked),
+        lockData: docSnap.data(),
+      });
+    }
+
+    const locksSnap = await invDb.collection("daily_agent_locks").where("dateKey", "==", date).get();
+    const lockedAgents = {};
+    locksSnap.forEach((doc) => {
+      const data = doc.data();
+      const key = (data.agentName || "").toLowerCase().trim();
+      if (key) {
+        lockedAgents[key] = {
+          isLocked: Boolean(data.isLocked),
+          lockedAt: data.lockedAt,
+          lockedBy: data.lockedBy,
+          summarySnapshot: data.summarySnapshot,
+        };
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      lockedAgents,
+    });
+  } catch (err) {
+    console.error("getAgentDayLockStatus error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch lock status",
+      error: err.message,
+    });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -3012,6 +3236,8 @@ export {
   updateCustomerPayment,
   getInventoryMetrics,
   addInventoryEntry,
+  toggleAgentDayLock,
+  getAgentDayLockStatus,
   // Priority management
   getPriorities,
   addPriority,
@@ -3021,6 +3247,7 @@ export {
   batchUpdateCustomerRoutes,
   batchUpdateCustomerLogics,
 };
+
 
 
 

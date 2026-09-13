@@ -10,6 +10,10 @@ import {
   Check,
   X,
   User,
+  Lock,
+  Unlock,
+  AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 import { FiTrendingUp } from "react-icons/fi";
 import * as XLSX from "xlsx";
@@ -47,6 +51,7 @@ const CollectionSummary = () => {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [lockingAgent, setLockingAgent] = useState(false);
   const [activeTab, setActiveTab] = useState("ALL");
   // Helper to get today's date in local India timezone (Asia/Kolkata)
   const getTodayDateString = () => {
@@ -93,10 +98,52 @@ const CollectionSummary = () => {
   const [agentSelectHighlight, setAgentSelectHighlight] = useState(false);
   const [agentWarningMessage, setAgentWarningMessage] = useState("");
 
+  const [inventoryMetrics, setInventoryMetrics] = useState({
+    totalLoad: 0,
+    totalReturn: 0,
+    totalDamage: 0,
+    nettSales: 0,
+    cashHandoverEntries: [],
+    foodAllowanceEntries: [],
+    incentiveEntries: [],
+    upiHandoverEntries: [],
+    penaltyEntries: [],
+    lockedAgents: {},
+    loadingEntries: [],
+    returnEntries: [],
+    damageEntries: [],
+  });
+
+
+  // Check if current selected agent is locked for the selected date
+  const isCurrentAgentLocked = useMemo(() => {
+    if (!selectedAgent || selectedAgent === "all") return false;
+    const key = selectedAgent.toLowerCase().trim();
+    return Boolean(inventoryMetrics.lockedAgents?.[key]?.isLocked);
+  }, [selectedAgent, inventoryMetrics.lockedAgents]);
+
+  // Check if any specific agent is locked on the selected date
+  const isAgentLocked = useCallback(
+    (agentName) => {
+      if (!agentName || agentName === "-" || agentName === "all") return false;
+      const key = agentName.toLowerCase().trim();
+      return Boolean(inventoryMetrics.lockedAgents?.[key]?.isLocked);
+    },
+    [inventoryMetrics.lockedAgents]
+  );
+
   const openAddModal = (type) => {
     // Check if an agent is selected from the top filter
     if (!selectedAgent || selectedAgent === "all") {
       setAgentWarningMessage("Please select a Delivery Agent from the top option first before entering data.");
+      setAgentSelectHighlight(true);
+      setTimeout(() => setAgentSelectHighlight(false), 3500);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (isCurrentAgentLocked) {
+      setAgentWarningMessage(`Data for ${selectedAgent} on ${selectedDate} is locked and finalized. Unlock it first to add new entries.`);
       setAgentSelectHighlight(true);
       setTimeout(() => setAgentSelectHighlight(false), 3500);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -117,20 +164,6 @@ const CollectionSummary = () => {
     setIsAddModalOpen(false);
     setAddFormError("");
   };
-
-  const [inventoryMetrics, setInventoryMetrics] = useState({
-    totalLoad: 0,
-    totalReturn: 0,
-    totalDamage: 0,
-    nettSales: 0,
-    cashHandoverEntries: [],
-    foodAllowanceEntries: [],
-    incentiveEntries: [],
-    upiHandoverEntries: [],
-    loadingEntries: [],
-    returnEntries: [],
-    damageEntries: [],
-  });
 
   const handleAddEntrySubmit = async (e) => {
     e.preventDefault();
@@ -196,6 +229,8 @@ const CollectionSummary = () => {
         updated.foodAllowanceEntries = [...(prev.foodAllowanceEntries || []), optimisticEntry];
       } else if (addModalType === "incentive") {
         updated.incentiveEntries = [...(prev.incentiveEntries || []), optimisticEntry];
+      } else if (addModalType === "penalty") {
+        updated.penaltyEntries = [...(prev.penaltyEntries || []), optimisticEntry];
       }
       return updated;
     });
@@ -251,8 +286,6 @@ const CollectionSummary = () => {
     return Array.from(list).sort();
   }, [deliveryPartners]);
 
-
-
   const TYPE_CONFIG = {
     load: { title: "Total Load", unit: "Trays", label: "Quantity (Trays)" },
     return: { title: "Total Return", unit: "Trays", label: "Quantity (Trays)" },
@@ -261,8 +294,8 @@ const CollectionSummary = () => {
     upi_handover: { title: "UPI Handover", unit: "₹", label: "Amount (₹)" },
     food_allowance: { title: "Food Allowance", unit: "₹", label: "Amount (₹)" },
     incentive: { title: "Incentives", unit: "₹", label: "Amount (₹)" },
+    penalty: { title: "Penalty", unit: "₹", label: "Penalty Amount (₹)" },
   };
-
 
   const fetchInventoryMetrics = useCallback(async (date) => {
     try {
@@ -279,6 +312,8 @@ const CollectionSummary = () => {
           foodAllowanceEntries: res.data.foodAllowanceEntries || [],
           incentiveEntries: res.data.incentiveEntries || [],
           upiHandoverEntries: res.data.upiHandoverEntries || [],
+          penaltyEntries: res.data.penaltyEntries || [],
+          lockedAgents: res.data.lockedAgents || {},
           loadingEntries: res.data.loadingEntries,
           returnEntries: res.data.returnEntries,
           damageEntries: res.data.damageEntries,
@@ -299,8 +334,14 @@ const CollectionSummary = () => {
     if (selectedDate) {
       fetchInventoryMetrics(selectedDate);
     }
-  }, [selectedDate, fetchInventoryMetrics]);  // Handle edit cell click
+  }, [selectedDate, fetchInventoryMetrics]);
+
+  // Handle edit cell click
   const handleEditCell = (item, field) => {
+    if (isAgentLocked(item.deliveryAgent) || isCurrentAgentLocked) {
+      alert(`Data for agent "${item.deliveryAgent || selectedAgent}" is locked and finalized. Unlock before editing.`);
+      return;
+    }
     let currentValue = 0;
     if (field === "quantity") {
       currentValue = typeof item.quantity === "number" ? item.quantity : 0;
@@ -512,6 +553,7 @@ const CollectionSummary = () => {
       foodAllowanceEntries = [],
       incentiveEntries = [],
       upiHandoverEntries = [],
+      penaltyEntries = [],
       loadingEntries,
       returnEntries,
       damageEntries,
@@ -623,16 +665,19 @@ const CollectionSummary = () => {
       let cashHandover = 0;
       let foodAllowance = 0;
       let incentives = 0;
+      let penalties = 0;
       if (selectedAgent === "all") {
         cashHandover = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
         foodAllowance = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
         incentives = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
+        penalties = penaltyEntries.reduce((sum, item) => sum + item.cash, 0);
       } else {
         const agentFilter = (item) =>
           item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim();
         cashHandover = cashHandoverEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
         foodAllowance = foodAllowanceEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
         incentives = incentiveEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        penalties = penaltyEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
       }
       return {
         totalLoad,
@@ -643,16 +688,31 @@ const CollectionSummary = () => {
         upiHandover: getLatestUpiHandover(upiHandoverEntries),
         foodAllowance,
         incentives,
+        penalties,
       };
     }
 
     if (selectedOutlet === "all") {
-      const load = loadingEntries.reduce((sum, item) => sum + item.quantity, 0);
-      const ret = returnEntries.reduce((sum, item) => sum + item.quantity, 0);
-      const dmg = damageEntries.reduce((sum, item) => sum + item.quantity, 0);
-      const cash = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
-      const food = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
-      const inc = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
+      let load = loadingEntries.reduce((sum, item) => sum + item.quantity, 0);
+      let ret = returnEntries.reduce((sum, item) => sum + item.quantity, 0);
+      let dmg = damageEntries.reduce((sum, item) => sum + item.quantity, 0);
+      let cash = cashHandoverEntries.reduce((sum, item) => sum + item.cash, 0);
+      let food = foodAllowanceEntries.reduce((sum, item) => sum + item.cash, 0);
+      let inc = incentiveEntries.reduce((sum, item) => sum + item.cash, 0);
+      let pen = penaltyEntries.reduce((sum, item) => sum + item.cash, 0);
+
+      if (selectedAgent !== "all") {
+        const agentFilter = (item) =>
+          item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim();
+        load = loadingEntries.filter(agentFilter).reduce((sum, item) => sum + item.quantity, 0);
+        ret = returnEntries.filter(agentFilter).reduce((sum, item) => sum + item.quantity, 0);
+        dmg = damageEntries.filter(agentFilter).reduce((sum, item) => sum + item.quantity, 0);
+        cash = cashHandoverEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        food = foodAllowanceEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        inc = incentiveEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+        pen = penaltyEntries.filter(agentFilter).reduce((sum, item) => sum + item.cash, 0);
+      }
+
       return {
         totalLoad: load,
         totalReturn: ret,
@@ -662,6 +722,7 @@ const CollectionSummary = () => {
         upiHandover: getLatestUpiHandover(upiHandoverEntries),
         foodAllowance: food,
         incentives: inc,
+        penalties: pen,
       };
     }
 
@@ -689,6 +750,10 @@ const CollectionSummary = () => {
       .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
       .reduce((sum, item) => sum + item.cash, 0);
 
+    const filteredPenalty = penaltyEntries
+      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .reduce((sum, item) => sum + item.cash, 0);
+
     return {
       totalLoad: filteredLoad,
       totalReturn: filteredReturn,
@@ -698,8 +763,82 @@ const CollectionSummary = () => {
       upiHandover: getLatestUpiHandover(upiHandoverEntries),
       foodAllowance: filteredFood,
       incentives: filteredIncentive,
+      penalties: filteredPenalty,
     };
   }, [inventoryMetrics, selectedOutlet, selectedAgent, deliveryPartners, salesPartners, findPartnerByName]);
+
+  // Handle locking or unlocking an agent's day
+  const handleToggleLock = async () => {
+    if (!selectedAgent || selectedAgent === "all") {
+      setAgentWarningMessage("Please select a specific Delivery Agent from the top filter before locking data.");
+      setAgentSelectHighlight(true);
+      setTimeout(() => setAgentSelectHighlight(false), 3500);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const nextLockState = !isCurrentAgentLocked;
+    const confirmMsg = nextLockState
+      ? `Are you sure you want to LOCK & SAVE all entries for "${selectedAgent}" on ${selectedDate}?\n\nOnce locked, no edits or new entries will be allowed from web or route app.`
+      : `Are you sure you want to UNLOCK data for "${selectedAgent}" on ${selectedDate}?\n\nThis will re-enable editing and new entries.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setLockingAgent(true);
+    try {
+      const userRole = localStorage.getItem("userType") === "supervisor" ? "Supervisor (Web)" : "Admin (Web)";
+      const dateKey = selectedDate || getTodayDateString();
+
+      const payload = {
+        dateKey,
+        agentName: selectedAgent.trim(),
+        isLocked: nextLockState,
+        summarySnapshot: {
+          totalLoad: displayedMetrics.totalLoad,
+          totalReturn: displayedMetrics.totalReturn,
+          totalDamage: displayedMetrics.totalDamage,
+          nettSales: displayedMetrics.nettSales,
+          totalCash: filteredTotals.totalCash,
+          totalUpi: filteredTotals.totalUpi,
+          totalAmount: filteredTotals.totalAmount,
+          cashHandover: displayedMetrics.cashHandover,
+          upiHandover: displayedMetrics.upiHandover,
+          foodAllowance: displayedMetrics.foodAllowance,
+          incentives: displayedMetrics.incentives,
+          penalties: displayedMetrics.penalties,
+          orderCount: filtered.length,
+        },
+        supervisorName: userRole,
+      };
+
+      const res = await axios.post(`${ADMIN_PATH}/agent-day-lock`, payload);
+
+      if (res.data && res.data.success) {
+        const agentKey = selectedAgent.toLowerCase().trim();
+        setInventoryMetrics((prev) => ({
+          ...prev,
+          lockedAgents: {
+            ...prev.lockedAgents,
+            [agentKey]: {
+              isLocked: nextLockState,
+              lockedAt: new Date().toISOString(),
+              lockedBy: userRole,
+              agentName: selectedAgent,
+            },
+          },
+        }));
+        await fetchInventoryMetrics(dateKey);
+      } else {
+        alert(res.data?.message || "Failed to update lock status");
+      }
+    } catch (err) {
+      console.error("Error toggling lock:", err);
+      alert(err.response?.data?.message || "Error updating lock status");
+    } finally {
+      setLockingAgent(false);
+    }
+  };
+
 
   // Filter customers based on active tab, selected date, agent, and sort
   const filtered = useMemo(() => {
@@ -1399,6 +1538,39 @@ const CollectionSummary = () => {
         </div>
       )}
 
+      {/* ⭐ Locked Status Banner */}
+      {isCurrentAgentLocked && (
+        <div className="mb-5 bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded-r-xl flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
+              <Lock size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-emerald-900">
+                  Data Finalized & Locked: <span className="underline">{selectedAgent}</span>
+                </p>
+                <span className="bg-emerald-200 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Protected
+                </span>
+              </div>
+              <p className="text-xs text-emerald-700 font-medium mt-0.5">
+                All customer delivery quantities, payments, and load/handover entries for this date are locked. No further edits or new entries will be permitted.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleLock}
+            disabled={lockingAgent}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold rounded-lg transition shadow-sm active:scale-95 cursor-pointer ml-4 shrink-0"
+            title="Unlock this agent to allow edits"
+          >
+            {lockingAgent ? <RefreshCw size={14} className="animate-spin" /> : <Unlock size={14} />}
+            <span>Unlock Data</span>
+          </button>
+        </div>
+      )}
+
       {/* Filter Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap items-center">
         {["ALL", "CASH", "UPI"].map((tab) => (
@@ -1438,15 +1610,20 @@ const CollectionSummary = () => {
             className={`border rounded-lg px-3 py-2 text-sm font-medium bg-white transition-all duration-300 ${
               agentSelectHighlight
                 ? "border-orange-500 ring-4 ring-orange-300 shadow-md font-bold text-orange-900"
+                : isCurrentAgentLocked
+                ? "border-emerald-500 ring-2 ring-emerald-200 text-emerald-900 font-bold"
                 : "border-gray-300 focus:ring-2 focus:ring-purple-500"
             }`}
           >
             <option value="all">All Delivery Agents</option>
-            {deliveryAgentOptions.map((agent) => (
-              <option key={agent} value={agent}>
-                {agent}
-              </option>
-            ))}
+            {deliveryAgentOptions.map((agent) => {
+              const locked = isAgentLocked(agent);
+              return (
+                <option key={agent} value={agent}>
+                  {locked ? `🔒 ${agent} (Locked)` : agent}
+                </option>
+              );
+            })}
           </select>
         </div>
 
@@ -1503,32 +1680,72 @@ const CollectionSummary = () => {
           <button
             onClick={fetchCollectionSummary}
             disabled={refreshing}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-lg transition"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-lg transition cursor-pointer"
           >
             <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
             <span>Refresh</span>
           </button>
           <button
             onClick={handleExcelExport}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition w-full justify-center"
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition w-full justify-center cursor-pointer"
           >
             <Download size={18} />
             <span>Export</span>
           </button>
         </div>
 
-        {/* Recalculate Button */}
-        <button
-          onClick={handleRecalculate}
-          disabled={recalculating || !data}
-          className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-semibold py-2 px-4 rounded-lg transition"
-          title="Clean old entries and keep latest 20 days"
-        >
-          <Zap size={18} className={recalculating ? "animate-spin" : ""} />
-          <span>Recalculate</span>
-        </button>
+        {/* Recalculate & Lock / Save Data Action Container */}
+        <div className="flex flex-col gap-2">
+          {/* Recalculate Button */}
+          <button
+            onClick={handleRecalculate}
+            disabled={recalculating || !data}
+            className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-semibold py-2 px-4 rounded-lg transition cursor-pointer"
+            title="Clean old entries and keep latest 30 days"
+          >
+            <Zap size={18} className={recalculating ? "animate-spin" : ""} />
+            <span>Recalculate</span>
+          </button>
 
-        {/* Calculator Controls */}
+          {/* ⭐ Lock / Save Data Button */}
+          {selectedAgent === "all" ? (
+            <button
+              onClick={() => {
+                setAgentWarningMessage("Please select a specific Delivery Agent from the top filter before locking data.");
+                setAgentSelectHighlight(true);
+                setTimeout(() => setAgentSelectHighlight(false), 3500);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white font-semibold py-2 px-4 rounded-lg transition shadow-sm cursor-pointer"
+              title="Select a delivery agent first to lock daily data"
+            >
+              <Lock size={16} />
+              <span>Lock / Save</span>
+            </button>
+          ) : isCurrentAgentLocked ? (
+            <button
+              onClick={handleToggleLock}
+              disabled={lockingAgent}
+              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold py-2 px-4 rounded-lg transition shadow-sm cursor-pointer border border-emerald-500 animate-in fade-in"
+              title={`Data is locked for ${selectedAgent}. Click to Unlock`}
+            >
+              {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
+              <span>Data Locked 🔒</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleToggleLock}
+              disabled={lockingAgent}
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 text-white font-bold py-2 px-4 rounded-lg transition shadow-md active:scale-95 cursor-pointer animate-in fade-in"
+              title={`Lock & Save all entries for ${selectedAgent} on ${selectedDate}`}
+            >
+              {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
+              <span>Lock / Save</span>
+            </button>
+          )}
+        </div>
+
+        {/* Calculator Controls & Penalty Button */}
         <div className="flex items-center gap-2 ml-2">
           <input
             type="number"
@@ -1546,22 +1763,38 @@ const CollectionSummary = () => {
           />
           <button
             onClick={handleCalculate}
-            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition whitespace-nowrap"
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
           >
             Calculate
+          </button>
+          {/* ⭐ Penalty Button */}
+          <button
+            onClick={() => openAddModal("penalty")}
+            disabled={isCurrentAgentLocked}
+            className={`px-3 py-2 text-white font-semibold rounded-lg transition whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              isCurrentAgentLocked
+                ? "bg-gray-400 cursor-not-allowed opacity-60"
+                : "bg-rose-600 hover:bg-rose-700 cursor-pointer"
+            }`}
+            title={isCurrentAgentLocked ? "Day is locked for this agent" : "Add penalty for selected agent"}
+          >
+            <AlertTriangle size={16} />
+            <span>Penalty</span>
           </button>
         </div>
       </div>
 
+
       {/* Summary Stats Cards */}
       {/* Row 1 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         {(() => {
           const sales = displayedMetrics.nettSales;
           const load = displayedMetrics.totalLoad;
           const ret = displayedMetrics.totalReturn;
           const dmg = displayedMetrics.totalDamage;
           const inc = displayedMetrics.incentives || 0;
+          const pen = displayedMetrics.penalties || 0;
 
           const cards = [
             {
@@ -1607,6 +1840,14 @@ const CollectionSummary = () => {
               topRight: "Amt",
               addType: "incentive",
             },
+            {
+              label: "Penalties",
+              value: pen,
+              format: (v) => `₹${v.toLocaleString("en-IN")}`,
+              color: "border-t-rose-500",
+              topRight: "Amt",
+              addType: "penalty",
+            },
           ];
 
           return cards.map((card) => (
@@ -1619,22 +1860,36 @@ const CollectionSummary = () => {
                 <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
               </div>
               <div className="flex items-center justify-between gap-2 mt-3">
-                <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-bold text-gray-900">
+                <div className="flex items-baseline gap-1">
+                  <p className="text-2xl font-bold text-gray-900">
                     {card.format(card.value)}
                   </p>
                   {card.unit && (
-                    <span className="text-xl font-semibold text-gray-500 ml-1">{card.unit}</span>
+                    <span className="text-base font-semibold text-gray-500 ml-1">{card.unit}</span>
                   )}
                 </div>
                 {card.addType && (
                   <button
                     onClick={() => openAddModal(card.addType)}
-                    className="px-3 py-1 border-2 border-purple-600 text-purple-700 hover:bg-purple-50 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer ml-auto shrink-0"
-                    title={`Add ${card.label}`}
+                    disabled={isCurrentAgentLocked}
+                    className={`px-2.5 py-1 border-2 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 ml-auto shrink-0 ${
+                      isCurrentAgentLocked
+                        ? "border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed"
+                        : "border-purple-600 text-purple-700 hover:bg-purple-50 cursor-pointer"
+                    }`}
+                    title={isCurrentAgentLocked ? "Entries are locked for this agent" : `Add ${card.label}`}
                   >
-                    <span>ADD</span>
-                    <span className="text-sm font-black">+</span>
+                    {isCurrentAgentLocked ? (
+                      <>
+                        <span className="text-[10px]">LOCKED</span>
+                        <Lock size={11} />
+                      </>
+                    ) : (
+                      <>
+                        <span>ADD</span>
+                        <span className="text-sm font-black">+</span>
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -1772,11 +2027,25 @@ const CollectionSummary = () => {
                 {card.addType && (
                   <button
                     onClick={() => openAddModal(card.addType)}
-                    className="px-3 py-1 border-2 border-purple-600 text-purple-700 hover:bg-purple-50 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer ml-auto shrink-0"
-                    title={`Add ${card.label}`}
+                    disabled={isCurrentAgentLocked}
+                    className={`px-3 py-1 border-2 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 ml-auto shrink-0 ${
+                      isCurrentAgentLocked
+                        ? "border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed"
+                        : "border-purple-600 text-purple-700 hover:bg-purple-50 cursor-pointer"
+                    }`}
+                    title={isCurrentAgentLocked ? "Entries are locked for this agent" : `Add ${card.label}`}
                   >
-                    <span>ADD</span>
-                    <span className="text-sm font-black">+</span>
+                    {isCurrentAgentLocked ? (
+                      <>
+                        <span className="text-[10px]">LOCKED</span>
+                        <Lock size={12} />
+                      </>
+                    ) : (
+                      <>
+                        <span>ADD</span>
+                        <span className="text-sm font-black">+</span>
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -1844,7 +2113,9 @@ const CollectionSummary = () => {
                 </td>
               </tr>
             )}
-            {filtered.map((item) => (
+            {filtered.map((item) => {
+              const rowLocked = isAgentLocked(item.deliveryAgent) || isCurrentAgentLocked;
+              return (
               <tr
                 key={item.customerId}
                 className="border-t hover:bg-gray-50 transition"
@@ -1856,7 +2127,14 @@ const CollectionSummary = () => {
                   {item.customerName}
                 </td>
                 <td className="p-3 font-medium text-gray-700">
-                  {item.deliveryAgent}
+                  <div className="flex items-center gap-1.5">
+                    <span>{item.deliveryAgent}</span>
+                    {rowLocked && (
+                      <span title={`Data locked for ${item.deliveryAgent}`}>
+                        <Lock size={13} className="text-emerald-600 inline" />
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="p-3 font-medium text-gray-700">
                   {item.deliveryTime}
@@ -1878,7 +2156,7 @@ const CollectionSummary = () => {
                       <button
                         onClick={() => handleSaveCell(item)}
                         disabled={savingEdit}
-                        className="text-green-600 hover:text-green-700 disabled:text-green-400"
+                        className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
                         title="Save"
                       >
                         <Check size={16} />
@@ -1886,7 +2164,7 @@ const CollectionSummary = () => {
                       <button
                         onClick={handleCancelEdit}
                         disabled={savingEdit}
-                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
                         title="Cancel"
                       >
                         <X size={16} />
@@ -1895,13 +2173,19 @@ const CollectionSummary = () => {
                   ) : (
                     <div className="flex items-center justify-center gap-2 group">
                       <span>{item.quantity}</span>
-                      <button
-                        onClick={() => handleEditCell(item, "quantity")}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity"
-                        title="Edit quantity"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      {rowLocked ? (
+                        <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
+                          <Lock size={12} className="opacity-40" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleEditCell(item, "quantity")}
+                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
+                          title="Edit quantity"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -1933,7 +2217,7 @@ const CollectionSummary = () => {
                       <button
                         onClick={() => handleSaveCell(item)}
                         disabled={savingEdit}
-                        className="text-green-600 hover:text-green-700 disabled:text-green-400"
+                        className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
                         title="Save"
                       >
                         <Check size={16} />
@@ -1941,7 +2225,7 @@ const CollectionSummary = () => {
                       <button
                         onClick={handleCancelEdit}
                         disabled={savingEdit}
-                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
                         title="Cancel"
                       >
                         <X size={16} />
@@ -1954,13 +2238,19 @@ const CollectionSummary = () => {
                           ? `₹${item.cash.toLocaleString("en-IN")}`
                           : item.cash}
                       </span>
-                      <button
-                        onClick={() => handleEditCell(item, "cash")}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity"
-                        title="Edit cash amount"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      {rowLocked ? (
+                        <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
+                          <Lock size={12} className="opacity-40" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleEditCell(item, "cash")}
+                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
+                          title="Edit cash amount"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -1981,7 +2271,7 @@ const CollectionSummary = () => {
                       <button
                         onClick={() => handleSaveCell(item)}
                         disabled={savingEdit}
-                        className="text-green-600 hover:text-green-700 disabled:text-green-400"
+                        className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
                         title="Save"
                       >
                         <Check size={16} />
@@ -1989,7 +2279,7 @@ const CollectionSummary = () => {
                       <button
                         onClick={handleCancelEdit}
                         disabled={savingEdit}
-                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
                         title="Cancel"
                       >
                         <X size={16} />
@@ -2002,13 +2292,19 @@ const CollectionSummary = () => {
                           ? `₹${item.upi.toLocaleString("en-IN")}`
                           : item.upi}
                       </span>
-                      <button
-                        onClick={() => handleEditCell(item, "upi")}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity"
-                        title="Edit UPI amount"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      {rowLocked ? (
+                        <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
+                          <Lock size={12} className="opacity-40" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleEditCell(item, "upi")}
+                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
+                          title="Edit UPI amount"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -2046,9 +2342,11 @@ const CollectionSummary = () => {
                   )}
                 </td>
               </tr>
-            ))}
+            );
+          })}
 
             {/* Totals Row */}
+
             <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
               <td colSpan="5" className="p-3 text-gray-900">
                 TOTAL ({filtered.length}{" "}
