@@ -380,8 +380,12 @@ const CustomerRetention = () => {
   const [computedOverallStats, setComputedOverallStats] = useState({
     stockAvailable: 0,
     shopClosed: 0,
-    otherVendor: 0,
     confirmedTomorrow: 0,
+    priceIssue: 0,
+    otherVendor: 0,
+    needCredit: 0,
+    qualityIssue: 0,
+    ownerNotAvailable: 0,
     totalShops: 0,
   });
   const [startRange, setStartRange] = useState("");
@@ -390,10 +394,14 @@ const CustomerRetention = () => {
   const [customers, setCustomers] = useState([]);
   const [counts, setCounts] = useState({
     all: 0,
-    stock_available: 0,
     shop_closed: 0,
-    other_vendor: 0,
+    stock_available: 0,
     confirmed_tomorrow: 0,
+    price_issue: 0,
+    other_vendor: 0,
+    need_credit: 0,
+    quality_issue: 0,
+    owner_not_available: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -409,16 +417,16 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:v4:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v5:${date}:${category}:${agent}:${sort}:${page}`;
       const isToday = date === getTodayDate();
       const cached = isToday ? null : cacheRef.current[cacheKey];
 
       if (cached && Date.now() - cached.savedAt < RETENTION_CACHE_TTL_MS) {
         setDates(cached.dates || getPastThreeDatesPlusToday(date));
         setCustomers(cached.customers || []);
-        setCounts(cached.counts || { all: 0, stock_available: 0, price_mismatch: 0, shop_closed: 0, other_vendor: 0, confirmed_tomorrow: 0 });
+        setCounts(cached.counts || { all: 0, shop_closed: 0, stock_available: 0, confirmed_tomorrow: 0, price_issue: 0, other_vendor: 0, need_credit: 0, quality_issue: 0, owner_not_available: 0 });
         setComputedAgentStats(cached.agentStats || []);
-        setComputedOverallStats(cached.overallStats || { stockAvailable: 0, shopClosed: 0, otherVendor: 0, confirmedTomorrow: 0, totalShops: 0 });
+        setComputedOverallStats(cached.overallStats || { stockAvailable: 0, shopClosed: 0, confirmedTomorrow: 0, priceIssue: 0, otherVendor: 0, needCredit: 0, qualityIssue: 0, ownerNotAvailable: 0, totalShops: 0 });
         setTotalPages(cached.totalPages || 1);
         setTotalCustomers(cached.total || 0);
         setError("");
@@ -458,14 +466,16 @@ const CustomerRetention = () => {
 
         const newCounts = {
           all: 0,
-          stock_available: 0,
           shop_closed: 0,
-          other_vendor: 0,
+          stock_available: 0,
           confirmed_tomorrow: 0,
+          price_issue: 0,
+          other_vendor: 0,
+          need_credit: 0,
+          quality_issue: 0,
+          owner_not_available: 0,
           ...(payload.counts || {}),
         };
-        newCounts.shop_closed =
-          payload.counts?.shop_closed ?? payload.counts?.price_mismatch ?? newCounts.shop_closed;
         const newTotalPages = payload.totalPages || 1;
         const newTotal = payload.total || 0;
         const nextAgentStats = Array.isArray(payload.retentionAgentCategoryStats)
@@ -474,8 +484,12 @@ const CustomerRetention = () => {
         const nextOverallStats = payload.retentionOverallCategoryStats || {
           stockAvailable: 0,
           shopClosed: 0,
-          otherVendor: 0,
           confirmedTomorrow: 0,
+          priceIssue: 0,
+          otherVendor: 0,
+          needCredit: 0,
+          qualityIssue: 0,
+          ownerNotAvailable: 0,
           totalShops: 0,
         };
 
@@ -501,9 +515,29 @@ const CustomerRetention = () => {
       } catch (err) {
         setError(err?.response?.data?.message || `Unable to load customer retention data for ${date}`);
         setCustomers([]);
-        setCounts({ all: 0, stock_available: 0, shop_closed: 0, other_vendor: 0 });
+        setCounts({
+          all: 0,
+          shop_closed: 0,
+          stock_available: 0,
+          confirmed_tomorrow: 0,
+          price_issue: 0,
+          other_vendor: 0,
+          need_credit: 0,
+          quality_issue: 0,
+          owner_not_available: 0,
+        });
         setComputedAgentStats([]);
-        setComputedOverallStats({ stockAvailable: 0, shopClosed: 0, otherVendor: 0, totalShops: 0 });
+        setComputedOverallStats({
+          stockAvailable: 0,
+          shopClosed: 0,
+          confirmedTomorrow: 0,
+          priceIssue: 0,
+          otherVendor: 0,
+          needCredit: 0,
+          qualityIssue: 0,
+          ownerNotAvailable: 0,
+          totalShops: 0,
+        });
         setTotalPages(1);
         setTotalCustomers(0);
         setDates(getPastThreeDatesPlusToday(date));
@@ -516,7 +550,17 @@ const CustomerRetention = () => {
 
   const currentAgentStats = selectedAgent === "all"
     ? computedOverallStats
-    : (computedAgentStats.find((a) => a.name === selectedAgent) || { stockAvailable: 0, shopClosed: 0, otherVendor: 0, totalShops: 0 });
+    : (computedAgentStats.find((a) => a.name === selectedAgent) || {
+        stockAvailable: 0,
+        shopClosed: 0,
+        confirmedTomorrow: 0,
+        priceIssue: 0,
+        otherVendor: 0,
+        needCredit: 0,
+        qualityIssue: 0,
+        ownerNotAvailable: 0,
+        totalShops: 0,
+      });
 
   // Load data whenever relevant state changes
   useEffect(() => {
@@ -791,11 +835,11 @@ const CustomerRetention = () => {
               className="h-12 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">
-                {`All Delivery Agents | Stock Available: ${computedOverallStats.stockAvailable} | Shop Closed: ${computedOverallStats.shopClosed} | Other Vendor: ${computedOverallStats.otherVendor} | Confirmed Tomorrow: ${computedOverallStats.confirmedTomorrow || 0} | Total Shops: ${computedOverallStats.totalShops}`}
+                {`All Delivery Agents | Stock Available: ${computedOverallStats.stockAvailable} | Shop Closed: ${computedOverallStats.shopClosed} | Confirmed Tomorrow: ${computedOverallStats.confirmedTomorrow || 0} | Price Issue: ${computedOverallStats.priceIssue || 0} | Other Vendor: ${computedOverallStats.otherVendor} | Need Credit: ${computedOverallStats.needCredit || 0} | Quality Issue: ${computedOverallStats.qualityIssue || 0} | Owner Not Available: ${computedOverallStats.ownerNotAvailable || 0} | Total Shops: ${computedOverallStats.totalShops}`}
               </option>
               {computedAgentStats.map((agent) => (
                 <option key={agent.name} value={agent.name}>
-                  {`${agent.name} | Stock Available: ${agent.stockAvailable} | Shop Closed: ${agent.shopClosed} | Other Vendor: ${agent.otherVendor} | Confirmed Tomorrow: ${agent.confirmedTomorrow || 0} | Total Shops: ${agent.totalShops}`}
+                  {`${agent.name} | Stock Available: ${agent.stockAvailable} | Shop Closed: ${agent.shopClosed} | Confirmed Tomorrow: ${agent.confirmedTomorrow || 0} | Price Issue: ${agent.priceIssue || 0} | Other Vendor: ${agent.otherVendor} | Need Credit: ${agent.needCredit || 0} | Quality Issue: ${agent.qualityIssue || 0} | Owner Not Available: ${agent.ownerNotAvailable || 0} | Total Shops: ${agent.totalShops}`}
                 </option>
               ))}
             </select>
@@ -848,20 +892,35 @@ const CustomerRetention = () => {
       )}
 
       {currentAgentStats && (
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-center gap-3 shadow-sm">
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex flex-wrap items-center gap-2.5 shadow-sm">
           <span className="text-sm font-semibold uppercase tracking-wide text-slate-700 mr-2">
             {selectedAgent === "all" ? "All Delivery Agents" : selectedAgent}
           </span>
-          <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+          <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
             Stock Available: {currentAgentStats.stockAvailable}
           </span>
-          <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+          <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
             Shop Closed: {currentAgentStats.shopClosed}
           </span>
-          <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+          <span className="inline-flex items-center rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Confirmed Tomorrow: {currentAgentStats.confirmedTomorrow || 0}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-orange-50 text-orange-700 border border-orange-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Price Issue: {currentAgentStats.priceIssue || 0}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 border border-violet-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
             Other Vendor: {currentAgentStats.otherVendor}
           </span>
-          <span className="inline-flex items-center rounded-full bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+          <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Need Credit: {currentAgentStats.needCredit || 0}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Quality Issue: {currentAgentStats.qualityIssue || 0}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 px-2.5 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+            Owner Not Available: {currentAgentStats.ownerNotAvailable || 0}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-800 border border-slate-300 px-2.5 py-1 text-xs font-bold shadow-sm transition-all hover:scale-105">
             Total Shops: {currentAgentStats.totalShops}
           </span>
         </div>
@@ -879,16 +938,31 @@ const CustomerRetention = () => {
                   {agent.name}
                 </span>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                  <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
                     Stock Available: {agent.stockAvailable}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                  <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
                     Shop Closed: {agent.shopClosed}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 border border-violet-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                  <span className="inline-flex items-center rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Confirmed Tomorrow: {agent.confirmedTomorrow || 0}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Price Issue: {agent.priceIssue || 0}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
                     Other Vendor: {agent.otherVendor}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                  <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Need Credit: {agent.needCredit || 0}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Quality Issue: {agent.qualityIssue || 0}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 px-2 py-0.5 text-xs font-medium shadow-sm transition-all hover:scale-105">
+                    Owner Not Available: {agent.ownerNotAvailable || 0}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-800 border border-slate-300 px-2 py-0.5 text-xs font-bold shadow-sm transition-all hover:scale-105">
                     Total Shops: {agent.totalShops}
                   </span>
                 </div>

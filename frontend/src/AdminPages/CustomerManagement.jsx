@@ -529,8 +529,17 @@ export default function CustomerManagement() {
         const entry = last8Days[todayDate];
         const entryObj = typeof entry === "object" ? entry : {};
         const status = getLatestStatus(c);
-        const reason = String(entryObj.reason || "").trim().toLowerCase();
-        return status === "Checked" && reason === activeRemarkTab.toLowerCase();
+        const reason = String(entryObj.reason || entryObj.status || entryObj.type || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+        const matchVal = activeRemarkTab.toLowerCase();
+        return (
+          status === "Checked" &&
+          (reason === matchVal ||
+            (matchVal === "price_issue" && (reason === "price_issue" || reason === "price_mismatch")) ||
+            (matchVal === "confirmed_tomorrow" && (reason === "confirmed_tomorrow" || reason === "confirmed_for_tomorrow")))
+        );
       });
     }
 
@@ -1424,9 +1433,13 @@ export default function CustomerManagement() {
         {[
           { label: "ALL REMARKS", value: "ALL" },
           { label: "Stock Available", value: "stock_available" },
-          { label: "Other Vendor", value: "other_vendor" },
           { label: "Shop Closed", value: "shop_closed" },
           { label: "Confirmed Tomorrow", value: "confirmed_tomorrow" },
+          { label: "Price Issue", value: "price_issue" },
+          { label: "Other Vendor", value: "other_vendor" },
+          { label: "Need Credit", value: "need_credit" },
+          { label: "Quality Issue", value: "quality_issue" },
+          { label: "Owner Not Available", value: "owner_not_available" },
         ].map((tab) => (
           <button
             key={tab.value}
@@ -1468,25 +1481,6 @@ export default function CustomerManagement() {
           </select>
         </div>
 
-        {/* Logic 2: Customer State */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-            Customer State:
-          </label>
-          <select
-            value={activeStateFilter}
-            onChange={(e) => setActiveStateFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="ALL">ALL STATES</option>
-            {LOGIC_2_CUSTOMER_STATE.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Logic 3: Purchase Intent */}
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
@@ -1499,6 +1493,25 @@ export default function CustomerManagement() {
           >
             <option value="ALL">ALL INTENTS</option>
             {LOGIC_3_PURCHASE_INTENT.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 2: Customer State */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Customer State:
+          </label>
+          <select
+            value={activeStateFilter}
+            onChange={(e) => setActiveStateFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL STATES</option>
+            {LOGIC_2_CUSTOMER_STATE.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
