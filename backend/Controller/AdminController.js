@@ -2811,12 +2811,17 @@ const getInventoryMetrics = async (req, res) => {
         if (!isNaN(parsed)) cashVal = parsed;
       }
       penaltyEntries.push({
+        id: doc.id,
         cash: cashVal,
+        amount: cashVal,
         agentName: data.agentName || "",
         outletName: data.outletName || "",
         supervisorName: data.supervisorName || "",
         remarks: data.remarks || "",
+        penaltyType: data.penaltyType || data.type || "Early Log Out",
+        photoUrl: data.photoUrl || "",
         createdAt: data.createdAt || null,
+        timestamp: data.timestamp || data.createdAt || null,
       });
     });
 
@@ -2871,14 +2876,14 @@ const addInventoryEntry = async (req, res) => {
   try {
     const { type, dateKey, agentName, value, remarks } = req.body;
 
-    if (!type || !dateKey || !agentName || value === undefined || value === null) {
+    if (!type || !dateKey || !agentName) {
       return res.status(400).json({
         success: false,
-        message: "Type, dateKey, agentName, and value are required.",
+        message: "Type, dateKey, and agentName are required.",
       });
     }
 
-    const numVal = Number(value);
+    const numVal = value !== undefined && value !== null && value !== "" ? Number(value) : 0;
     if (isNaN(numVal) || numVal < 0) {
       return res.status(400).json({
         success: false,
@@ -2941,6 +2946,8 @@ const addInventoryEntry = async (req, res) => {
       outletName,
       supervisorName: req.body.supervisorName || "Admin (Web)",
       remarks: remarks || "",
+      penaltyType: req.body.penaltyType || (type === "penalty" ? "Early Log Out" : undefined),
+      photoUrl: req.body.photoUrl || "",
       createdAt: timestamp,
       timestamp: timestamp,
     };
@@ -3217,6 +3224,132 @@ const getAgentDayLockStatus = async (req, res) => {
   }
 };
 
+// Controller to fetch penalties over a date range (for single person or all agents)
+const getPenalties = async (req, res) => {
+  try {
+    const { fromDate, toDate, agentName } = req.query;
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+
+    let queryRef = invDb.collection("penalty_entries");
+
+    if (fromDate && toDate) {
+      if (fromDate === toDate) {
+        queryRef = queryRef.where("dateKey", "==", fromDate);
+      } else {
+        queryRef = queryRef.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+      }
+    } else if (fromDate) {
+      queryRef = queryRef.where("dateKey", "==", fromDate);
+    }
+
+    const snap = await queryRef.get();
+    let penalties = [];
+
+    snap.forEach((doc) => {
+      const data = doc.data();
+      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : 0));
+      let cashVal = 0;
+      if (typeof val === "number" && !isNaN(val)) {
+        cashVal = val;
+      } else if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed)) cashVal = parsed;
+      }
+
+      penalties.push({
+        id: doc.id,
+        dateKey: data.dateKey || "",
+        agentName: data.agentName || "",
+        outletName: data.outletName || "",
+        supervisorName: data.supervisorName || "Admin (Web)",
+        penaltyType: data.penaltyType || "Early Log Out",
+        cash: cashVal,
+        amount: cashVal,
+        remarks: data.remarks || "",
+        photoUrl: data.photoUrl || "",
+        createdAt: data.createdAt || null,
+        timestamp: data.timestamp || data.createdAt || null,
+      });
+    });
+
+    if (agentName && agentName !== "__all__" && agentName !== "all") {
+      const targetAgent = agentName.toLowerCase().trim();
+      penalties = penalties.filter((p) => (p.agentName || "").toLowerCase().trim() === targetAgent);
+    }
+
+    // Sort by timestamp or dateKey descending (newest first)
+    penalties.sort((a, b) => {
+      const tA = a.createdAt ? new Date(a.createdAt).getTime() : (a.dateKey ? new Date(a.dateKey).getTime() : 0);
+      const tB = b.createdAt ? new Date(b.createdAt).getTime() : (b.dateKey ? new Date(b.dateKey).getTime() : 0);
+      return tB - tA;
+    });
+
+    return res.status(200).json({
+      success: true,
+      penalties,
+      count: penalties.length,
+    });
+  } catch (err) {
+    console.error("getPenalties error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch penalties",
+      error: err.message,
+    });
+  }
+};
+
+// Controller to delete a penalty entry
+const deletePenaltyEntry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Penalty ID is required" });
+    }
+
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+
+    const docRef = invDb.collection("penalty_entries").doc(id);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, message: "Penalty entry not found" });
+    }
+
+    const data = docSnap.data();
+    const dateKey = data.dateKey;
+    const agentName = data.agentName;
+
+    // Check lock status
+    if (dateKey && agentName) {
+      const lockDocId = `${dateKey}_${agentName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_")}`;
+      const lockSnap = await invDb.collection("daily_agent_locks").doc(lockDocId).get();
+      if (lockSnap.exists && lockSnap.data()?.isLocked) {
+        return res.status(403).json({
+          success: false,
+          message: `Cannot delete: Data for agent "${agentName}" on date ${dateKey} is locked and finalized.`,
+        });
+      }
+    }
+
+    await docRef.delete();
+
+    return res.status(200).json({
+      success: true,
+      message: "Penalty entry deleted successfully",
+    });
+  } catch (err) {
+    console.error("deletePenaltyEntry error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete penalty entry",
+      error: err.message,
+    });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -3243,6 +3376,8 @@ export {
   addInventoryEntry,
   toggleAgentDayLock,
   getAgentDayLockStatus,
+  getPenalties,
+  deletePenaltyEntry,
   // Priority management
   getPriorities,
   addPriority,

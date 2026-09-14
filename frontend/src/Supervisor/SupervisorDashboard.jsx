@@ -16,6 +16,7 @@ export default function SupervisorDashboard() {
     { label: "Customer Info", path: "/supervisor/customers" },
     { label: "View Personnel", path: "/supervisor/personnel" },
     { label: "Collections", path: "/supervisor/collections" },
+    { label: "Penalty Reports", path: "/supervisor/penalty" },
     { label: "Report", path: "/supervisor/report" },
     { label: "Customer Management", path: "/supervisor/customer-management" },
     { label: "Customer Map", path: "/supervisor/customer-map" },

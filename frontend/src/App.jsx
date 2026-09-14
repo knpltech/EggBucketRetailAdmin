@@ -13,6 +13,7 @@ import Report from "./AdminPages/Report";
 import CustomerRetention from "./AdminPages/CustomerRetention";
 import DummyAISuggestions from "./AdminPages/DummyAISuggestions";
 import CollectionSummary from "./AdminPages/CollectionSummary";
+import PenaltyManagement from "./AdminPages/PenaltyManagement";
 import BusinessStatistics from "./AdminPages/BusinessStatistics/index";
 import CustomerView from "./Admin-View/CustomerView";
 import CustomerDetails from "./CustomerPages/CustomerDetails";
@@ -89,6 +90,7 @@ function App() {
         <Route path="customer-retention" element={<CustomerRetention />} />
         <Route path="dummy-ai-suggestions" element={<DummyAISuggestions />} />
         <Route path="collections" element={<CollectionSummary />} />
+        <Route path="penalty" element={<PenaltyManagement />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
         <Route path="customer-management" element={<CustomerManagement />} />
         <Route path="prime-customers" element={<CallingCustomers />} />
@@ -129,6 +131,7 @@ function App() {
         <Route path="customers" element={<SupCustomerInfo />} />
         <Route path="personnel" element={<SupPersonnelList />} />
         <Route path="collections" element={<CollectionSummary />} />
+        <Route path="penalty" element={<PenaltyManagement />} />
         <Route path="report" element={<SupReport />} />
         <Route path="customer-management" element={<SupCustomerManagement />} />
         <Route path="customer-map" element={<SupcustomerMap />} />

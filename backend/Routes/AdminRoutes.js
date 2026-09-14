@@ -74,6 +74,8 @@ import {
   addInventoryEntry,
   toggleAgentDayLock,
   getAgentDayLockStatus,
+  getPenalties,
+  deletePenaltyEntry,
   getPriorities,
   addPriority,
   updatePriority,
@@ -146,6 +148,8 @@ router.get("/customer/retention", getRetentionCustomers);
 router.post("/customer/retention/reset", resetRetentionCustomer);
 router.get("/inventory-metrics", getInventoryMetrics);
 router.post("/add-inventory-entry", addInventoryEntry);
+router.get("/penalties", getPenalties);
+router.delete("/penalties/:id", deletePenaltyEntry);
 router.post("/agent-day-lock", toggleAgentDayLock);
 router.get("/agent-day-lock-status", getAgentDayLockStatus);
 

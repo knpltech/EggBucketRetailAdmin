@@ -92,6 +92,7 @@ const CollectionSummary = () => {
   const [addFormDate, setAddFormDate] = useState("");
   const [addFormAgent, setAddFormAgent] = useState("");
   const [addFormValue, setAddFormValue] = useState("");
+  const [addFormPenaltyType, setAddFormPenaltyType] = useState("Early Log Out");
   const [addFormRemarks, setAddFormRemarks] = useState("");
   const [addFormSubmitting, setAddFormSubmitting] = useState(false);
   const [addFormError, setAddFormError] = useState("");
@@ -155,6 +156,9 @@ const CollectionSummary = () => {
     setAddFormDate(selectedDate || getTodayDateString());
     setAddFormAgent(selectedAgent);
     setAddFormValue("");
+    if (type === "penalty") {
+      setAddFormPenaltyType("Login Delay");
+    }
     setAddFormRemarks("");
     setAddFormError("");
     setIsAddModalOpen(true);
@@ -179,21 +183,21 @@ const CollectionSummary = () => {
 
     const valNum = Number(addFormValue);
     const dateKey = selectedDate || getTodayDateString();
-    const userRole = localStorage.getItem("userType") || "admin";
-    const supervisorName = userRole === "supervisor" ? "Supervisor (Web)" : "Admin (Web)";
+    const supervisorName =
+      localStorage.getItem("userType") === "supervisor"
+        ? "Supervisor (Web)"
+        : "Admin (Web)";
 
-    // Find outlet name if available
-    const partner = deliveryPartners.find((p) => (p.name || p.displayName) === currentAgent.trim()) ||
-                    salesPartners.find((p) => (p.name || p.displayName) === currentAgent.trim());
-    const outletName = partner?.outlet || "";
-
+    // Construct optimistic item
     const optimisticEntry = {
       dateKey,
       agentName: currentAgent.trim(),
-      outletName,
+      outletName: (deliveryPartners.find((p) => p.name === currentAgent)?.outlet) || "",
       supervisorName,
       remarks: addFormRemarks.trim(),
+      penaltyType: addModalType === "penalty" ? addFormPenaltyType : undefined,
       createdAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
     };
 
     if (addModalType === "load" || addModalType === "return" || addModalType === "damage") {
@@ -248,6 +252,7 @@ const CollectionSummary = () => {
         dateKey,
         agentName: currentAgent.trim(),
         value: valNum,
+        penaltyType: addModalType === "penalty" ? addFormPenaltyType : undefined,
         remarks: addFormRemarks.trim(),
         supervisorName,
       };
@@ -2435,6 +2440,37 @@ const CollectionSummary = () => {
                   </span>
                 </div>
               </div>
+
+              {/* Penalty Type Selection when addModalType is penalty */}
+              {addModalType === "penalty" && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
+                    Violation / Penalty Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={addFormPenaltyType}
+                    onChange={(e) => setAddFormPenaltyType(e.target.value)}
+                    className="w-full bg-white border-2 border-purple-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-800 outline-none focus:border-purple-500"
+                  >
+                    {[
+                      "Login Delay",
+                      "Customer Un-Attended",
+                      "Unpolite Behaviour to Customer",
+                      "Non Negotiating Attitude",
+                      "Early Log Out",
+                      "Non Completion of Customers Alloted",
+                      "Un-Authorised Leave",
+                      "Vehicle Charging Operation",
+                      "Cleaning of Vehicle",
+                      "Excess Damage",
+                    ].map((pt) => (
+                      <option key={pt} value={pt}>
+                        {pt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Quantity / Amount Input */}
               <div>
