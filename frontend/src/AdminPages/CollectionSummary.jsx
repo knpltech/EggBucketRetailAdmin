@@ -1792,14 +1792,13 @@ const CollectionSummary = () => {
 
       {/* Summary Stats Cards */}
       {/* Row 1 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {(() => {
           const sales = displayedMetrics.nettSales;
           const load = displayedMetrics.totalLoad;
           const ret = displayedMetrics.totalReturn;
           const dmg = displayedMetrics.totalDamage;
           const inc = displayedMetrics.incentives || 0;
-          const pen = displayedMetrics.penalties || 0;
 
           const cards = [
             {
@@ -1844,14 +1843,6 @@ const CollectionSummary = () => {
               color: "border-t-purple-500",
               topRight: "Amt",
               addType: "incentive",
-            },
-            {
-              label: "Penalties",
-              value: pen,
-              format: (v) => `₹${v.toLocaleString("en-IN")}`,
-              color: "border-t-rose-500",
-              topRight: "Amt",
-              addType: "penalty",
             },
           ];
 
