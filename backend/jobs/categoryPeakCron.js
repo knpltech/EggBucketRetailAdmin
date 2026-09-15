@@ -172,7 +172,7 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
     if (isOnboarding) {
       categoryTotals.ONBOARDING += targetTrays;
     }
-    
+
     // Add to CALLING CUSTOMER if applicable
     if (isCallingCustomer) {
       if (categoryTotals["CALLING CUSTOMER"] === undefined) {
