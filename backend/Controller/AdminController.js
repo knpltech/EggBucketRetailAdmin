@@ -2925,17 +2925,25 @@ const addInventoryEntry = async (req, res) => {
     }
 
     // Look up agent details for outletName if possible
-    let outletName = "";
-    try {
-      const delPartnerSnap = await primaryDb
-        .collection("DeliveryMan")
-        .where("name", "==", agentName)
-        .get();
-      if (!delPartnerSnap.empty) {
-        outletName = delPartnerSnap.docs[0].data().outlet || "";
+    let outletName = req.body.outletName || "";
+    if (!outletName) {
+      try {
+        const delPartnerSnap = await primaryDb
+          .collection("DeliveryMan")
+          .get();
+        if (!delPartnerSnap.empty) {
+          const matched = delPartnerSnap.docs.find((d) => {
+            const data = d.data();
+            const name = (data.name || data.display_name || data.displayName || "").toLowerCase().trim();
+            return name === agentName.toLowerCase().trim();
+          });
+          if (matched) {
+            outletName = matched.data().outlet || "";
+          }
+        }
+      } catch (e) {
+        console.warn("Could not lookup agent outlet:", e);
       }
-    } catch (e) {
-      console.warn("Could not lookup agent outlet:", e);
     }
 
     const timestamp = new Date().toISOString();
@@ -2946,11 +2954,14 @@ const addInventoryEntry = async (req, res) => {
       outletName,
       supervisorName: req.body.supervisorName || "Admin (Web)",
       remarks: remarks || "",
-      penaltyType: req.body.penaltyType || (type === "penalty" ? "Early Log Out" : undefined),
       photoUrl: req.body.photoUrl || "",
       createdAt: timestamp,
       timestamp: timestamp,
     };
+
+    if (type === "penalty" || req.body.penaltyType) {
+      docData.penaltyType = req.body.penaltyType || "Early Log Out";
+    }
 
     if (type === "load" || type === "return" || type === "damage") {
       docData.quantity = numVal;

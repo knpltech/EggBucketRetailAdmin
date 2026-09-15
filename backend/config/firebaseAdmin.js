@@ -30,6 +30,12 @@ export const initializeFirebaseAdmin = () => {
     storageBucket: process.env.STORAGE_BUCKET,
   });
 
+  try {
+    admin.firestore().settings({ ignoreUndefinedProperties: true });
+  } catch (e) {
+    console.warn("Could not set ignoreUndefinedProperties on default Firestore:", e.message);
+  }
+
   // Initialize secondary (Inventory Management) app
   try {
     let serviceAccount;
@@ -51,6 +57,11 @@ export const initializeFirebaseAdmin = () => {
         },
         "inventoryApp"
       );
+      try {
+        inventoryAppInstance.firestore().settings({ ignoreUndefinedProperties: true });
+      } catch (e) {
+        console.warn("Could not set ignoreUndefinedProperties on inventory Firestore:", e.message);
+      }
       console.log("Successfully initialized Inventory Management Firebase App.");
     } else {
       console.warn("Inventory Management service account not found. Please provide INVENTORY_SERVICE_ACCOUNT_JSON env variable or the local JSON file.");

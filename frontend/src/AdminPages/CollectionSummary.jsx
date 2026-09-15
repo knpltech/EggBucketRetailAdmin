@@ -188,11 +188,18 @@ const CollectionSummary = () => {
         ? "Supervisor (Web)"
         : "Admin (Web)";
 
+    // Resolve outlet name for the agent
+    const partner =
+      deliveryPartners.find((p) => (p.name || p.displayName)?.toLowerCase().trim() === currentAgent.toLowerCase().trim()) ||
+      salesPartners.find((p) => (p.name || p.displayName)?.toLowerCase().trim() === currentAgent.toLowerCase().trim()) ||
+      findPartnerByName(currentAgent);
+    const resolvedOutlet = partner?.outlet || (selectedOutlet !== "all" ? selectedOutlet : "");
+
     // Construct optimistic item
     const optimisticEntry = {
       dateKey,
       agentName: currentAgent.trim(),
-      outletName: (deliveryPartners.find((p) => p.name === currentAgent)?.outlet) || "",
+      outletName: resolvedOutlet,
       supervisorName,
       remarks: addFormRemarks.trim(),
       penaltyType: addModalType === "penalty" ? addFormPenaltyType : undefined,
@@ -251,25 +258,31 @@ const CollectionSummary = () => {
         type: addModalType,
         dateKey,
         agentName: currentAgent.trim(),
+        outletName: resolvedOutlet,
         value: valNum,
-        penaltyType: addModalType === "penalty" ? addFormPenaltyType : undefined,
         remarks: addFormRemarks.trim(),
         supervisorName,
       };
+      if (addModalType === "penalty") {
+        payload.penaltyType = addFormPenaltyType;
+      }
 
       const res = await axios.post(`${ADMIN_PATH}/add-inventory-entry`, payload);
 
       if (res.data && res.data.success) {
         // Silently sync latest inventory metrics in background
-        fetchInventoryMetrics(dateKey);
+        await fetchInventoryMetrics(dateKey);
       } else {
         console.warn("Add inventory response:", res.data);
-        fetchInventoryMetrics(dateKey);
+        alert(res.data?.message || "Failed to add inventory entry");
+        await fetchInventoryMetrics(dateKey);
       }
     } catch (err) {
       console.error("Add entry background sync error:", err);
+      const errMsg = err.response?.data?.message || err.message || "Failed to add inventory entry";
+      alert(`Error saving entry: ${errMsg}`);
       // Re-fetch to ensure UI displays true database state
-      fetchInventoryMetrics(dateKey);
+      await fetchInventoryMetrics(dateKey);
     }
   };
 
@@ -614,8 +627,9 @@ const CollectionSummary = () => {
     const getLatestUpiHandover = (entries) => {
       if (!entries || entries.length === 0) return 0;
 
-      if (selectedOutlet !== "all") {
+      if (selectedAgent !== "all") {
         const matching = entries.filter((item) =>
+          (item.agentName || "").toLowerCase().trim() === selectedAgent.toLowerCase().trim() ||
           isMatchingOutlet(item.outletName, item.agentName, item.supervisorName)
         );
         if (matching.length === 0) return 0;
@@ -627,9 +641,9 @@ const CollectionSummary = () => {
         });
 
         return matching[0].cash || 0;
-      } else if (selectedAgent !== "all") {
+      } else if (selectedOutlet !== "all") {
         const matching = entries.filter((item) =>
-          item.agentName?.toLowerCase().trim() === selectedAgent?.toLowerCase().trim()
+          isMatchingOutlet(item.outletName, item.agentName, item.supervisorName)
         );
         if (matching.length === 0) return 0;
 
@@ -731,32 +745,40 @@ const CollectionSummary = () => {
       };
     }
 
+    const itemFilter = (item) => {
+      if (selectedAgent !== "all") {
+        const matchesAgent = (item.agentName || "").toLowerCase().trim() === selectedAgent.toLowerCase().trim();
+        if (matchesAgent) return true;
+      }
+      return isMatchingOutlet(item.outletName, item.agentName, item.supervisorName);
+    };
+
     const filteredLoad = loadingEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.quantity, 0);
 
     const filteredReturn = returnEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.quantity, 0);
 
     const filteredDamage = damageEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.quantity, 0);
 
     const filteredCash = cashHandoverEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.cash, 0);
 
     const filteredFood = foodAllowanceEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.cash, 0);
 
     const filteredIncentive = incentiveEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.cash, 0);
 
     const filteredPenalty = penaltyEntries
-      .filter((item) => isMatchingOutlet(item.outletName, item.agentName, item.supervisorName))
+      .filter(itemFilter)
       .reduce((sum, item) => sum + item.cash, 0);
 
     return {
