@@ -192,7 +192,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         const tAmount = Number(dayData.totalAmount) || (cAmount + uAmount);
 
         const agentName = dayData.agentName || "Unknown";
-        const zone = c.segment || c.zone || "Unknown";
+        const zone = c.zone || "Unknown";
 
         // Calculate Morning vs Evening based on time (cutoff 4:00 PM IST / 16:00)
         let isMorning = true;
@@ -336,7 +336,6 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         traysSold,
         averageTrayPerCustomer: activeCustomers > 0 ? Number((traysSold / activeCustomers).toFixed(2)) : 0,
         revenueByZone: revZoneMap,
-        revenueBySegment: revZoneMap,
         revenueByCustomerType: revCustTypeMap,
         revenueByBusinessType: revBizTypeMap,
         potentialAchieved,
