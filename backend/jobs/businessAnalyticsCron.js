@@ -78,7 +78,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
     let totalPeakPotential = dayPeakData.ALL || 0;
     const custTypeMap = { PRIME: 0, REGULAR: 0 };
     const bizTypeMap = {};
-    
+
     const revZoneMap = {};
     const cashZoneMap = {};
     const upiZoneMap = {};
@@ -96,23 +96,23 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
       if (c.createdAt) {
         let cDateObj;
         if (typeof c.createdAt.toDate === 'function') {
-           cDateObj = c.createdAt.toDate();
+          cDateObj = c.createdAt.toDate();
         } else if (c.createdAt._seconds) {
-           cDateObj = new Date(c.createdAt._seconds * 1000);
+          cDateObj = new Date(c.createdAt._seconds * 1000);
         } else if (c.createdAt.seconds) {
-           cDateObj = new Date(c.createdAt.seconds * 1000);
+          cDateObj = new Date(c.createdAt.seconds * 1000);
         } else {
-           cDateObj = new Date(c.createdAt);
+          cDateObj = new Date(c.createdAt);
         }
         if (!isNaN(cDateObj.getTime()) && getDateStringInTimeZone(cDateObj) === dateStr) {
-           newCustomers++;
+          newCustomers++;
         }
       }
 
       // General customer breakdown
       const cat = c.category || "D0";
       if (categoryMap[cat] !== undefined) categoryMap[cat]++;
-      
+
       const peakPotStr = c.Peak_Potential || "T1";
       const peakPotNum = Number(peakPotStr.replace(/\D/g, "")) || 1;
       if (peakPotNum <= 5) peakPotMap["0-5 Trays"]++;
@@ -135,11 +135,11 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
       // Actual Peak Frequency (from last 7 days relative to date d)
       const last8DaysObj = c.last8Days || {};
       let actualDeliveredCount = 0;
-      
+
       for (let j = 1; j <= 7; j++) {
         const lookbackDate = new Date(d);
         lookbackDate.setDate(d.getDate() - j);
-        
+
         // Format to YYYY-MM-DD using en-CA
         const parts = new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Kolkata",
@@ -151,14 +151,14 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         const m = parts.find((p) => p.type === "month")?.value;
         const day = parts.find((p) => p.type === "day")?.value;
         const key = `${y}-${m}-${day}`; // YYYY-MM-DD
-        
+
         const entry = last8DaysObj[key];
         const status = (typeof entry === "string" ? entry : (entry?.status || entry?.type || ""));
         if (status.toLowerCase() === "delivered") {
           actualDeliveredCount++;
         }
       }
-      
+
       const actualPFreq = `D${Math.min(actualDeliveredCount, 7)}`;
       actualPeakFreqMap[actualPFreq] = (actualPeakFreqMap[actualPFreq] || 0) + 1;
 
@@ -175,9 +175,9 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
 
       const yesterdayData = last8Days[yesterdayDateStr];
       const yesterdayStatus = yesterdayData ? (yesterdayData.status || "").toLowerCase() : "";
-      
+
       if (status === "delivered" && yesterdayStatus === "delivered") {
-         repeatCustomersCount++;
+        repeatCustomersCount++;
       }
 
       const override = c.todayOverride || {};
@@ -190,29 +190,29 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         const cAmount = Number(dayData.cashAmount) || 0;
         const uAmount = Number(dayData.upiAmount) || 0;
         const tAmount = Number(dayData.totalAmount) || (cAmount + uAmount);
-        
+
         const agentName = dayData.agentName || "Unknown";
-        const zone = c.zone || "Unknown";
+        const zone = c.segment || c.zone || "Unknown";
 
         // Calculate Morning vs Evening based on time (cutoff 4:00 PM IST / 16:00)
         let isMorning = true;
         if (dayData.time) {
-            let dTime;
-            if (typeof dayData.time.toDate === 'function') {
-                dTime = dayData.time.toDate();
-            } else if (dayData.time._seconds) {
-                dTime = new Date(dayData.time._seconds * 1000);
-            } else if (dayData.time.seconds) {
-                dTime = new Date(dayData.time.seconds * 1000);
-            } else {
-                dTime = new Date(dayData.time);
+          let dTime;
+          if (typeof dayData.time.toDate === 'function') {
+            dTime = dayData.time.toDate();
+          } else if (dayData.time._seconds) {
+            dTime = new Date(dayData.time._seconds * 1000);
+          } else if (dayData.time.seconds) {
+            dTime = new Date(dayData.time.seconds * 1000);
+          } else {
+            dTime = new Date(dayData.time);
+          }
+          if (!isNaN(dTime.getTime())) {
+            const istHours = (dTime.getUTCHours() + 5 + Math.floor((dTime.getUTCMinutes() + 30) / 60)) % 24;
+            if (istHours >= 16) {
+              isMorning = false;
             }
-            if (!isNaN(dTime.getTime())) {
-                const istHours = (dTime.getUTCHours() + 5 + Math.floor((dTime.getUTCMinutes() + 30) / 60)) % 24;
-                if (istHours >= 16) {
-                    isMorning = false;
-                }
-            }
+          }
         }
         if (isMorning) activeMorningCount++;
         else activeEveningCount++;
@@ -281,7 +281,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
           totalLoad = res.data.totalLoad || 0;
           totalReturn = res.data.totalReturn || 0;
           totalDamage = res.data.totalDamage || 0;
-          
+
           if (res.data.damageEntries && Array.isArray(res.data.damageEntries)) {
             res.data.damageEntries.forEach(item => {
               const zone = item.outletName || item.agentName || "Unknown";
@@ -336,6 +336,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         traysSold,
         averageTrayPerCustomer: activeCustomers > 0 ? Number((traysSold / activeCustomers).toFixed(2)) : 0,
         revenueByZone: revZoneMap,
+        revenueBySegment: revZoneMap,
         revenueByCustomerType: revCustTypeMap,
         revenueByBusinessType: revBizTypeMap,
         potentialAchieved,
@@ -350,6 +351,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         agentWiseCollection: agentColMap,
         agentWiseSales: agentSalesMap,
         areaWiseDeliveries: areaDelMap,
+        segmentWiseDeliveries: areaDelMap,
         deliveryEfficiency,
         attendEfficiency,
         totalAttended,
@@ -360,6 +362,8 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         upi,
         cashByZone: cashZoneMap,
         upiByZone: upiZoneMap,
+        cashBySegment: cashZoneMap,
+        upiBySegment: upiZoneMap,
         collectionByAgent: agentColMap
       },
       inventoryAnalytics: {
@@ -369,7 +373,8 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         returns: totalReturn,
         missedOpportunity,
         stockAvailable: stockAvailable > 0 ? stockAvailable : 0,
-        damageByZone
+        damageByZone,
+        damageBySegment: damageByZone
       },
       customerConversion: {
         revenuePerCustomer: activeCustomers > 0 ? Math.floor(totalCollection / activeCustomers) : 0,
@@ -395,7 +400,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
     const cutoffDateStr = getDateStringInTimeZone(cutoffDate);
 
     const oldDocsSnap = await collectionRef.where("__name__", "<", cutoffDateStr).get();
-    
+
     if (!oldDocsSnap.empty) {
       const deleteBatch = db.batch();
       oldDocsSnap.forEach(doc => {
@@ -421,7 +426,7 @@ export default generateGenuineAnalytics;
 cron.schedule("0 11 * * *", async () => {
   console.log("[analyticsCron] Scheduled: 0 11 * * * (11 AM Inventory Sync)");
   const dateStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
-  
+
   let totalLoad = 0, totalReturn = 0, totalDamage = 0;
   const damageByZone = {};
 
@@ -470,6 +475,7 @@ cron.schedule("0 11 * * *", async () => {
       "inventoryAnalytics.returns": totalReturn,
       "inventoryAnalytics.totalDamage": totalDamage,
       "inventoryAnalytics.damageByZone": damageByZone,
+      "inventoryAnalytics.damageBySegment": damageByZone,
       "inventoryAnalytics.damagePercentage": totalLoad > 0 ? Number(((totalDamage / totalLoad) * 100).toFixed(2)) : 0,
     };
 

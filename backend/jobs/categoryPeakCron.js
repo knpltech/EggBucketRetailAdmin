@@ -150,10 +150,10 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
     const peakPotential = computePeakPotentialNumber(last8Days);
     const isPrime = peakPotential >= 10;
 
-    // Check if ONBOARDING (no zone)
-    const zone = String(data.zone || "").trim().toUpperCase();
-    const isOnboarding = !zone || zone === "UNASSIGNED";
-    const isCallingCustomer = zone === "CALLING CUSTOMER";
+    // Check if ONBOARDING (no segment/zone)
+    const segment = String(data.segment || data.zone || "").trim().toUpperCase();
+    const isOnboarding = !segment || segment === "UNASSIGNED";
+    const isCallingCustomer = segment === "CALLING CUSTOMER";
 
     // Add to ALL
     categoryTotals.ALL += targetTrays;
@@ -172,7 +172,7 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
     if (isOnboarding) {
       categoryTotals.ONBOARDING += targetTrays;
     }
-    
+
     // Add to CALLING CUSTOMER if applicable
     if (isCallingCustomer) {
       if (categoryTotals["CALLING CUSTOMER"] === undefined) {
@@ -192,15 +192,21 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
       }
     }
 
-    // Add to Zone if applicable
-    if (data.zone) {
-      const zType = String(data.zone).trim().toUpperCase();
+    // Add to Segment / Zone if applicable
+    const segOrZone = data.segment || data.zone;
+    if (segOrZone) {
+      const zType = String(segOrZone).trim().toUpperCase();
       // Skip onboarding and calling customer as they are handled by main tabs
       if (zType && zType !== "UNASSIGNED" && zType !== "CALLING CUSTOMER") {
+        const segKey = `SEGMENT_${zType}`;
         const zoneKey = `ZONE_${zType}`;
+        if (categoryTotals[segKey] === undefined) {
+          categoryTotals[segKey] = 0;
+        }
         if (categoryTotals[zoneKey] === undefined) {
           categoryTotals[zoneKey] = 0;
         }
+        categoryTotals[segKey] += targetTrays;
         categoryTotals[zoneKey] += targetTrays;
       }
     }
