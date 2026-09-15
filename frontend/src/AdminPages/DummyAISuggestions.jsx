@@ -78,6 +78,7 @@ const DummyAISuggestions = () => {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [routeFilter, setRouteFilter] = useState([]);
   const [activeGapTab, setActiveGapTab] = useState("ALL");
+  const [activeRemarkTab, setActiveRemarkTab] = useState("ALL");
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
   const routeDropdownRef = useRef(null);
   const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false);
@@ -258,6 +259,7 @@ const DummyAISuggestions = () => {
     suggestionFilterOption,
     sortOption,
     activeGapTab,
+    activeRemarkTab,
     activeCadenceFilter,
     activeStateFilter,
     activeIntentFilter,
@@ -567,9 +569,51 @@ const DummyAISuggestions = () => {
 
       if (!matchesStatus) return false;
 
+      // Remark filter
+      if (activeRemarkTab !== "ALL") {
+        const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
+        const last8Days = item.customer?.last8Days || {};
+        const entry = last8Days[todayDate];
+        const entryObj = typeof entry === "object" && entry !== null ? entry : {};
+
+        const rawReason = String(
+          entryObj.reason ||
+          entryObj.checkReason ||
+          (typeof entry === "string" ? entry : "") ||
+          item.customer?.checkReason ||
+          ""
+        )
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+
+        const displayRemark = String(item.customerRemark || item.customer?.customerRemark || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+
+        const matchVal = activeRemarkTab.toLowerCase();
+
+        const isMatch =
+          rawReason === matchVal ||
+          displayRemark === matchVal ||
+          (matchVal === "price_issue" &&
+            (rawReason === "price_issue" ||
+              rawReason === "price_mismatch" ||
+              displayRemark === "price_issue" ||
+              displayRemark === "price_mismatch")) ||
+          (matchVal === "confirmed_tomorrow" &&
+            (rawReason === "confirmed_tomorrow" ||
+              rawReason === "confirmed_for_tomorrow" ||
+              displayRemark === "confirmed_tomorrow" ||
+              displayRemark === "confirmed_for_tomorrow"));
+
+        if (!isMatch) return false;
+      }
+
       return matchesSearch && matchesPriority && matchesCustomerType && matchesCategory && matchesRoute && matchesGap;
     });
-  }, [processedData, searchQuery, statusFilter, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, activeCadenceFilter, activeStateFilter, activeIntentFilter, categoryFilter, routeFilter, activeGapTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
+  }, [processedData, searchQuery, statusFilter, priorityFilter, routePriorityMap, businessTypeFilter, suggestionFilterOption, activeCadenceFilter, activeStateFilter, activeIntentFilter, categoryFilter, routeFilter, activeGapTab, activeRemarkTab, rowPatterns, rowSecondaryPatterns, rowTertiaryPatterns]);
 
 
   const sortedData = useMemo(() => {
@@ -1025,7 +1069,7 @@ const DummyAISuggestions = () => {
       </div>
 
       {/* DELIVERY GAP FILTERS TABS */}
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
           <button
             key={gap}
@@ -1033,6 +1077,33 @@ const DummyAISuggestions = () => {
             className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
           >
             {gap}
+          </button>
+        ))}
+      </div>
+
+      {/* REMARK FILTERS TABS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {[
+          { label: "ALL REMARKS", value: "ALL" },
+          { label: "Stock Available", value: "stock_available" },
+          { label: "Shop Closed", value: "shop_closed" },
+          { label: "Confirmed Tomorrow", value: "confirmed_tomorrow" },
+          { label: "Price Issue", value: "price_issue" },
+          { label: "Other Vendor", value: "other_vendor" },
+          { label: "Need Credit", value: "need_credit" },
+          { label: "Quality Issue", value: "quality_issue" },
+          { label: "Owner Not Available", value: "owner_not_available" },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setActiveRemarkTab(tab.value)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+              activeRemarkTab === tab.value
+                ? "bg-slate-700 text-white border-slate-700 shadow-sm"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            {tab.label}
           </button>
         ))}
       </div>
