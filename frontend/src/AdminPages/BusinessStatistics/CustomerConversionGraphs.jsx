@@ -1,11 +1,28 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   ResponsiveContainer, LineChart, Line, BarChart, Bar, 
-  XAxis, YAxis, CartesianGrid, Tooltip 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend 
 } from 'recharts';
 import GraphContainer from './GraphContainer';
 
 const CustomerConversionGraphs = ({ graphs }) => {
+  const combinedRevenueData = useMemo(() => {
+    if (!graphs) return [];
+    const primeMap = new Map((graphs.primeCustomerRevenue || []).map(item => [item.date, item.revenue || 0]));
+    const regularMap = new Map((graphs.regularCustomerRevenue || []).map(item => [item.date, item.revenue || 0]));
+
+    const dateSet = new Set([
+      ...(graphs.primeCustomerRevenue || []).map(i => i.date),
+      ...(graphs.regularCustomerRevenue || []).map(i => i.date)
+    ]);
+
+    return Array.from(dateSet).sort().map(date => ({
+      date,
+      primeRevenue: primeMap.get(date) ?? 0,
+      regularRevenue: regularMap.get(date) ?? 0
+    }));
+  }, [graphs?.primeCustomerRevenue, graphs?.regularCustomerRevenue]);
+
   if (!graphs) return null;
 
   return (
@@ -35,26 +52,16 @@ const CustomerConversionGraphs = ({ graphs }) => {
         </ResponsiveContainer>
       </GraphContainer>
 
-      <GraphContainer title="Prime Customer Revenue">
+      <GraphContainer title="Prime vs Regular Customer Revenue">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={graphs.primeCustomerRevenue} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <BarChart data={combinedRevenueData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
             <Tooltip formatter={(value) => `₹${value}`} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Bar dataKey="revenue" name="Prime Revenue" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={40} />
-          </BarChart>
-        </ResponsiveContainer>
-      </GraphContainer>
-
-      <GraphContainer title="Regular Customer Revenue">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={graphs.regularCustomerRevenue} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
-            <Tooltip formatter={(value) => `₹${value}`} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Bar dataKey="revenue" name="Regular Revenue" fill="#64748b" radius={[4, 4, 0, 0]} barSize={40} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+            <Bar dataKey="primeRevenue" name="Prime Customer Revenue" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={20} />
+            <Bar dataKey="regularRevenue" name="Regular Customer Revenue" fill="#64748b" radius={[4, 4, 0, 0]} barSize={20} />
           </BarChart>
         </ResponsiveContainer>
       </GraphContainer>

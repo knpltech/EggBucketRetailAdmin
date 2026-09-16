@@ -392,10 +392,10 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
   await batch.commit();
   console.log("Successfully generated and saved genuine analytics data!");
 
-  // Cleanup old records (keep only last 30 days)
+  // Cleanup old records (keep last 70 days)
   try {
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 30);
+    cutoffDate.setDate(cutoffDate.getDate() - 70);
     const cutoffDateStr = getDateStringInTimeZone(cutoffDate);
 
     const oldDocsSnap = await collectionRef.where("__name__", "<", cutoffDateStr).get();
@@ -406,7 +406,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
         deleteBatch.delete(doc.ref);
       });
       await deleteBatch.commit();
-      console.log(`Deleted ${oldDocsSnap.size} old analytics records (older than 30 days).`);
+      console.log(`Deleted ${oldDocsSnap.size} old analytics records (older than 70 days).`);
     }
   } catch (err) {
     console.error("Error cleaning up old records:", err);

@@ -361,7 +361,8 @@ const normalizeSortBy = (value) => {
   if (raw === "createdat") return "createdAt";
   if (raw === "route") return "route";
   if (raw === "zone") return "zone";
-  if (raw === "businesstype" || raw === "business") return "businessType";
+  if (raw === "businesstype") return "businessType";
+  if (raw === "business") return "business";
   return "name";
 };
 
@@ -405,6 +406,20 @@ const sortCustomers = (customers, sortBy) => {
   }
 
   if (sortBy === "businessType") {
+    sorted.sort((a, b) => {
+      const typeA = String(a?.businessType || "").trim();
+      const typeB = String(b?.businessType || "").trim();
+      const isUnassignedA = !typeA || typeA.toUpperCase() === "UNASSIGNED";
+      const isUnassignedB = !typeB || typeB.toUpperCase() === "UNASSIGNED";
+      if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+      if (isUnassignedA) return 1;
+      if (isUnassignedB) return -1;
+      return typeA.localeCompare(typeB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+    });
+    return sorted;
+  }
+
+  if (sortBy === "business") {
     sorted.sort((a, b) => {
       const bizA = String(a?.business || "").trim();
       const bizB = String(b?.business || "").trim();
