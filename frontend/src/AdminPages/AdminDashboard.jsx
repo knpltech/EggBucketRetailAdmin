@@ -67,7 +67,7 @@ export default function AdminDashboard() {
     { label: "Penalty Reports", path: "/admin/penalty", icon: FiAlertTriangle },
     { label: "Business Statistics", path: "/admin/business-statistics", icon: FiTrendingUp },
     { label: "Customer Management", path: "/admin/customer-management", icon: FiLayers },
-    { label: "Calling Customers", path: "/admin/prime-customers", icon: FiPhoneCall },
+    { label: "Calling Customers", path: "/admin/calling-customers", icon: FiPhoneCall },
     { label: "Route Management", path: "/admin/routes", icon: FiMapPin },
     { label: "Priority Window", path: "/admin/priority-window", icon: FiClock },
     { label: "Customer Map", path: "/admin/customer-map-for-delivery", icon: FiMap },

@@ -93,6 +93,7 @@ function App() {
         <Route path="penalty" element={<PenaltyManagement />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
         <Route path="customer-management" element={<CustomerManagement />} />
+        <Route path="calling-customers" element={<CallingCustomers />} />
         <Route path="prime-customers" element={<CallingCustomers />} />
         <Route path="routes" element={<CustomerRoutes />} />
         <Route path="priority-window" element={<PriorityWindow />} />

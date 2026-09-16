@@ -403,7 +403,7 @@ const DummyAISuggestions = () => {
       const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
       const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
 
-      const potentialNumber = getPotentialNumber(customer.potential);
+      const potentialNumber = getPotentialNumber(customer.Peak_Potential);
 
       return {
         customer: {

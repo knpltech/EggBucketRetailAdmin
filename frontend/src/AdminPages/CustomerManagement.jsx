@@ -78,8 +78,29 @@ function computePeakPotentialNumber(last8Days = {}) {
  * Regular Customer: Peak_Potential < T10 (i.e., < 10 trays)
  */
 function getPrimeCustomerType(customer = {}) {
-  const bt = String(customer?.businessType || "").trim().toLowerCase();
-  return (bt === "calling customer" || bt === "calling customers") ? "PRIME" : "REGULAR";
+  if (!customer || typeof customer !== "object") return "REGULAR";
+
+  // 1. Direct check if customerType is already set by DB
+  const storedType = String(customer.customerType || "").trim().toUpperCase();
+  if (storedType === "PRIME") return "PRIME";
+  if (storedType === "REGULAR") return "REGULAR";
+
+  // 2. Read directly from DB Peak_Potential field
+  const pot = customer.Peak_Potential;
+  if (pot) {
+    const num = Number(String(pot).replace(/\D/g, ""));
+    if (Number.isFinite(num) && num > 0) {
+      return num >= 10 ? "PRIME" : "REGULAR";
+    }
+  }
+
+  // 3. Fallback to computing from last8Days if document is missing peak potential
+  const peakNum = computePeakPotentialNumber(customer.last8Days);
+  if (peakNum > 0) {
+    return peakNum >= 10 ? "PRIME" : "REGULAR";
+  }
+
+  return "REGULAR";
 }
 
 /**
@@ -192,8 +213,8 @@ export default function CustomerManagement() {
   const normaliseRows = (rows) =>
     rows.map((c) => ({
       ...c,
-      peakFrequency: c.peakFrequency || computePeakFrequency(c.last8Days),
-      potential: c.potential || computePotential(c.last8Days),
+      peakFrequency: c.Peak_Frequency || c.peakFrequency || computePeakFrequency(c.last8Days),
+      potential: c.Peak_Potential || computePotential(c.last8Days),
       deliveryGap: c.deliveryGap || computeDeliveryGap(c.last8Days, todayDate),
       deliveredCount: getDeliveredCountForCustomer(c),
     }));
@@ -407,8 +428,7 @@ export default function CustomerManagement() {
     let list = [...customers];
     if (activeTab === "PRIME CUSTOMER") {
       list = list.filter((c) => {
-        const bt = String(c.businessType || "").trim().toLowerCase();
-        return bt === "calling customer" || bt === "calling customers";
+        return getPrimeCustomerType(c) === "PRIME";
       });
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
@@ -708,8 +728,7 @@ export default function CustomerManagement() {
 
     if (activeTab === "PRIME CUSTOMER") {
       list = list.filter((c) => {
-        const bt = String(c.businessType || "").trim().toLowerCase();
-        return bt === "calling customer" || bt === "calling customers";
+        return getPrimeCustomerType(c) === "PRIME";
       });
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;

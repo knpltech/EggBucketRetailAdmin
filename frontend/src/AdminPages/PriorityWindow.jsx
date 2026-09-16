@@ -795,7 +795,7 @@ function DeleteConfirm({ priority, onClose, onConfirm, loading }) {
 
 function getCustomerPeakPotential(customer) {
   if (!customer) return 0;
-  const raw = customer.Peak_Potential || customer.potential;
+  const raw = customer.Peak_Potential;
   if (typeof raw === "number" && raw > 0) return raw;
   if (typeof raw === "string") {
     const num = Number(raw.replace(/[^\d.]/g, ""));

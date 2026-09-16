@@ -50,7 +50,7 @@ export const exportToExcel = (sortedData, logicOption) => {
       'Phone': customer.phone || '',
       'Peak Frequency': resolvePeakFrequency(customer) || '',
       'Current Category': computeCurrentCategory(customer?.last8Days) || '',
-      'Potential': normalizePotential(customer.potential),
+      'Potential': normalizePotential(customer.Peak_Potential),
       'Delivery Gap': deliveryGap || '',
       'Current Status': customer.todayOverride?.status || 'NOT SET',
       'AI Suggestion': suggestion.suggestion || '',
