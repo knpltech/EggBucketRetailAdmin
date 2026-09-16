@@ -289,7 +289,7 @@ const DummyAISuggestionRow = ({
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
   const peakFrequency = resolvePeakFrequency(customer);
   const currentCategory = computeCurrentCategory(customer?.last8Days);
-  const computedPotential = customer?.potential || computePeakPotential(customer?.last8Days);
+  const computedPotential = customer?.Peak_Potential || computePeakPotential(customer?.last8Days);
   const peakPotential = normalizePotential(computedPotential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);

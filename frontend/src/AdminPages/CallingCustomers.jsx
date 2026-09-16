@@ -25,77 +25,7 @@ const TABS = [
   "D7",
 ];
 
-// ─── Prime Customer Helpers ───────────────────────────────────────────────
-/**
- * Compute Peak_Potential numeric value from last8Days
- * Returns the maximum number of trays delivered (0 if no deliveries)
- */
-function computePeakPotentialNumber(last8Days = {}) {
-  if (!last8Days || typeof last8Days !== "object") return 0;
 
-  let maxTrays = 0;
-  Object.values(last8Days).forEach((entry) => {
-    if (!entry) return;
-
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status !== "delivered") return;
-
-    const trays =
-      entry.traysDelivered ??
-      entry.trays ??
-      entry.quantity ??
-      entry?.deliveredTrays ??
-      0;
-    const numTrays = Number(trays);
-
-    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-      maxTrays = numTrays;
-    }
-  });
-
-  return maxTrays;
-}
-
-/**
- * Determine Prime Customer type based on Peak_Potential
- * Prime Customer: Peak_Potential >= T10 (i.e., >= 10 trays)
- * Regular Customer: Peak_Potential < T10 (i.e., < 10 trays)
- */
-function getPrimeCustomerType(customer = {}) {
-  const bt = String(customer?.businessType || "").trim().toLowerCase();
-  return (bt === "calling customer" || bt === "calling customers") ? "PRIME" : "REGULAR";
-}
-
-/**
- * Sync Prime Customer status for a single customer
- * Calculates Peak_Potential, determines if PRIME or REGULAR, and compares with stored value
- * Returns: { customerType, needsUpdate, peakPotential }
- */
-function syncPrimeCustomer(customer = {}) {
-  if (!customer || typeof customer !== "object") {
-    return { customerType: "REGULAR", needsUpdate: false };
-  }
-
-  const calculatedType = getPrimeCustomerType(customer);
-
-  const storedType = String(customer.customerType || "").trim().toUpperCase();
-  const normalizedStoredType =
-    storedType === "PRIME" || storedType === "REGULAR" ? storedType : null;
-
-  const needsUpdate =
-    normalizedStoredType === null || normalizedStoredType !== calculatedType;
-
-  return {
-    customerType: calculatedType,
-    needsUpdate,
-    peakPotential: computePeakPotentialNumber(customer.last8Days),
-  };
-}
 
 export default function CallingCustomers() {
   const [customers, setCustomers] = useState([]);
@@ -221,56 +151,10 @@ export default function CallingCustomers() {
   const normaliseRows = (rows) =>
     rows.map((c) => ({
       ...c,
-      peakFrequency: c.peakFrequency || computePeakFrequency(c.last8Days),
-      potential: c.potential || computePotential(c.last8Days),
+      peakFrequency: c.Peak_Frequency || c.peakFrequency || computePeakFrequency(c.last8Days),
+      potential: c.Peak_Potential || computePotential(c.last8Days),
       deliveryGap: c.deliveryGap || computeDeliveryGap(c.last8Days, todayDate),
     }));
-
-  // ─── Helper: Sync Prime Customer status for all customers ─────────────────
-  const syncAllPrimeCustomers = async (customersList) => {
-    // Sync Prime Customer status in batch for better performance
-    // This avoids making individual API calls for each customer
-    const customersToUpdate = customersList
-      .map((customer) => {
-        const syncResult = syncPrimeCustomer(customer);
-        if (syncResult.needsUpdate) {
-          return {
-            id: customer.id,
-            customerType: syncResult.customerType,
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
-
-    // Update Firestore for all customers that need syncing
-    // Using batch updates to minimize API calls
-    if (customersToUpdate.length > 0) {
-      // Batch updates: group in chunks of 50 to avoid timeout
-      for (let i = 0; i < customersToUpdate.length; i += 50) {
-        const batch = customersToUpdate.slice(i, i + 50);
-        try {
-          await Promise.all(
-            batch.map((update) =>
-              axios.post(`${ADMIN_PATH}/customer/status`, {
-                id: update.id,
-                customerType: update.customerType,
-              })
-            )
-          );
-          // Update local state with synced customerType
-          setCustomers((prev) =>
-            prev.map((c) => {
-              const update = customersToUpdate.find((u) => u.id === c.id);
-              return update ? { ...c, customerType: update.customerType } : c;
-            })
-          );
-        } catch (err) {
-          console.error("Error syncing Prime Customer status:", err);
-        }
-      }
-    }
-  };
 
   // ─── Initial load: all customers ──────────────────────────────────────────
   useEffect(() => {
@@ -293,10 +177,6 @@ export default function CallingCustomers() {
           return bt === "calling customer" || bt === "calling customers";
         });
         setCustomers(callingCustomerRows);
-
-        // Sync Prime Customer status for all calling customers
-        // This ensures Firestore is kept in sync with Peak_Potential
-        await syncAllPrimeCustomers(callingCustomerRows);
 
         // Fetch category peak potentials for today's weekday
         try {
@@ -333,7 +213,7 @@ export default function CallingCustomers() {
 
 
       } catch (err) {
-        console.error("CustomerManagement init error:", err);
+        console.error("CallingCustomers init error:", err);
       } finally {
         setLoading(false);
       }
@@ -788,7 +668,7 @@ export default function CallingCustomers() {
       return Number(categoryPeaks[activeBusinessTab.toUpperCase()]) || 0;
     }
 
-    let key = "PRIME";
+    let key = "CALLING CUSTOMER";
     if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
     } else if (activeTab !== "ALL") {
