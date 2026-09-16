@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import { FaTrash, FaEdit } from "react-icons/fa";
@@ -81,7 +81,7 @@ const CustomerInfo = () => {
       let responseCustomers = [];
       let pagination = {};
 
-      if (requestedSort === "zone" || requestedSort === "route" || requestedSort === "businessType") {
+      if (requestedSort === "zone" || requestedSort === "route" || requestedSort === "businessType" || requestedSort === "business") {
         const userInfoData = await getCachedUserInfo();
         const rows = Array.isArray(userInfoData?.customers)
           ? userInfoData.customers
@@ -118,6 +118,18 @@ const CustomerInfo = () => {
           }
 
           if (requestedSort === "businessType") {
+            const typeA = String(a?.businessType || "").trim();
+            const typeB = String(b?.businessType || "").trim();
+            const isUnassignedA = !typeA || typeA.toUpperCase() === "UNASSIGNED";
+            const isUnassignedB = !typeB || typeB.toUpperCase() === "UNASSIGNED";
+            
+            if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+            if (isUnassignedA) return 1;
+            if (isUnassignedB) return -1;
+            return typeA.localeCompare(typeB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+          }
+
+          if (requestedSort === "business") {
             const bizA = String(a?.business || "").trim();
             const bizB = String(b?.business || "").trim();
             const isUnassignedA = !bizA || bizA.toUpperCase() === "UNASSIGNED";
@@ -180,6 +192,7 @@ const CustomerInfo = () => {
   const handleSortChange = async (e) => {
     const nextSortOption = e.target.value;
 
+    invalidateClientUserInfoCache();
     setSortOption(nextSortOption);
     setCurrentPage(1);
     setPageCursors({ 1: "" });
@@ -467,16 +480,63 @@ const CustomerInfo = () => {
     }
   };
 
-  const sortedCustomers = [...customers].sort((a, b) => {
-    if (sortOption === "createdAt") {
-      return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
-    }
-    if (sortOption === "zone" || sortOption === "route" || sortOption === "businessType") {
-      return 0; // Already sorted in fetchCustomers
-    }
+  const sortedCustomers = useMemo(() => {
+    return [...customers].sort((a, b) => {
+      if (sortOption === "createdAt") {
+        return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
+      }
 
-    return String(a?.name || "").localeCompare(String(b?.name || ""));
-  });
+      if (sortOption === "businessType") {
+        const typeA = String(a?.businessType || "").trim();
+        const typeB = String(b?.businessType || "").trim();
+        const isUnassignedA = !typeA || typeA.toUpperCase() === "UNASSIGNED";
+        const isUnassignedB = !typeB || typeB.toUpperCase() === "UNASSIGNED";
+        
+        if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+        if (isUnassignedA) return 1;
+        if (isUnassignedB) return -1;
+        return typeA.localeCompare(typeB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+      }
+
+      if (sortOption === "business") {
+        const bizA = String(a?.business || "").trim();
+        const bizB = String(b?.business || "").trim();
+        const isUnassignedA = !bizA || bizA.toUpperCase() === "UNASSIGNED";
+        const isUnassignedB = !bizB || bizB.toUpperCase() === "UNASSIGNED";
+        
+        if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+        if (isUnassignedA) return 1;
+        if (isUnassignedB) return -1;
+        return bizA.localeCompare(bizB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+      }
+
+      if (sortOption === "zone") {
+        const zoneA = String(a?.zone || "").trim();
+        const zoneB = String(b?.zone || "").trim();
+        const isUnassignedA = !zoneA || zoneA.toUpperCase() === "UNASSIGNED";
+        const isUnassignedB = !zoneB || zoneB.toUpperCase() === "UNASSIGNED";
+        
+        if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+        if (isUnassignedA) return 1;
+        if (isUnassignedB) return -1;
+        return zoneA.localeCompare(zoneB) || String(a?.name || "").localeCompare(String(b?.name || ""));
+      }
+
+      if (sortOption === "route") {
+        const routeA = String(a?.route || "").trim();
+        const routeB = String(b?.route || "").trim();
+        const isUnassignedA = !routeA || routeA.toUpperCase() === "UNASSIGNED";
+        const isUnassignedB = !routeB || routeB.toUpperCase() === "UNASSIGNED";
+        
+        if (isUnassignedA && isUnassignedB) return String(a?.name || "").localeCompare(String(b?.name || ""));
+        if (isUnassignedA) return 1;
+        if (isUnassignedB) return -1;
+        return routeA.localeCompare(routeB, undefined, { numeric: true, sensitivity: "base" }) || String(a?.name || "").localeCompare(String(b?.name || ""));
+      }
+
+      return String(a?.name || "").localeCompare(String(b?.name || ""));
+    });
+  }, [customers, sortOption]);
 
   const getPageButtons = () => {
     if (totalPages <= 7) {
@@ -532,13 +592,14 @@ const CustomerInfo = () => {
           <select
             value={sortOption}
             onChange={handleSortChange}
-            className="border px-3 py-2 rounded"
+            className="border px-3 py-2 rounded bg-white shadow-sm font-medium text-gray-700"
           >
             <option value="createdAt">Created Date</option>
             <option value="name">Name</option>
             <option value="zone">Zone</option>
             <option value="route">Route</option>
-            <option value="businessType">Business</option>
+            <option value="business">Business Name</option>
+            <option value="businessType">Business Type</option>
           </select>
 
           <button

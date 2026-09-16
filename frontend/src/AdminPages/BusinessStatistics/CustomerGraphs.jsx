@@ -161,66 +161,6 @@ const CustomerGraphs = ({ graphs }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       
-      <GraphContainer title="Customer Category Trend (D0-D7)">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={graphs.categoryTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-            <Line type="monotone" dataKey="D0" stroke={COLORS[0]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D1" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D2" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D3" stroke={COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D4" stroke={COLORS[4]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D5" stroke={COLORS[5]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D6" stroke={COLORS[6]} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="D7" stroke={COLORS[7]} strokeWidth={2} dot={{ r: 3 }} />
-          </LineChart>
-        </ResponsiveContainer>
-      </GraphContainer>
-
-      <GraphContainer title="Peak Frequency (Expected vs Actual)">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={graphs.peakFrequencyComparison} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-            <Bar dataKey="Expected" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
-            <Bar dataKey="Actual" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={20} />
-          </BarChart>
-        </ResponsiveContainer>
-      </GraphContainer>
-
-      <GraphContainer title="Sales Distribution">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={graphs.salesDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Bar dataKey="value" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={40} />
-          </BarChart>
-        </ResponsiveContainer>
-      </GraphContainer>
-
-      <GraphContainer title="Customer Type Distribution">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={graphs.customerTypeDistribution} cx="50%" cy="50%" innerRadius={0} outerRadius={80} paddingAngle={2} dataKey="value">
-              {graphs.customerTypeDistribution?.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-          </PieChart>
-        </ResponsiveContainer>
-      </GraphContainer>
-
       {/* ── Business Type Distribution — redesigned with side legend ── */}
       <GraphContainer title="Business Type Distribution">
         <div style={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', gap: 4 }}>
@@ -292,6 +232,66 @@ const CustomerGraphs = ({ graphs }) => {
             <Line type="monotone" dataKey="totalCustomers" name="Total Customers" stroke="#6366f1" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
             <Line type="monotone" dataKey="newCustomers" name="New Customers" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
           </LineChart>
+        </ResponsiveContainer>
+      </GraphContainer>
+
+      <GraphContainer title="Customer Category Trend (D0-D7)">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={graphs.categoryTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+            <Line type="monotone" dataKey="D0" stroke={COLORS[0]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D1" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D2" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D3" stroke={COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D4" stroke={COLORS[4]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D5" stroke={COLORS[5]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D6" stroke={COLORS[6]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="D7" stroke={COLORS[7]} strokeWidth={2} dot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </GraphContainer>
+
+      <GraphContainer title="Sales Distribution">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={graphs.salesDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Bar dataKey="value" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={40} />
+          </BarChart>
+        </ResponsiveContainer>
+      </GraphContainer>
+
+      <GraphContainer title="Peak Frequency (Expected vs Actual)">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={graphs.peakFrequencyComparison} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+            <Bar dataKey="Expected" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+            <Bar dataKey="Actual" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={20} />
+          </BarChart>
+        </ResponsiveContainer>
+      </GraphContainer>
+
+      <GraphContainer title="Customer Type Distribution">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={graphs.customerTypeDistribution} cx="50%" cy="50%" innerRadius={0} outerRadius={80} paddingAngle={2} dataKey="value">
+              {graphs.customerTypeDistribution?.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+          </PieChart>
         </ResponsiveContainer>
       </GraphContainer>
 

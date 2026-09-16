@@ -49,12 +49,13 @@ const BusinessStatistics = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (customFilters) => {
     setLoading(true);
     setError(null);
     try {
+      const activeFilters = customFilters || filters;
       const token = localStorage.getItem("authToken");
-      const { moduleType, startDate, endDate, customerType, agent, outlet, area } = filters;
+      const { moduleType, startDate, endDate, customerType, agent, outlet, area } = activeFilters;
       
       const queryParams = new URLSearchParams({
         startDate,
@@ -90,17 +91,13 @@ const BusinessStatistics = () => {
     fetchData();
   }, [filters.moduleType]); // Fetch when moduleType changes automatically. Apply button used for other filters
 
-  const handleApply = () => {
-    fetchData();
+  const handleApply = (customFilters) => {
+    fetchData(customFilters);
   };
 
   const handleReset = () => {
     setFilters(defaultFilters);
-    // fetchData will be called because moduleType might change back to "customer", 
-    // but if it was already "customer", we need to call fetchData explicitly.
-    if (filters.moduleType === "customer") {
-       setTimeout(fetchData, 0); // let state update first
-    }
+    fetchData(defaultFilters);
   };
 
   const renderGraphs = () => {

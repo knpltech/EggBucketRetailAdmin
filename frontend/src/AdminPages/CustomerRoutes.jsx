@@ -938,7 +938,7 @@ export default function CustomerRoutes() {
               </select>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-2 sm:p-3">
+          <div className="flex-1 overflow-x-hidden bg-gray-50 p-2 sm:p-3">
             <div className="w-full">
               {/* Header */}
               <div className="flex items-center px-3 py-2 mb-2 text-[11px] font-bold text-gray-500 sticky top-0 z-10 bg-gray-50 border-l-4 border-transparent">
@@ -1446,12 +1446,12 @@ export default function CustomerRoutes() {
           </div>
 
           {/* COMPACT ASSIGNED AGENTS CARDS */}
-          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col max-h-[800px]">
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col">
             <h2 className="text-base font-bold text-gray-800 mb-4">Assigned Deliverymen</h2>
             {agentStats.filter(a => a.customersAssigned > 0).length === 0 ? (
               <p className="text-sm text-gray-500">No deliverymen are currently assigned to any customers.</p>
             ) : (
-              <div className="flex flex-col gap-3 overflow-y-auto pr-1">
+              <div className="flex flex-col gap-3">
                 {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
                   const colors = [
                     "bg-blue-50 border-blue-200 text-blue-800",
