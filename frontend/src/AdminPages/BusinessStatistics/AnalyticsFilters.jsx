@@ -144,6 +144,7 @@ const AnalyticsFilters = ({ filters, setFilters, onApply, onReset }) => {
             <option value="payment">Payment Analytics</option>
             <option value="inventory">Inventory & Supply Chain</option>
             <option value="customer-conversion">Customer Conversion</option>
+            <option value="prime-vs-regular">Prime vs Regular</option>
           </select>
         </div>
 

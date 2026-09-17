@@ -591,6 +591,7 @@ const getRetentionCustomers = async (req, res) => {
     const allowedSorts = new Set([
       "name",
       "zone",
+      "route",
       "deliveryTime",
       "deliveryAgent",
     ]);
@@ -607,7 +608,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v20:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v21:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -928,6 +929,10 @@ const getRetentionCustomers = async (req, res) => {
         return (a.zone || "UNASSIGNED").localeCompare(b.zone || "UNASSIGNED");
       }
 
+      if (sortBy === "route") {
+        return (a.route || "").localeCompare(b.route || "");
+      }
+
       if (sortBy === "deliveryAgent") {
         return getRetentionAgentName(a).localeCompare(getRetentionAgentName(b));
       }
@@ -1019,6 +1024,7 @@ const getRetentionCustomers = async (req, res) => {
           name: customer.name || "",
           phone: customer.phone || "",
           zone: customer.zone || "UNASSIGNED",
+          route: customer.route || customer.routeName || customer.route_name || customer.Route || "",
           currentCategory: getCurrentCategoryFromLast8Days(
             customer.last8Days,
             new Date(`${todayKey}T00:00:00`),
@@ -1337,6 +1343,12 @@ const updateCustomerMeta = async (req, res) => {
       );
       if (allDeliveriesKeys.length > 0) {
         cache.del(allDeliveriesKeys);
+      }
+      const retentionKeys = keys.filter((key) =>
+        key.startsWith("customerRetention:"),
+      );
+      if (retentionKeys.length > 0) {
+        cache.del(retentionKeys);
       }
       cache.del(`customer:${id}`);
     } catch (cacheError) {

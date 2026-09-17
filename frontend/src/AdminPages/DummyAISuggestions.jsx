@@ -1003,6 +1003,7 @@ const DummyAISuggestions = () => {
               <span className="text-3xl font-extrabold text-gray-900">{currentOnCount}</span>
               <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700">{currentOnPercentage}%</span>
             </div>
+            <span className="text-xs font-semibold text-emerald-600 mt-1">Active Customers</span>
           </div>
         </div>
 
@@ -1097,11 +1098,10 @@ const DummyAISuggestions = () => {
           <button
             key={tab.value}
             onClick={() => setActiveRemarkTab(tab.value)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-              activeRemarkTab === tab.value
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeRemarkTab === tab.value
                 ? "bg-slate-700 text-white border-slate-700 shadow-sm"
                 : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-            }`}
+              }`}
           >
             {tab.label}
           </button>

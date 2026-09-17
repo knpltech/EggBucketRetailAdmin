@@ -76,7 +76,7 @@ This document outlines the exact formulas and data sources used to calculate the
 - **Total Damage:** 
   - **Formula:** Sum of `quantity` from the `damage_reports` table for today.
 - **Damage %:**
-  - **Formula:** `(Total Damage / Total Load) * 100`
+  - **Formula:** `(Total Damage / (Total Load * 30)) * 100` (Total Load is in trays; 1 tray = 30 eggs)
 - **Stock Available:**
   - **Formula:** `Total Load - (Total Trays Sold + Total Returns + Total Damage)`
 - **Missed Opportunity (Trays):**

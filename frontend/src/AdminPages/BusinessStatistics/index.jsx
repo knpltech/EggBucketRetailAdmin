@@ -66,6 +66,12 @@ const BusinessStatistics = () => {
         area
       }).toString();
 
+      if (moduleType === "prime-vs-regular") {
+        setData({ kpis: null, graphs: {} });
+        setLoading(false);
+        return;
+      }
+
       const response = await axios.get(
         `${ADMIN_PATH}/analytics/${moduleType}?${queryParams}`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -109,6 +115,13 @@ const BusinessStatistics = () => {
       case "payment": return <PaymentGraphs graphs={data.graphs} />;
       case "inventory": return <InventoryGraphs graphs={data.graphs} />;
       case "customer-conversion": return <CustomerConversionGraphs graphs={data.graphs} />;
+      case "prime-vs-regular":
+        return (
+          <div className="bg-white p-12 rounded-xl shadow-sm border border-gray-200 text-center">
+            <h3 className="text-lg font-semibold text-gray-700">Prime vs Regular Analytics</h3>
+            <p className="text-sm text-gray-400 mt-2">Graphs will be added here soon.</p>
+          </div>
+        );
       default: return null;
     }
   };
