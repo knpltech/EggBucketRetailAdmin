@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 
 const CATEGORY_OPTIONS = [
@@ -18,6 +19,7 @@ const CATEGORY_OPTIONS = [
 const SORT_OPTIONS = [
   { value: "name", label: "Name" },
   { value: "zone", label: "Zone" },
+  { value: "route", label: "Route" },
   { value: "deliveryTime", label: "Delivery Time" },
   { value: "deliveryAgent", label: "Delivery Agent" },
 ];
@@ -311,12 +313,78 @@ const getStatusFromDelivery = (delivery) => {
   };
 };
 
-const CustomerRow = React.memo(({ customer, dates, onReset, resettingId }) => {
+const CustomerRow = React.memo(({
+  customer,
+  dates,
+  onReset,
+  resettingId,
+  routes = [],
+  assigningRouteId,
+  editingRouteId,
+  setEditingRouteId,
+  assignRoute,
+}) => {
   return (
     <tr className="border-t hover:bg-slate-50">
       <td className="px-2 py-2 font-semibold text-slate-900 text-xs">{customer.name}</td>
       <td className="px-2 py-2 text-slate-700 text-xs">{customer.phone}</td>
       <td className="px-2 py-2 text-slate-700 text-xs">{customer.zone}</td>
+      <td
+        className="px-2 py-2 font-medium text-gray-700 text-xs text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!customer.route || customer.route === "UNASSIGNED" ? (
+          <select
+            disabled={assigningRouteId === customer.id}
+            onChange={(e) => assignRoute(customer.id, e.target.value)}
+            className="border rounded px-2 py-1 w-28 text-xs bg-white text-gray-900 cursor-pointer"
+          >
+            <option value="">Assign</option>
+            {routes.map((r) => {
+              const rName = typeof r === "string" ? r : r?.name;
+              if (!rName) return null;
+              return (
+                <option key={rName} value={rName}>
+                  {rName}
+                </option>
+              );
+            })}
+          </select>
+        ) : editingRouteId === customer.id ? (
+          <select
+            autoFocus
+            defaultValue={customer.route}
+            onBlur={() => setEditingRouteId(null)}
+            onChange={async (e) => {
+              await assignRoute(customer.id, e.target.value);
+              setEditingRouteId(null);
+            }}
+            className="border rounded px-2 py-1 w-28 text-xs bg-white text-gray-900 cursor-pointer"
+          >
+            {routes.map((r) => {
+              const rName = typeof r === "string" ? r : r?.name;
+              if (!rName) return null;
+              return (
+                <option key={rName} value={rName}>
+                  {rName}
+                </option>
+              );
+            })}
+          </select>
+        ) : (
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="truncate max-w-[100px]" title={customer.route}>{customer.route}</span>
+            <button
+              type="button"
+              onClick={() => setEditingRouteId(customer.id)}
+              className="text-gray-500 hover:text-gray-700 cursor-pointer"
+              title="Edit route"
+            >
+              <FiEdit2 size={12} />
+            </button>
+          </div>
+        )}
+      </td>
       <td className="px-2 py-2 text-slate-700 text-xs whitespace-nowrap">{formatDeliveryTime(customer.deliveryTime)}</td>
       <td className="px-2 py-2 text-slate-700 text-xs truncate max-w-[80px]">{customer.deliveryAgent}</td>
       <td className="px-2 py-2 text-center align-middle">
@@ -410,6 +478,54 @@ const CustomerRetention = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
+  const [routes, setRoutes] = useState([]);
+  const [assigningRouteId, setAssigningRouteId] = useState(null);
+  const [editingRouteId, setEditingRouteId] = useState(null);
+
+  useEffect(() => {
+    const fetchRoutes = async () => {
+      try {
+        const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
+        const routeNames = (routesRes.data || [])
+          .map((r) => (typeof r === "string" ? r : r.name))
+          .filter(Boolean);
+        setRoutes(routeNames);
+      } catch (err) {
+        console.error("Error fetching routes:", err);
+      }
+    };
+    fetchRoutes();
+  }, []);
+
+  const assignRoute = async (id, routeName) => {
+    if (!routeName || assigningRouteId === id) return;
+
+    try {
+      setAssigningRouteId(id);
+      await axios.post(`${ADMIN_PATH}/customer/status`, {
+        id,
+        route: routeName,
+      });
+
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, route: routeName } : c))
+      );
+
+      // Invalidate memory cache so cached pages don't show stale route
+      Object.keys(cacheRef.current).forEach((k) => {
+        if (cacheRef.current[k]?.customers) {
+          cacheRef.current[k].customers = cacheRef.current[k].customers.map((c) =>
+            c.id === id ? { ...c, route: routeName } : c
+          );
+        }
+      });
+    } catch (err) {
+      console.error("Error assigning route:", err);
+      alert("Failed to assign route");
+    } finally {
+      setAssigningRouteId(null);
+    }
+  };
 
   // ⭐ CACHE: Store fetched data per key to avoid repeated API calls
   const cacheRef = useRef({});
@@ -453,6 +569,7 @@ const CustomerRetention = () => {
               ...customer,
               phone: customer.phone || "",
               zone: customer.zone || "UNASSIGNED",
+              route: customer.route || customer.routeName || customer.route_name || customer.Route || "",
               todayCategory: customer.todayCategory || "",
               currentCategory: customer.currentCategory || "-",
               todayCategoryLabel: customer.todayCategoryLabel || "-",
@@ -717,6 +834,7 @@ const CustomerRetention = () => {
               Name: customer.name || "",
               Phone: customer.phone || "",
               Zone: customer.zone || "UNASSIGNED",
+              Route: customer.route || "UNASSIGNED",
               "Delivery Time": formatDeliveryTime(
                 customer.deliveryTime || customer.delivery_time || customer.time,
               ),
@@ -979,6 +1097,7 @@ const CustomerRetention = () => {
               <th className="px-2 py-2 text-left text-xs font-semibold">Name</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Phone</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Zone</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Route</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Current Category</th>
@@ -1002,7 +1121,7 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={8 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -1014,11 +1133,16 @@ const CustomerRetention = () => {
                   dates={dates}
                   onReset={handleReset}
                   resettingId={resettingId}
+                  routes={routes}
+                  assigningRouteId={assigningRouteId}
+                  editingRouteId={editingRouteId}
+                  setEditingRouteId={setEditingRouteId}
+                  assignRoute={assignRoute}
                 />
               ))
             ) : (
               <tr>
-                <td colSpan={7 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={8 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>

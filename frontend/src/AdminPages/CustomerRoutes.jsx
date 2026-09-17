@@ -33,7 +33,6 @@ export default function CustomerRoutes() {
   const [customers, setCustomers] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [categoryPeaks, setCategoryPeaks] = useState({});
   const [availablePriorities, setAvailablePriorities] = useState([]);
 
   // Filtering and Selection
@@ -83,10 +82,9 @@ export default function CustomerRoutes() {
             : [];
         setCustomers(rows);
 
-        const [routesRes, agentsRes, peakRes, prioritiesRes] = await Promise.all([
+        const [routesRes, agentsRes, prioritiesRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/routes`),
           axios.get(`${ADMIN_PATH}/get-del-partner`),
-          axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} })),
           axios.get(`${ADMIN_PATH}/priorities`).catch(() => ({ data: [] })),
         ]);
 
@@ -94,7 +92,6 @@ export default function CustomerRoutes() {
         const fetchedPriorities = (prioritiesRes.data || []).sort((a, b) => (a.order || 99) - (b.order || 99));
         setRoutes(fetchedRoutes);
         setAgents(agentsRes.data || []);
-        setCategoryPeaks(peakRes.data || {});
         setAvailablePriorities(fetchedPriorities);
       } catch (err) {
         console.error("Init error in Route Management:", err);
@@ -121,7 +118,6 @@ export default function CustomerRoutes() {
         description: typeof routeObj === "string" ? "" : (routeObj.description || ""),
         totalCustomers: 0,
         activeCustomers: 0,
-        bestPotential: Number(categoryPeaks[`ROUTE_${routeName.toUpperCase()}`]) || 0,
         potentialAchieved: 0,
         yesterdayTotalCustomers: 0,
         yesterdayPotentialAchieved: 0,
@@ -299,7 +295,7 @@ export default function CustomerRoutes() {
         return orderA - orderB;
       }
     });
-  }, [routes, customers, agents, categoryPeaks, availablePriorities, sortBy]);
+  }, [routes, customers, agents, availablePriorities, sortBy]);
 
   // Group routes into Parent Routes with aggregated statistics
   const groupedRoutes = useMemo(() => {
@@ -313,7 +309,6 @@ export default function CustomerRoutes() {
           routes: [],
           totalCustomers: 0,
           activeCustomers: 0,
-          bestPotential: 0,
           potentialAchieved: 0,
           yesterdayTotalCustomers: 0,
           yesterdayPotentialAchieved: 0,
@@ -326,7 +321,6 @@ export default function CustomerRoutes() {
       group.routes.push(route);
       group.totalCustomers += route.totalCustomers;
       group.activeCustomers += route.activeCustomers;
-      group.bestPotential += (route.bestPotential || 0);
       group.potentialAchieved += (route.potentialAchieved || 0);
       group.yesterdayTotalCustomers += (route.yesterdayTotalCustomers || 0);
       group.yesterdayPotentialAchieved += (route.yesterdayPotentialAchieved || 0);
@@ -953,10 +947,6 @@ export default function CustomerRoutes() {
                   <div className="text-[10px] font-semibold text-gray-400">Customers</div>
                 </div>
                 <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
-                  <div>Best</div>
-                  <div className="text-[10px] font-semibold text-gray-400">Potential</div>
-                </div>
-                <div className="w-14 sm:w-16 text-center flex-shrink-0 leading-tight">
                   <div>Potential</div>
                   <div className="text-[10px] font-semibold text-gray-400">Achieved</div>
                 </div>
@@ -1065,9 +1055,6 @@ export default function CustomerRoutes() {
                           <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
                             <span>{group.activeCustomers}</span>
                             {renderCountDiff(group.activeCustomers, group.yesterdayActiveCustomers, true)}
-                          </div>
-                          <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
-                            <span>{group.bestPotential > 0 ? `T(${group.bestPotential})` : '-'}</span>
                           </div>
                           <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
                             <span>{group.potentialAchieved > 0 ? group.potentialAchieved : '-'}</span>
@@ -1224,9 +1211,6 @@ export default function CustomerRoutes() {
                                     <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-green-600">
                                       <span>{route.activeCustomers}</span>
                                       {renderCountDiff(route.activeCustomers, route.yesterdayActiveCustomers, true)}
-                                    </div>
-                                    <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-orange-500">
-                                      <span>{route.bestPotential > 0 ? `T(${route.bestPotential})` : '-'}</span>
                                     </div>
                                     <div className="w-14 sm:w-16 text-center flex-shrink-0 flex flex-col justify-center items-center text-xs font-bold text-purple-600">
                                       <span>{route.potentialAchieved > 0 ? route.potentialAchieved : '-'}</span>

@@ -414,9 +414,15 @@ export const getInventoryAnalytics = async (req, res) => {
         damage: iAnalytics.totalDamage || 0
       });
 
+      const dayLoad = iAnalytics.load || 0;
+      const dayDamage = iAnalytics.totalDamage || 0;
+      const dayDamagePercentage = dayLoad > 0
+        ? Number(((dayDamage / (dayLoad * 30)) * 100).toFixed(2))
+        : 0;
+
       graphs.damagePercentTrend.push({
         date: doc.id,
-        percent: iAnalytics.damagePercentage || 0
+        percent: dayDamagePercentage
       });
 
       graphs.missedOpportunityAnalysis.push({
@@ -439,7 +445,9 @@ export const getInventoryAnalytics = async (req, res) => {
       Object.keys(dz).forEach(k => { damageZone[k] = (damageZone[k] || 0) + dz[k]; });
     });
 
-    kpis.damagePercent = kpis.totalLoad ? Math.round((kpis.totalDamage / kpis.totalLoad) * 100) : 0;
+    kpis.damagePercent = kpis.totalLoad > 0
+      ? Number(((kpis.totalDamage / (kpis.totalLoad * 30)) * 100).toFixed(2))
+      : 0;
     graphs.damageByZone = Object.entries(damageZone).map(([name, value]) => ({ name, value }));
 
     return res.status(200).json({ success: true, kpis, graphs });

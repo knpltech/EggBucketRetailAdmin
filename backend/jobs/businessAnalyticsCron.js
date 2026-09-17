@@ -367,7 +367,7 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
       },
       inventoryAnalytics: {
         totalDamage,
-        damagePercentage: totalLoad > 0 ? Number(((totalDamage / totalLoad) * 100).toFixed(2)) : 0,
+        damagePercentage: totalLoad > 0 ? Number(((totalDamage / (totalLoad * 30)) * 100).toFixed(2)) : 0,
         load: totalLoad,
         returns: totalReturn,
         missedOpportunity,
@@ -475,7 +475,7 @@ cron.schedule("0 11 * * *", async () => {
       "inventoryAnalytics.totalDamage": totalDamage,
       "inventoryAnalytics.damageByZone": damageByZone,
       "inventoryAnalytics.damageBySegment": damageByZone,
-      "inventoryAnalytics.damagePercentage": totalLoad > 0 ? Number(((totalDamage / totalLoad) * 100).toFixed(2)) : 0,
+      "inventoryAnalytics.damagePercentage": totalLoad > 0 ? Number(((totalDamage / (totalLoad * 30)) * 100).toFixed(2)) : 0,
     };
 
     await db.collection("business_statistics_daily").doc(dateStr).set(inventoryUpdates, { merge: true });
