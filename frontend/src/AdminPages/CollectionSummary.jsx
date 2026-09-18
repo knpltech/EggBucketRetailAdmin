@@ -14,6 +14,7 @@ import {
   Unlock,
   AlertTriangle,
   ShieldCheck,
+  Truck,
 } from "lucide-react";
 import { FiTrendingUp } from "react-icons/fi";
 import * as XLSX from "xlsx";
@@ -1142,6 +1143,14 @@ const CollectionSummary = () => {
     return (((potentialAchieved - lastWeekdayPotential) / lastWeekdayPotential) * 100).toFixed(2);
   }, [potentialAchieved, lastWeekdayPotential]);
 
+  // Available Load in Vehicle = Total Load - Total Return - Total Sales
+  const availableLoadInVehicle = useMemo(() => {
+    const load = displayedMetrics.totalLoad || 0;
+    const ret = displayedMetrics.totalReturn || 0;
+    const sales = filteredTotals.totalTrays || 0;
+    return load - ret - sales;
+  }, [displayedMetrics.totalLoad, displayedMetrics.totalReturn, filteredTotals.totalTrays]);
+
   // Get unique delivery agents for selected date
   const deliveryAgentOptions = useMemo(() => {
     const agents = new Set();
@@ -1430,13 +1439,13 @@ const CollectionSummary = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 w-full">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
+      {/* Top Header Row with Actions */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Collection Summary</h1>
-          <p className="text-sm text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Collection Summary</h1>
+          <p className="text-sm text-gray-500 font-medium mt-1">
             Viewing data for:{" "}
-            <span className="font-semibold">
+            <span className="font-semibold text-gray-700">
               {new Date(selectedDate + "T00:00:00").toLocaleDateString(
                 "en-IN",
                 {
@@ -1450,27 +1459,74 @@ const CollectionSummary = () => {
           </p>
         </div>
 
-        {/* ⭐ Total Peak Potential & Potential Achieved row */}
-        <div className="flex gap-4 mb-4 md:mb-0 flex-nowrap">
-          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500 flex flex-col justify-center">
+        {/* Header Action Buttons: Refresh, Recalculate, Date Picker, Export */}
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Refresh Button */}
+          <button
+            onClick={fetchCollectionSummary}
+            disabled={refreshing}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            <RefreshCw size={17} className={refreshing ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </button>
+
+          {/* Recalculate Button */}
+          <button
+            onClick={handleRecalculate}
+            disabled={recalculating || !data}
+            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-semibold py-2 px-4 rounded-xl transition cursor-pointer shadow-sm"
+            title="Clean old entries and keep latest 30 days"
+          >
+            <Zap size={17} className={recalculating ? "animate-spin" : ""} />
+            <span>Recalculate</span>
+          </button>
+
+          {/* Date Picker */}
+          <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2 shadow-sm">
+            <Calendar size={18} className="text-gray-500 shrink-0" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="border-none outline-none text-sm font-medium bg-transparent text-gray-800 cursor-pointer"
+            />
+          </div>
+
+          {/* Export Button */}
+          <button
+            onClick={handleExcelExport}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            <Download size={17} />
+            <span>Export</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ⭐ Top Header Cards Row: Potential Metrics, Available Load in Vehicle, Avg Order & Total Collections */}
+      <div className="flex flex-wrap items-stretch justify-between gap-4 mb-6">
+        {/* Left Block: Best, Potential Achieved, Last Potential */}
+        <div className="bg-white rounded-xl shadow border border-gray-100 p-2 md:p-3 flex items-center gap-3 flex-wrap sm:flex-nowrap">
+          <div className="px-3 py-2 border-l-4 border-orange-500 flex flex-col justify-center min-w-[120px]">
             <p className="text-xs text-gray-500 whitespace-nowrap">
               Best {weekdayName} Potential
             </p>
-            <p className="text-xl font-bold text-orange-600">
+            <p className="text-xl md:text-2xl font-bold text-orange-600">
               {loading ? "…" : `T(${totalPeakPotential})`}
             </p>
           </div>
 
-          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500 flex flex-col justify-center">
+          <div className="px-3 py-2 border-l-4 border-purple-500 flex flex-col justify-center min-w-[130px]">
             <p className="text-xs text-gray-500 whitespace-nowrap">
               Potential Achieved
             </p>
             <div className="flex items-center gap-2">
-              <p className="text-xl font-bold text-purple-600">
+              <p className="text-xl md:text-2xl font-bold text-purple-600">
                 {loading ? "…" : potentialAchieved}
               </p>
               {!loading && (
-                <span className={`inline-flex items-center gap-1 text-sm font-bold whitespace-nowrap ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                <span className={`inline-flex items-center gap-0.5 text-xs font-bold whitespace-nowrap ${wowPercentage > 0 ? 'text-green-500' : wowPercentage < 0 ? 'text-red-500' : 'text-gray-500'}`}>
                   <span>{wowPercentage > 0 ? '▲' : wowPercentage < 0 ? '▼' : '▬'}</span>
                   <span>{Math.abs(wowPercentage)}%</span>
                 </span>
@@ -1478,7 +1534,7 @@ const CollectionSummary = () => {
             </div>
             {!loading && totalPeakPotential > 0 && (
               <p
-                className="text-xs font-semibold mt-1"
+                className="text-[11px] font-semibold mt-0.5"
                 style={{
                   color:
                     achievementPercentage >= 100
@@ -1493,16 +1549,16 @@ const CollectionSummary = () => {
             )}
           </div>
 
-          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center">
+          <div className="px-3 py-2 border-l-4 border-blue-500 flex flex-col justify-center min-w-[120px]">
             <p className="text-xs text-gray-500 whitespace-nowrap">
               Last {weekdayName} Potential
             </p>
-            <p className="text-xl font-bold text-blue-600">
+            <p className="text-xl md:text-2xl font-bold text-blue-600">
               {loading ? "…" : lastWeekdayPotential}
             </p>
             {!loading && totalPeakPotential > 0 && (
               <p
-                className="text-xs font-semibold mt-1"
+                className="text-[11px] font-semibold mt-0.5"
                 style={{
                   color:
                     lastAchievementPercentage >= 100
@@ -1518,12 +1574,30 @@ const CollectionSummary = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="flex gap-4 w-full md:w-auto flex-nowrap ml-auto">
-          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-indigo-400 flex flex-col justify-center min-w-[160px]">
-            <p className="text-sm text-gray-600 mb-1 whitespace-nowrap">Avg Order</p>
-            <div className="flex items-end justify-between gap-4">
-              <p className="text-2xl font-bold text-gray-900">
+        {/* Center Block: Available Load in Vehicle Card (Reduced & well-padded) */}
+        <div className="bg-white rounded-xl shadow border-2 border-blue-400 px-6 py-3.5 flex items-center gap-3.5 min-w-[210px] justify-center">
+          <div className="p-2 bg-blue-50 rounded-lg text-blue-600 shrink-0">
+            <Truck size={22} className="text-blue-600" />
+          </div>
+          <div className="flex flex-col justify-center">
+            <p className="text-xs md:text-sm font-semibold text-blue-600 whitespace-nowrap">
+              Available Load in Vehicle
+            </p>
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <p className="text-xl md:text-2xl font-bold text-gray-900">
+                {loading ? "…" : availableLoadInVehicle.toLocaleString("en-IN")}
+              </p>
+              <span className="text-xs md:text-sm font-semibold text-gray-500">Trays</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Block: Avg Order & Total Collections */}
+        <div className="bg-white rounded-xl shadow border border-gray-100 p-2 md:p-3 flex items-center gap-3 flex-nowrap">
+          <div className="px-3 py-2 border-l-4 border-indigo-400 flex flex-col justify-center min-w-[120px]">
+            <p className="text-xs text-gray-600 mb-0.5 whitespace-nowrap">Avg Order</p>
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-xl md:text-2xl font-bold text-gray-900">
                 {filtered.length > 0 ? (filteredTotals.totalTrays / filtered.length).toFixed(2) : "0.00"}
               </p>
               {!loading && renderWowIndicator(
@@ -1533,10 +1607,10 @@ const CollectionSummary = () => {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center min-w-[160px]">
-            <p className="text-sm text-gray-600 mb-1 whitespace-nowrap">Total Collections</p>
-            <div className="flex items-end justify-between gap-4">
-              <p className="text-2xl font-bold">
+          <div className="px-3 py-2 border-l-4 border-blue-500 flex flex-col justify-center min-w-[120px]">
+            <p className="text-xs text-gray-600 mb-0.5 whitespace-nowrap">Total Collections</p>
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-xl md:text-2xl font-bold text-gray-900">
                 {loading ? "…" : filtered.length}
               </p>
               {!loading && renderWowIndicator(filtered.length, lastWeekdayTotals.deliveredCount)}
@@ -1598,24 +1672,27 @@ const CollectionSummary = () => {
         </div>
       )}
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2 mb-6 flex-wrap items-center">
-        {["ALL", "CASH", "UPI"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-xl border font-medium transition ${activeTab === tab
-              ? "bg-black text-white border-black"
-              : "bg-white text-gray-900 border-gray-200 hover:border-gray-300"
-              }`}
-          >
-            {tab}
-          </button>
-        ))}
+      {/* Filter Tabs and Actions Bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        {/* Tab Filters */}
+        <div className="flex gap-1.5 bg-gray-200/70 p-1 rounded-xl">
+          {["ALL", "CASH", "UPI"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer ${activeTab === tab
+                ? "bg-black text-white shadow-sm"
+                : "text-gray-700 hover:text-black hover:bg-gray-200"
+                }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
 
         {/* Delivery Agent Filter */}
-        <div className="flex items-center gap-2 ml-2">
-          <label className="text-sm font-medium text-gray-600">Agent:</label>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-semibold text-gray-700">Agent:</label>
           <select
             value={selectedAgent}
             onChange={(e) => {
@@ -1634,13 +1711,12 @@ const CollectionSummary = () => {
                 }
               }
             }}
-            className={`border rounded-lg px-3 py-2 text-sm font-medium bg-white transition-all duration-300 ${
-              agentSelectHighlight
-                ? "border-orange-500 ring-4 ring-orange-300 shadow-md font-bold text-orange-900"
-                : isCurrentAgentLocked
+            className={`border rounded-xl px-3 py-2 text-sm font-medium bg-white transition-all duration-300 ${agentSelectHighlight
+              ? "border-orange-500 ring-4 ring-orange-300 shadow-md font-bold text-orange-900"
+              : isCurrentAgentLocked
                 ? "border-emerald-500 ring-2 ring-emerald-200 text-emerald-900 font-bold"
-                : "border-gray-300 focus:ring-2 focus:ring-purple-500"
-            }`}
+                : "border-gray-300 focus:ring-2 focus:ring-blue-500"
+              }`}
           >
             <option value="all">All Delivery Agents</option>
             {deliveryAgentOptions.map((agent) => {
@@ -1655,8 +1731,8 @@ const CollectionSummary = () => {
         </div>
 
         {/* Outlet Filter */}
-        <div className="flex items-center gap-2 ml-2">
-          <label className="text-sm font-medium text-gray-600">Outlet:</label>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-semibold text-gray-700">Outlet:</label>
           <select
             value={selectedOutlet}
             onChange={(e) => {
@@ -1665,7 +1741,9 @@ const CollectionSummary = () => {
               if (newOutlet === "all") {
                 setSelectedAgent("all");
               } else {
-                const partner = deliveryPartners.find(p => p.outlet === newOutlet) || salesPartners.find(p => p.outlet === newOutlet);
+                const partner =
+                  deliveryPartners.find((p) => p.outlet === newOutlet) ||
+                  salesPartners.find((p) => p.outlet === newOutlet);
                 if (partner && partner.name) {
                   setSelectedAgent(partner.name);
                 } else {
@@ -1673,7 +1751,7 @@ const CollectionSummary = () => {
                 }
               }
             }}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+            className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Outlets</option>
             {Array.from(
@@ -1691,129 +1769,84 @@ const CollectionSummary = () => {
           </select>
         </div>
 
-        {/* Date Picker */}
+        {/* ⭐ Penalty Button */}
+        <button
+          onClick={() => openAddModal("penalty")}
+          disabled={isCurrentAgentLocked}
+          className={`px-4 py-2 text-white font-semibold rounded-xl transition whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 ${isCurrentAgentLocked
+            ? "bg-gray-400 cursor-not-allowed opacity-60"
+            : "bg-rose-600 hover:bg-rose-700 cursor-pointer"
+            }`}
+          title={isCurrentAgentLocked ? "Day is locked for this agent" : "Add penalty for selected agent"}
+        >
+          <AlertTriangle size={16} />
+          <span>Penalty</span>
+        </button>
+
+        {/* ⭐ Lock / Save Data Button */}
+        {selectedAgent === "all" ? (
+          <button
+            onClick={() => {
+              setAgentWarningMessage("Please select a specific Delivery Agent from the top filter before locking data.");
+              setAgentSelectHighlight(true);
+              setTimeout(() => setAgentSelectHighlight(false), 3500);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2 px-4 rounded-xl transition shadow-sm cursor-pointer active:scale-95"
+            title="Select a delivery agent first to lock daily data"
+          >
+            <Lock size={16} />
+            <span>Lock / Save</span>
+          </button>
+        ) : isCurrentAgentLocked ? (
+          <button
+            onClick={handleToggleLock}
+            disabled={lockingAgent}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold py-2 px-4 rounded-xl transition shadow-sm cursor-pointer border border-emerald-500 active:scale-95"
+            title={`Data is locked for ${selectedAgent}. Click to Unlock`}
+          >
+            {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
+            <span>Data Locked 🔒</span>
+          </button>
+        ) : (
+          <button
+            onClick={handleToggleLock}
+            disabled={lockingAgent}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 text-white font-bold py-2 px-4 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
+            title={`Lock & Save all entries for ${selectedAgent} on ${selectedDate}`}
+          >
+            {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
+            <span>Lock / Save</span>
+          </button>
+        )}
+
+        {/* Today's Price & Calculate Button */}
         <div className="flex items-center gap-2 ml-auto">
-          <Calendar size={18} className="text-gray-600" />
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium"
-          />
-        </div>
-
-        {/* Refresh and Export Buttons */}
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={fetchCollectionSummary}
-            disabled={refreshing}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-lg transition cursor-pointer"
-          >
-            <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
-            <span>Refresh</span>
-          </button>
-          <button
-            onClick={handleExcelExport}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition w-full justify-center cursor-pointer"
-          >
-            <Download size={18} />
-            <span>Export</span>
-          </button>
-        </div>
-
-        {/* Recalculate & Lock / Save Data Action Container */}
-        <div className="flex flex-col gap-2">
-          {/* Recalculate Button */}
-          <button
-            onClick={handleRecalculate}
-            disabled={recalculating || !data}
-            className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-semibold py-2 px-4 rounded-lg transition cursor-pointer"
-            title="Clean old entries and keep latest 30 days"
-          >
-            <Zap size={18} className={recalculating ? "animate-spin" : ""} />
-            <span>Recalculate</span>
-          </button>
-
-          {/* ⭐ Lock / Save Data Button */}
-          {selectedAgent === "all" ? (
-            <button
-              onClick={() => {
-                setAgentWarningMessage("Please select a specific Delivery Agent from the top filter before locking data.");
-                setAgentSelectHighlight(true);
-                setTimeout(() => setAgentSelectHighlight(false), 3500);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white font-semibold py-2 px-4 rounded-lg transition shadow-sm cursor-pointer"
-              title="Select a delivery agent first to lock daily data"
-            >
-              <Lock size={16} />
-              <span>Lock / Save</span>
-            </button>
-          ) : isCurrentAgentLocked ? (
-            <button
-              onClick={handleToggleLock}
-              disabled={lockingAgent}
-              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold py-2 px-4 rounded-lg transition shadow-sm cursor-pointer border border-emerald-500 animate-in fade-in"
-              title={`Data is locked for ${selectedAgent}. Click to Unlock`}
-            >
-              {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
-              <span>Data Locked 🔒</span>
-            </button>
-          ) : (
-            <button
-              onClick={handleToggleLock}
-              disabled={lockingAgent}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 text-white font-bold py-2 px-4 rounded-lg transition shadow-md active:scale-95 cursor-pointer animate-in fade-in"
-              title={`Lock & Save all entries for ${selectedAgent} on ${selectedDate}`}
-            >
-              {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
-              <span>Lock / Save</span>
-            </button>
-          )}
-        </div>
-
-        {/* Calculator Controls & Penalty Button */}
-        <div className="flex items-center gap-2 ml-2">
           <input
             type="number"
             value={todaysPrice}
             onChange={(e) => {
               const newValue = e.target.value;
               setTodaysPrice(newValue);
-              // Clear minusAmounts when input is cleared
               if (newValue === "") {
                 setMinusAmounts({});
               }
             }}
             placeholder="Today's Price"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           />
           <button
             onClick={handleCalculate}
-            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-xl transition whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
           >
             Calculate
-          </button>
-          {/* ⭐ Penalty Button */}
-          <button
-            onClick={() => openAddModal("penalty")}
-            disabled={isCurrentAgentLocked}
-            className={`px-3 py-2 text-white font-semibold rounded-lg transition whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 ${
-              isCurrentAgentLocked
-                ? "bg-gray-400 cursor-not-allowed opacity-60"
-                : "bg-rose-600 hover:bg-rose-700 cursor-pointer"
-            }`}
-            title={isCurrentAgentLocked ? "Day is locked for this agent" : "Add penalty for selected agent"}
-          >
-            <AlertTriangle size={16} />
-            <span>Penalty</span>
           </button>
         </div>
       </div>
 
 
       {/* Summary Stats Cards */}
-      {/* Row 1 Stats Cards */}
+      {/* Row 1 Stats Cards (NETT Sales Row) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {(() => {
           const sales = displayedMetrics.nettSales;
@@ -1879,22 +1912,21 @@ const CollectionSummary = () => {
               </div>
               <div className="flex items-center justify-between gap-2 mt-3">
                 <div className="flex items-baseline gap-1">
-                  <p className="text-2xl font-bold text-gray-900">
+                  <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
                     {card.format(card.value)}
                   </p>
                   {card.unit && (
-                    <span className="text-base font-semibold text-gray-500 ml-1">{card.unit}</span>
+                    <span className="text-sm lg:text-base font-bold text-gray-500 ml-1.5">{card.unit}</span>
                   )}
                 </div>
                 {card.addType && (
                   <button
                     onClick={() => openAddModal(card.addType)}
                     disabled={isCurrentAgentLocked}
-                    className={`px-2.5 py-1 border-2 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 ml-auto shrink-0 ${
-                      isCurrentAgentLocked
-                        ? "border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed"
-                        : "border-purple-600 text-purple-700 hover:bg-purple-50 cursor-pointer"
-                    }`}
+                    className={`px-2.5 py-1 border-2 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 ml-auto shrink-0 ${isCurrentAgentLocked
+                      ? "border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed"
+                      : "border-purple-600 text-purple-700 hover:bg-purple-50 cursor-pointer"
+                      }`}
                     title={isCurrentAgentLocked ? "Entries are locked for this agent" : `Add ${card.label}`}
                   >
                     {isCurrentAgentLocked ? (
@@ -1916,55 +1948,56 @@ const CollectionSummary = () => {
         })()}
       </div>
 
+      {/* Row 2 Stats Cards (Total Trays, Sales Point, Total Cash, Total UPI, Total Amount) */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500 flex flex-col justify-between">
-          <p className="text-sm text-gray-600 mb-2">Total Trays</p>
+        <div className="bg-white rounded-lg p-5 shadow border-t-4 border-t-blue-500 flex flex-col justify-between">
+          <p className="text-sm font-medium text-gray-600 mb-2">Total Trays</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
               {filteredTotals.totalTrays}
             </p>
             {renderWowIndicator(filteredTotals.totalTrays, lastWeekdayTotals.totalTrays)}
           </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400 flex flex-col justify-between">
-          <p className="text-sm text-gray-600 mb-2">Sales Point</p>
+        <div className="bg-white rounded-lg p-5 shadow border-t-4 border-t-teal-400 flex flex-col justify-between">
+          <p className="text-sm font-medium text-gray-600 mb-2">Sales Point</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
               {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-green-500 flex flex-col justify-between">
-          <p className="text-sm text-gray-600 mb-2">Total Cash</p>
+        <div className="bg-white rounded-lg p-5 shadow border-t-4 border-t-green-500 flex flex-col justify-between">
+          <p className="text-sm font-medium text-gray-600 mb-2">Total Cash</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
               ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-purple-500 flex flex-col justify-between">
-          <p className="text-sm text-gray-600 mb-2">Total UPI</p>
+        <div className="bg-white rounded-lg p-5 shadow border-t-4 border-t-purple-500 flex flex-col justify-between">
+          <p className="text-sm font-medium text-gray-600 mb-2">Total UPI</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
               ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-orange-500 flex flex-col justify-between">
-          <p className="text-sm text-gray-600 mb-2">Total Amount</p>
+        <div className="bg-white rounded-lg p-5 shadow border-t-4 border-t-orange-500 flex flex-col justify-between">
+          <p className="text-sm font-medium text-gray-600 mb-2">Total Amount</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
               ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Row 2 Stats Cards */}
+      {/* Row 3 Stats Cards (Cash Handover, UPI Handover, Food Allowance, Balances) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {(() => {
           const cash = displayedMetrics.cashHandover || 0;
@@ -2038,7 +2071,7 @@ const CollectionSummary = () => {
               </div>
               <div className="flex items-center justify-between gap-2 mt-3">
                 <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-bold text-gray-900">
+                  <p className="text-2xl lg:text-3xl font-bold text-gray-900 tracking-tight">
                     {card.format(card.value)}
                   </p>
                 </div>
@@ -2046,11 +2079,10 @@ const CollectionSummary = () => {
                   <button
                     onClick={() => openAddModal(card.addType)}
                     disabled={isCurrentAgentLocked}
-                    className={`px-3 py-1 border-2 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 ml-auto shrink-0 ${
-                      isCurrentAgentLocked
-                        ? "border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed"
-                        : "border-purple-600 text-purple-700 hover:bg-purple-50 cursor-pointer"
-                    }`}
+                    className={`px-3 py-1 border-2 font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm active:scale-95 ml-auto shrink-0 ${isCurrentAgentLocked
+                      ? "border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed"
+                      : "border-purple-600 text-purple-700 hover:bg-purple-50 cursor-pointer"
+                      }`}
                     title={isCurrentAgentLocked ? "Entries are locked for this agent" : `Add ${card.label}`}
                   >
                     {isCurrentAgentLocked ? (
@@ -2134,234 +2166,234 @@ const CollectionSummary = () => {
             {filtered.map((item) => {
               const rowLocked = isAgentLocked(item.deliveryAgent) || isCurrentAgentLocked;
               return (
-              <tr
-                key={item.customerId}
-                className="border-t hover:bg-gray-50 transition"
-              >
-                <td className="p-3 font-medium text-gray-900">
-                  {item.customerId}
-                </td>
-                <td className="p-3 font-medium text-gray-700">
-                  {item.customerName}
-                </td>
-                <td className="p-3 font-medium text-gray-700">
-                  <div className="flex items-center gap-1.5">
-                    <span>{item.deliveryAgent}</span>
-                    {rowLocked && (
-                      <span title={`Data locked for ${item.deliveryAgent}`}>
-                        <Lock size={13} className="text-emerald-600 inline" />
-                      </span>
+                <tr
+                  key={item.customerId}
+                  className="border-t hover:bg-gray-50 transition"
+                >
+                  <td className="p-3 font-medium text-gray-900">
+                    {item.customerId}
+                  </td>
+                  <td className="p-3 font-medium text-gray-700">
+                    {item.customerName}
+                  </td>
+                  <td className="p-3 font-medium text-gray-700">
+                    <div className="flex items-center gap-1.5">
+                      <span>{item.deliveryAgent}</span>
+                      {rowLocked && (
+                        <span title={`Data locked for ${item.deliveryAgent}`}>
+                          <Lock size={13} className="text-emerald-600 inline" />
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-3 font-medium text-gray-700">
+                    {item.deliveryTime}
+                  </td>
+
+                  {/* Quantity Column */}
+                  <td className="p-3 text-center text-gray-700 font-medium">
+                    {editingCell?.rowId === item.docId &&
+                      editingCell?.field === "quantity" ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-14 px-1.5 py-0.5 border border-gray-300 rounded text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={savingEdit}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveCell(item)}
+                          disabled={savingEdit}
+                          className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
+                          title="Save"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={savingEdit}
+                          className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2 group">
+                        <span>{item.quantity}</span>
+                        {rowLocked ? (
+                          <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
+                            <Lock size={12} className="opacity-40" />
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleEditCell(item, "quantity")}
+                            className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
+                            title="Edit quantity"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </div>
-                </td>
-                <td className="p-3 font-medium text-gray-700">
-                  {item.deliveryTime}
-                </td>
+                  </td>
 
-                {/* Quantity Column */}
-                <td className="p-3 text-center text-gray-700 font-medium">
-                  {editingCell?.rowId === item.docId &&
-                    editingCell?.field === "quantity" ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <input
-                        type="number"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-14 px-1.5 py-0.5 border border-gray-300 rounded text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={savingEdit}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveCell(item)}
-                        disabled={savingEdit}
-                        className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
-                        title="Save"
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button
-                        onClick={handleCancelEdit}
-                        disabled={savingEdit}
-                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
-                        title="Cancel"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center gap-2 group">
-                      <span>{item.quantity}</span>
-                      {rowLocked ? (
-                        <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
-                          <Lock size={12} className="opacity-40" />
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleEditCell(item, "quantity")}
-                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
-                          title="Edit quantity"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
-
-                <td className="p-3 text-center">
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${item.paymentMethod === "CASH"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-purple-100 text-purple-800"
-                      }`}
-                  >
-                    {item.paymentMethod}
-                  </span>
-                </td>
-
-                {/* Cash Column */}
-                <td className="p-3 text-right text-gray-700 font-medium">
-                  {editingCell?.rowId === item.docId &&
-                    editingCell?.field === "cash" ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <input
-                        type="number"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={savingEdit}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveCell(item)}
-                        disabled={savingEdit}
-                        className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
-                        title="Save"
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button
-                        onClick={handleCancelEdit}
-                        disabled={savingEdit}
-                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
-                        title="Cancel"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-end gap-2 group">
-                      <span>
-                        {typeof item.cash === "number"
-                          ? `₹${item.cash.toLocaleString("en-IN")}`
-                          : item.cash}
-                      </span>
-                      {rowLocked ? (
-                        <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
-                          <Lock size={12} className="opacity-40" />
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleEditCell(item, "cash")}
-                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
-                          title="Edit cash amount"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
-
-                {/* UPI Column */}
-                <td className="p-3 text-right text-gray-700 font-medium">
-                  {editingCell?.rowId === item.docId &&
-                    editingCell?.field === "upi" ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <input
-                        type="number"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={savingEdit}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveCell(item)}
-                        disabled={savingEdit}
-                        className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
-                        title="Save"
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button
-                        onClick={handleCancelEdit}
-                        disabled={savingEdit}
-                        className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
-                        title="Cancel"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-end gap-2 group">
-                      <span>
-                        {typeof item.upi === "number"
-                          ? `₹${item.upi.toLocaleString("en-IN")}`
-                          : item.upi}
-                      </span>
-                      {rowLocked ? (
-                        <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
-                          <Lock size={12} className="opacity-40" />
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleEditCell(item, "upi")}
-                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
-                          title="Edit UPI amount"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
-
-                <td className="p-3 text-right text-gray-900 font-semibold">
-                  {typeof item.amount === "number"
-                    ? `₹${item.amount.toLocaleString("en-IN")}`
-                    : item.amount}
-                </td>
-
-                <td className="p-3 text-right text-gray-900 font-semibold">
-                  {typeof item.amount === "number" &&
-                    typeof item.quantity === "number" &&
-                    item.quantity > 0
-                    ? `₹${(item.amount / item.quantity).toLocaleString("en-IN", {
-                      minimumFractionDigits: 3,
-                      maximumFractionDigits: 3,
-                    })}`
-                    : "-"}
-                </td>
-
-                <td className="p-3 text-right font-semibold">
-                  {minusAmounts[item.customerId] !== undefined ? (
+                  <td className="p-3 text-center">
                     <span
-                      className={
-                        minusAmounts[item.customerId] < 0
-                          ? "text-red-600"
-                          : "text-gray-900"
-                      }
+                      className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${item.paymentMethod === "CASH"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-purple-100 text-purple-800"
+                        }`}
                     >
-                      ₹{minusAmounts[item.customerId].toLocaleString("en-IN")}
+                      {item.paymentMethod}
                     </span>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+                  </td>
+
+                  {/* Cash Column */}
+                  <td className="p-3 text-right text-gray-700 font-medium">
+                    {editingCell?.rowId === item.docId &&
+                      editingCell?.field === "cash" ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={savingEdit}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveCell(item)}
+                          disabled={savingEdit}
+                          className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
+                          title="Save"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={savingEdit}
+                          className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-2 group">
+                        <span>
+                          {typeof item.cash === "number"
+                            ? `₹${item.cash.toLocaleString("en-IN")}`
+                            : item.cash}
+                        </span>
+                        {rowLocked ? (
+                          <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
+                            <Lock size={12} className="opacity-40" />
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleEditCell(item, "cash")}
+                            className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
+                            title="Edit cash amount"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* UPI Column */}
+                  <td className="p-3 text-right text-gray-700 font-medium">
+                    {editingCell?.rowId === item.docId &&
+                      editingCell?.field === "upi" ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={savingEdit}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveCell(item)}
+                          disabled={savingEdit}
+                          className="text-green-600 hover:text-green-700 disabled:text-green-400 cursor-pointer"
+                          title="Save"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={savingEdit}
+                          className="text-gray-400 hover:text-gray-600 disabled:text-gray-300 cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-2 group">
+                        <span>
+                          {typeof item.upi === "number"
+                            ? `₹${item.upi.toLocaleString("en-IN")}`
+                            : item.upi}
+                        </span>
+                        {rowLocked ? (
+                          <span className="text-gray-300" title={`Locked for ${item.deliveryAgent}`}>
+                            <Lock size={12} className="opacity-40" />
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleEditCell(item, "upi")}
+                            className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-opacity cursor-pointer"
+                            title="Edit UPI amount"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+
+                  <td className="p-3 text-right text-gray-900 font-semibold">
+                    {typeof item.amount === "number"
+                      ? `₹${item.amount.toLocaleString("en-IN")}`
+                      : item.amount}
+                  </td>
+
+                  <td className="p-3 text-right text-gray-900 font-semibold">
+                    {typeof item.amount === "number" &&
+                      typeof item.quantity === "number" &&
+                      item.quantity > 0
+                      ? `₹${(item.amount / item.quantity).toLocaleString("en-IN", {
+                        minimumFractionDigits: 3,
+                        maximumFractionDigits: 3,
+                      })}`
+                      : "-"}
+                  </td>
+
+                  <td className="p-3 text-right font-semibold">
+                    {minusAmounts[item.customerId] !== undefined ? (
+                      <span
+                        className={
+                          minusAmounts[item.customerId] < 0
+                            ? "text-red-600"
+                            : "text-gray-900"
+                        }
+                      >
+                        ₹{minusAmounts[item.customerId].toLocaleString("en-IN")}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
 
             {/* Totals Row */}
 
