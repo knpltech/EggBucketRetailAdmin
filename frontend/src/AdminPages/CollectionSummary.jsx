@@ -1452,21 +1452,21 @@ const CollectionSummary = () => {
 
         {/* ⭐ Total Peak Potential & Potential Achieved row */}
         <div className="flex gap-4 mb-4 md:mb-0 flex-nowrap">
-          <div className="bg-white px-5 py-3.5 rounded-xl shadow border-l-4 border-orange-500 flex flex-col justify-center">
-            <p className="text-xs md:text-sm font-bold text-gray-700 whitespace-nowrap">
+          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-orange-500 flex flex-col justify-center">
+            <p className="text-xs text-gray-500 whitespace-nowrap">
               Best {weekdayName} Potential
             </p>
-            <p className="text-2xl font-black text-orange-600">
+            <p className="text-xl font-bold text-orange-600">
               {loading ? "…" : `T(${totalPeakPotential})`}
             </p>
           </div>
 
-          <div className="bg-white px-5 py-3.5 rounded-xl shadow border-l-4 border-purple-500 flex flex-col justify-center">
-            <p className="text-xs md:text-sm font-bold text-gray-700 whitespace-nowrap">
+          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-purple-500 flex flex-col justify-center">
+            <p className="text-xs text-gray-500 whitespace-nowrap">
               Potential Achieved
             </p>
             <div className="flex items-center gap-2">
-              <p className="text-2xl font-black text-purple-600">
+              <p className="text-xl font-bold text-purple-600">
                 {loading ? "…" : potentialAchieved}
               </p>
               {!loading && (
@@ -1478,7 +1478,7 @@ const CollectionSummary = () => {
             </div>
             {!loading && totalPeakPotential > 0 && (
               <p
-                className="text-xs font-bold mt-1"
+                className="text-xs font-semibold mt-1"
                 style={{
                   color:
                     achievementPercentage >= 100
@@ -1493,16 +1493,16 @@ const CollectionSummary = () => {
             )}
           </div>
 
-          <div className="bg-white px-5 py-3.5 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center">
-            <p className="text-xs md:text-sm font-bold text-gray-700 whitespace-nowrap">
+          <div className="bg-white px-5 py-3 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center">
+            <p className="text-xs text-gray-500 whitespace-nowrap">
               Last {weekdayName} Potential
             </p>
-            <p className="text-2xl font-black text-blue-600">
+            <p className="text-xl font-bold text-blue-600">
               {loading ? "…" : lastWeekdayPotential}
             </p>
             {!loading && totalPeakPotential > 0 && (
               <p
-                className="text-xs font-bold mt-1"
+                className="text-xs font-semibold mt-1"
                 style={{
                   color:
                     lastAchievementPercentage >= 100
@@ -1521,9 +1521,9 @@ const CollectionSummary = () => {
         {/* Stats Cards */}
         <div className="flex gap-4 w-full md:w-auto flex-nowrap ml-auto">
           <div className="bg-white p-6 rounded-xl shadow border-l-4 border-indigo-400 flex flex-col justify-center min-w-[160px]">
-            <p className="text-sm md:text-base font-bold text-gray-700 mb-1 whitespace-nowrap">Avg Order</p>
+            <p className="text-sm text-gray-600 mb-1 whitespace-nowrap">Avg Order</p>
             <div className="flex items-end justify-between gap-4">
-              <p className="text-3xl font-black text-gray-900">
+              <p className="text-2xl font-bold text-gray-900">
                 {filtered.length > 0 ? (filteredTotals.totalTrays / filtered.length).toFixed(2) : "0.00"}
               </p>
               {!loading && renderWowIndicator(
@@ -1534,9 +1534,9 @@ const CollectionSummary = () => {
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500 flex flex-col justify-center min-w-[160px]">
-            <p className="text-sm md:text-base font-bold text-gray-700 mb-1 whitespace-nowrap">Total Collections</p>
+            <p className="text-sm text-gray-600 mb-1 whitespace-nowrap">Total Collections</p>
             <div className="flex items-end justify-between gap-4">
-              <p className="text-3xl font-black text-gray-900">
+              <p className="text-2xl font-bold">
                 {loading ? "…" : filtered.length}
               </p>
               {!loading && renderWowIndicator(filtered.length, lastWeekdayTotals.deliveredCount)}
@@ -1874,16 +1874,16 @@ const CollectionSummary = () => {
               className={`bg-white rounded-lg p-5 shadow border-t-4 ${card.color} flex flex-col justify-between`}
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-base font-bold text-gray-800 tracking-tight">{card.label}</p>
-                <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md uppercase tracking-wider">{card.topRight}</span>
+                <p className="text-sm font-medium text-gray-600">{card.label}</p>
+                <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
               </div>
               <div className="flex items-center justify-between gap-2 mt-3">
                 <div className="flex items-baseline gap-1">
-                  <p className="text-3xl font-black text-gray-900 tracking-tight">
+                  <p className="text-2xl font-bold text-gray-900">
                     {card.format(card.value)}
                   </p>
                   {card.unit && (
-                    <span className="text-base font-bold text-gray-500 ml-1.5">{card.unit}</span>
+                    <span className="text-base font-semibold text-gray-500 ml-1">{card.unit}</span>
                   )}
                 </div>
                 {card.addType && (
@@ -1918,9 +1918,9 @@ const CollectionSummary = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-blue-500 flex flex-col justify-between">
-          <p className="text-base font-bold text-gray-800 mb-2">Total Trays</p>
+          <p className="text-sm text-gray-600 mb-2">Total Trays</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+            <p className="text-3xl font-bold text-gray-900">
               {filteredTotals.totalTrays}
             </p>
             {renderWowIndicator(filteredTotals.totalTrays, lastWeekdayTotals.totalTrays)}
@@ -1928,36 +1928,36 @@ const CollectionSummary = () => {
         </div>
 
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-teal-400 flex flex-col justify-between">
-          <p className="text-base font-bold text-gray-800 mb-2">Sales Point</p>
+          <p className="text-sm text-gray-600 mb-2">Sales Point</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+            <p className="text-3xl font-bold text-gray-900">
               {filteredTotals.totalTrays > 0 ? (filteredTotals.totalAmount / filteredTotals.totalTrays).toFixed(3) : "0.000"}
             </p>
           </div>
         </div>
 
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-green-500 flex flex-col justify-between">
-          <p className="text-base font-bold text-gray-800 mb-2">Total Cash</p>
+          <p className="text-sm text-gray-600 mb-2">Total Cash</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+            <p className="text-3xl font-bold text-gray-900">
               ₹{filteredTotals.totalCash.toLocaleString("en-IN")}
             </p>
           </div>
         </div>
 
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-purple-500 flex flex-col justify-between">
-          <p className="text-base font-bold text-gray-800 mb-2">Total UPI</p>
+          <p className="text-sm text-gray-600 mb-2">Total UPI</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+            <p className="text-3xl font-bold text-gray-900">
               ₹{filteredTotals.totalUpi.toLocaleString("en-IN")}
             </p>
           </div>
         </div>
 
         <div className="bg-white rounded-lg p-6 shadow border-t-4 border-t-orange-500 flex flex-col justify-between">
-          <p className="text-base font-bold text-gray-800 mb-2">Total Amount</p>
+          <p className="text-sm text-gray-600 mb-2">Total Amount</p>
           <div className="flex justify-between items-end">
-            <p className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+            <p className="text-3xl font-bold text-gray-900">
               ₹{filteredTotals.totalAmount.toLocaleString("en-IN")}
             </p>
           </div>
@@ -2033,12 +2033,12 @@ const CollectionSummary = () => {
               className={`bg-white rounded-lg p-5 shadow border-t-4 ${card.color} flex flex-col justify-between`}
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-base font-bold text-gray-800 tracking-tight">{card.label}</p>
-                <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md uppercase tracking-wider">{card.topRight}</span>
+                <p className="text-sm font-medium text-gray-600">{card.label}</p>
+                <span className="text-xs font-semibold text-gray-500">{card.topRight}</span>
               </div>
               <div className="flex items-center justify-between gap-2 mt-3">
                 <div className="flex items-baseline gap-2">
-                  <p className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+                  <p className="text-3xl font-bold text-gray-900">
                     {card.format(card.value)}
                   </p>
                 </div>
