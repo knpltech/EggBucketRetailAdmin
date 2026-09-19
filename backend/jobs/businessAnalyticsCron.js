@@ -46,10 +46,12 @@ const generateGenuineAnalytics = async (preloadedCustomersSnap = null) => {
 
   const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-  // If running at midnight (0-2 AM), process yesterday (finalization) AND today (baseline).
+  // If running at midnight (0-2 AM IST), process yesterday (finalization) AND today (baseline).
   // Otherwise process today.
-  const currentHour = new Date().getHours();
-  const daysToProcess = currentHour <= 2 ? [1, 0] : [0];
+  const currentHourIST = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: INDIA_TZ, hour: "numeric", hour12: false }).format(new Date())
+  );
+  const daysToProcess = currentHourIST <= 2 ? [1, 0] : [0];
 
   for (let i of daysToProcess) {
     const d = new Date();
@@ -418,70 +420,76 @@ export { generateGenuineAnalytics };
 export default generateGenuineAnalytics;
 
 // ==========================================
+// INVENTORY & DAMAGE SYNC
+// Fetch inventory data at 11:00 AM and 2:00 PM IST
+// Syncs both today and yesterday.
 // ==========================================
-// 11 AM INVENTORY SYNC
-// Fetch inventory data from the separate database once a day at 11 AM.
-// ==========================================
-cron.schedule("0 11 * * *", async () => {
-  console.log("[analyticsCron] Scheduled: 0 11 * * * (11 AM Inventory Sync)");
-  const dateStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
+cron.schedule("0 11,14 * * *", async () => {
+  console.log("[analyticsCron] Scheduled: 0 11,14 * * * (11 AM & 2 PM Inventory Sync running)");
+  
+  // Sync both today and yesterday to capture any late damage/return entries
+  const datesToSync = [0, 1].map(offset => {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    return getDateStringInTimeZone(d, INDIA_TZ);
+  });
 
-  let totalLoad = 0, totalReturn = 0, totalDamage = 0;
-  const damageByZone = {};
+  for (const dateStr of datesToSync) {
+    let totalLoad = 0, totalReturn = 0, totalDamage = 0;
+    const damageByZone = {};
 
-  try {
-    if (inventoryApp) {
-      const [loadSnap, returnSnap, damageSnap] = await Promise.all([
-        invDb.collection("loading_entries").where("dateKey", "==", dateStr).get(),
-        invDb.collection("return_load_entries").where("dateKey", "==", dateStr).get(),
-        invDb.collection("damage_reports").where("dateKey", "==", dateStr).get(),
-      ]);
+    try {
+      if (inventoryApp) {
+        const [loadSnap, returnSnap, damageSnap] = await Promise.all([
+          invDb.collection("loading_entries").where("dateKey", "==", dateStr).get(),
+          invDb.collection("return_load_entries").where("dateKey", "==", dateStr).get(),
+          invDb.collection("damage_reports").where("dateKey", "==", dateStr).get(),
+        ]);
 
-      loadSnap.forEach(doc => { totalLoad += (Number(doc.data().quantity) || 0); });
-      returnSnap.forEach(doc => { totalReturn += (Number(doc.data().quantity) || 0); });
-      damageSnap.forEach(doc => {
-        const data = doc.data();
-        const qty = Number(data.quantity) || 0;
-        totalDamage += qty;
-        const zone = data.outletName || data.agentName || "Unknown";
-        damageByZone[zone] = (damageByZone[zone] || 0) + qty;
-      });
-    } else {
-      // Fallback API call
-      const ADMIN_PATH = "https://eggbucketretailadmin.onrender.com/api/admin";
-      const token = jwt.sign({ id: "admin", role: "admin" }, process.env.JWT_SECRET || "eggbucket12", { expiresIn: "1h" });
-      const res = await axios.get(`${ADMIN_PATH}/inventory-metrics`, {
-        params: { date: dateStr },
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.data) {
-        totalLoad = res.data.totalLoad || 0;
-        totalReturn = res.data.totalReturn || 0;
-        totalDamage = res.data.totalDamage || 0;
-        if (res.data.damageEntries && Array.isArray(res.data.damageEntries)) {
-          res.data.damageEntries.forEach(item => {
-            const zone = item.outletName || item.agentName || "Unknown";
-            damageByZone[zone] = (damageByZone[zone] || 0) + (Number(item.quantity) || 0);
-          });
+        loadSnap.forEach(doc => { totalLoad += (Number(doc.data().quantity) || 0); });
+        returnSnap.forEach(doc => { totalReturn += (Number(doc.data().quantity) || 0); });
+        damageSnap.forEach(doc => {
+          const data = doc.data();
+          const qty = Number(data.quantity) || 0;
+          totalDamage += qty;
+          const zone = data.outletName || data.agentName || "Unknown";
+          damageByZone[zone] = (damageByZone[zone] || 0) + qty;
+        });
+      } else {
+        // Fallback API call
+        const ADMIN_PATH = "https://eggbucketretailadmin.onrender.com/api/admin";
+        const token = jwt.sign({ id: "admin", role: "admin" }, process.env.JWT_SECRET || "eggbucket12", { expiresIn: "1h" });
+        const res = await axios.get(`${ADMIN_PATH}/inventory-metrics`, {
+          params: { date: dateStr },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data) {
+          totalLoad = res.data.totalLoad || 0;
+          totalReturn = res.data.totalReturn || 0;
+          totalDamage = res.data.totalDamage || 0;
+          if (res.data.damageEntries && Array.isArray(res.data.damageEntries)) {
+            res.data.damageEntries.forEach(item => {
+              const zone = item.outletName || item.agentName || "Unknown";
+              damageByZone[zone] = (damageByZone[zone] || 0) + (Number(item.quantity) || 0);
+            });
+          }
         }
       }
+
+      const inventoryUpdates = {
+        "inventoryAnalytics.load": totalLoad,
+        "inventoryAnalytics.returns": totalReturn,
+        "inventoryAnalytics.totalDamage": totalDamage,
+        "inventoryAnalytics.damageByZone": damageByZone,
+        "inventoryAnalytics.damageBySegment": damageByZone,
+        "inventoryAnalytics.damagePercentage": totalLoad > 0 ? Number(((totalDamage / (totalLoad * 30)) * 100).toFixed(2)) : 0,
+      };
+
+      await db.collection("business_statistics_daily").doc(dateStr).set(inventoryUpdates, { merge: true });
+      console.log(`[analyticsCron] Inventory sync completed for ${dateStr} (Damages: ${totalDamage}, Load: ${totalLoad})`);
+    } catch (error) {
+      console.error(`[analyticsCron] Error during inventory sync for ${dateStr}:`, error.message);
     }
-
-    // We don't have exact 'missedOpportunity' or 'traysSold' here, so we only update the absolute inventory fields.
-    // The frontend or real-time trigger can compute stockAvailable if needed, but we'll update what we can.
-    const inventoryUpdates = {
-      "inventoryAnalytics.load": totalLoad,
-      "inventoryAnalytics.returns": totalReturn,
-      "inventoryAnalytics.totalDamage": totalDamage,
-      "inventoryAnalytics.damageByZone": damageByZone,
-      "inventoryAnalytics.damageBySegment": damageByZone,
-      "inventoryAnalytics.damagePercentage": totalLoad > 0 ? Number(((totalDamage / (totalLoad * 30)) * 100).toFixed(2)) : 0,
-    };
-
-    await db.collection("business_statistics_daily").doc(dateStr).set(inventoryUpdates, { merge: true });
-    console.log(`[analyticsCron] 11 AM inventory sync completed for ${dateStr}`);
-  } catch (error) {
-    console.error("[analyticsCron] Error during hourly inventory sync:", error);
   }
 }, {
   scheduled: true,

@@ -39,24 +39,26 @@ const getPresetDates = (presetKey) => {
       return { startDate: yStr, endDate: yStr };
     }
     case 'this_week': {
-      // Monday of current week to today
+      // Sunday to Saturday
       const d = new Date(now);
-      const day = d.getDay();
-      const diff = (day + 6) % 7; // days since Monday
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - diff);
-      return { startDate: formatDate(monday), endDate: formatDate(now) };
+      const day = d.getDay(); // 0 is Sunday, 6 is Saturday
+      const diffToSunday = day === 0 ? 7 : day;
+      const sunday = new Date(d);
+      sunday.setDate(d.getDate() - diffToSunday);
+      const saturday = new Date(sunday);
+      saturday.setDate(sunday.getDate() + 6);
+      return { startDate: formatDate(sunday), endDate: formatDate(saturday) };
     }
     case 'last_week': {
-      // Previous week Monday to Sunday
+      // Sunday to Saturday of previous week
       const d = new Date(now);
       const day = d.getDay();
-      const diff = (day + 6) % 7;
-      const lastMonday = new Date(d);
-      lastMonday.setDate(d.getDate() - diff - 7);
-      const lastSunday = new Date(lastMonday);
-      lastSunday.setDate(lastMonday.getDate() + 6);
-      return { startDate: formatDate(lastMonday), endDate: formatDate(lastSunday) };
+      const diffToSunday = day === 0 ? 7 : day;
+      const lastSunday = new Date(d);
+      lastSunday.setDate(d.getDate() - diffToSunday - 7);
+      const lastSaturday = new Date(lastSunday);
+      lastSaturday.setDate(lastSunday.getDate() + 6);
+      return { startDate: formatDate(lastSunday), endDate: formatDate(lastSaturday) };
     }
     case 'this_month': {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -73,7 +75,7 @@ const getPresetDates = (presetKey) => {
 };
 
 const AnalyticsFilters = ({ filters, setFilters, onApply, onReset }) => {
-  const [activePreset, setActivePreset] = useState(null);
+  const [activePreset, setActivePreset] = useState('this_week');
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -93,7 +95,7 @@ const AnalyticsFilters = ({ filters, setFilters, onApply, onReset }) => {
   };
 
   const handleCustomReset = () => {
-    setActivePreset(null);
+    setActivePreset('this_week');
     if (onReset) onReset();
   };
 

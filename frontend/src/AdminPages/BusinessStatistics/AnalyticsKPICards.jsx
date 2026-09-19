@@ -77,6 +77,8 @@ const AnalyticsKPICards = ({ moduleType, kpis }) => {
           <KPICard title="Repeat Customers" value={kpis.repeatCustomers || 0} icon={RefreshCcw} colorClass="bg-gradient-to-r from-blue-400 to-blue-500" />
         </div>
       );
+    case 'prime-vs-regular':
+      return null;
     default:
       return null;
   }

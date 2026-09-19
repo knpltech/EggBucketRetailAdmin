@@ -399,8 +399,7 @@ const DummyAISuggestions = () => {
       const peakFrequencyStr = resolvePeakFrequency(customer);
       const peakFrequencyNumber = getPeakFrequencyNumber(peakFrequencyStr);
 
-      const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-      const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+      const deliveryGapStr = computeDeliveryGap(customer?.last8Days, todayDate, customer);
       const deliveryGapNumber = getDeliveryGapNumber(deliveryGapStr);
 
       const potentialNumber = getPotentialNumber(customer.Peak_Potential);
@@ -1196,13 +1195,6 @@ const DummyAISuggestions = () => {
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible">
-        <div className="flex justify-between items-center p-4 border-b border-gray-100">
-          <span className="text-[13px] text-gray-500 font-semibold">
-          </span>
-          <div className="flex items-center gap-3">
-          </div>
-        </div>
-
         <DummyAISuggestionTable
           data={currentData}
           loading={loading}

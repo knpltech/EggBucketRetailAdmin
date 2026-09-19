@@ -215,7 +215,7 @@ export default function CustomerManagement() {
       ...c,
       peakFrequency: c.Peak_Frequency || c.peakFrequency || computePeakFrequency(c.last8Days),
       potential: c.Peak_Potential || computePotential(c.last8Days),
-      deliveryGap: c.deliveryGap || computeDeliveryGap(c.last8Days, todayDate),
+      deliveryGap: normalizeDeliveryGap(c.deliveryGap),
       deliveredCount: getDeliveredCountForCustomer(c),
     }));
 
@@ -2074,10 +2074,10 @@ function normalizeDeliveryGap(value) {
     .toUpperCase();
 
   const match = raw.match(/^G?(\d+)$/);
-  if (!match) return "G10";
+  if (!match) return "G0";
 
   const n = Number(match[1]);
-  if (!Number.isFinite(n) || n < 0) return "G10";
+  if (!Number.isFinite(n) || n < 0) return "G0";
 
   return `G${Math.floor(n)}`;
 }
@@ -2085,7 +2085,7 @@ function normalizeDeliveryGap(value) {
 function getDeliveryGapNumber(value) {
   const gap = normalizeDeliveryGap(value);
   const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 ? n : 10;
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 function getDeliveryGapColor(value) {
@@ -2096,37 +2096,8 @@ function getDeliveryGapColor(value) {
   return "#FF3B30";
 }
 
-function computeDeliveryGap(last8Days, todayDate) {
-  if (!last8Days || typeof last8Days !== "object") return "G10";
-
-  const todayDayNumber = getDateDayNumber(todayDate);
-  if (todayDayNumber === null) return "G10";
-
-  let latestDeliveredDayNumber = null;
-
-  Object.entries(last8Days).forEach(([dateStr, entry]) => {
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status !== "delivered") return;
-
-    const dayNumber = getDateDayNumber(dateStr);
-    if (dayNumber === null || dayNumber > todayDayNumber) return;
-
-    if (
-      latestDeliveredDayNumber === null ||
-      dayNumber > latestDeliveredDayNumber
-    ) {
-      latestDeliveredDayNumber = dayNumber;
-    }
-  });
-
-  if (latestDeliveredDayNumber === null) return "G10";
-
-  return `G${todayDayNumber - latestDeliveredDayNumber}`;
+function computeDeliveryGap(last8Days, todayDate, customer = null) {
+  return normalizeDeliveryGap(customer?.deliveryGap || "G0");
 }
 
 function getDateDayNumber(dateStr) {

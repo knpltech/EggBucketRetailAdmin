@@ -113,29 +113,9 @@ export const resolvePeakFrequency = (customer) => {
     : currentPeak;
 };
 
-export function computeDeliveryGap(last8Days, todayDate) {
-  if (!last8Days || typeof last8Days !== "object") return "G10";
-  const todayDayNumber = getDateDayNumber(todayDate);
-  if (todayDayNumber === null) return "G10";
-  let latestDeliveredDayNumber = null;
-  Object.entries(last8Days).forEach(([dateStr, entry]) => {
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-    if (status !== "delivered") return;
-    const dayNumber = getDateDayNumber(dateStr);
-    if (dayNumber === null || dayNumber > todayDayNumber) return;
-    if (
-      latestDeliveredDayNumber === null ||
-      dayNumber > latestDeliveredDayNumber
-    ) {
-      latestDeliveredDayNumber = dayNumber;
-    }
-  });
-  if (latestDeliveredDayNumber === null) return "G10";
-  return `G${todayDayNumber - latestDeliveredDayNumber}`;
+export function computeDeliveryGap(last8Days, todayDate, customer = null) {
+  // Pure direct read of the accurate deliveryGap provided by the backend / database
+  return normalizeDeliveryGap(customer?.deliveryGap || "G0");
 }
 
 export function normalizeDeliveryGap(value) {
@@ -143,16 +123,16 @@ export function normalizeDeliveryGap(value) {
     .trim()
     .toUpperCase();
   const match = raw.match(/^G?(\d+)$/);
-  if (!match) return "G10";
+  if (!match) return "G0";
   const n = Number(match[1]);
-  if (!Number.isFinite(n) || n < 0) return "G10";
+  if (!Number.isFinite(n) || n < 0) return "G0";
   return `G${Math.floor(n)}`;
 }
 
 export function getDeliveryGapNumber(value) {
   const gap = normalizeDeliveryGap(value);
   const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 ? n : 10;
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 export const getTodayEffectiveStatus = (
@@ -549,12 +529,8 @@ const twoAlternateDayBuyer = (customer) => {
 };
 
 const resolveCustomerDeliveryGapNumber = (customer) => {
-  if (typeof customer?.deliveryGapNumber === "number") {
-    return customer.deliveryGapNumber;
-  }
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-  const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-  const deliveryGapStr = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+  const deliveryGapStr = computeDeliveryGap(customer?.last8Days, todayDate, customer);
   return getDeliveryGapNumber(deliveryGapStr);
 };
 

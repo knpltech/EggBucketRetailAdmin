@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { FiCalendar, FiEdit2 } from "react-icons/fi";
 import {
   computeCurrentCategory,
@@ -263,6 +264,118 @@ function getDeliveryGapColor(value) {
   return "#FF3B30";
 }
 
+const WeeklySchedulePopover = ({
+  schedule,
+  days,
+  labels,
+  anchorRef,
+  onClose,
+  onUpdateSchedule,
+  customer,
+  isUpdating,
+}) => {
+  const popoverRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+
+  useLayoutEffect(() => {
+    const updatePosition = () => {
+      if (!anchorRef.current) return;
+      const rect = anchorRef.current.getBoundingClientRect();
+      const popoverHeight = 220;
+      const popoverWidth = 84;
+
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openUpward = spaceBelow < popoverHeight && rect.top > popoverHeight;
+
+      const top = openUpward
+        ? Math.max(10, rect.top - popoverHeight - 4)
+        : Math.min(window.innerHeight - popoverHeight - 10, rect.bottom + 4);
+
+      const left = Math.max(
+        10,
+        Math.min(
+          window.innerWidth - popoverWidth - 10,
+          rect.left + rect.width / 2 - popoverWidth / 2
+        )
+      );
+
+      setCoords({ top, left });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchorRef]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+
+    const handlePointerDown = (e) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target) &&
+        anchorRef.current &&
+        !anchorRef.current.contains(e.target)
+      ) {
+        onClose?.();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [onClose, anchorRef]);
+
+  if (!coords) return null;
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      className="fixed z-[99999] bg-white border border-gray-300 rounded shadow-lg p-1.5 min-w-[80px]"
+      style={{
+        top: `${coords.top}px`,
+        left: `${coords.left}px`,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {days.map((day) => (
+        <button
+          key={day}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onUpdateSchedule) {
+              onUpdateSchedule(customer, day);
+            }
+          }}
+          disabled={isUpdating}
+          className={`block w-full text-center px-1.5 py-0.5 rounded mb-1 last:mb-0 font-medium text-[11px] transition ${
+            schedule[day]
+              ? "bg-green-500 text-white border border-green-600"
+              : "bg-red-500 text-white border border-red-600"
+          } ${
+            isUpdating
+              ? "opacity-50 cursor-not-allowed"
+              : "cursor-pointer hover:opacity-90"
+          }`}
+        >
+          {labels[day]}
+        </button>
+      ))}
+    </div>,
+    document.body
+  );
+};
+
 const DummyAISuggestionRow = ({
   customer,
   suggestionData,
@@ -284,6 +397,7 @@ const DummyAISuggestionRow = ({
 }) => {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [openSchedule, setOpenSchedule] = useState(false);
+  const scheduleBtnRef = useRef(null);
   const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
   const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
@@ -378,6 +492,7 @@ const DummyAISuggestionRow = ({
           return (
             <div className="relative inline-block">
               <button
+                ref={scheduleBtnRef}
                 onClick={(e) => {
                   e.stopPropagation();
                   setOpenSchedule((prev) => !prev);
@@ -388,32 +503,16 @@ const DummyAISuggestionRow = ({
                 {activeDaysCount} Days {isOpen ? "▲" : "▼"}
               </button>
               {isOpen && (
-                <div
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 p-1.5 min-w-[80px]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {days.map((day) => (
-                    <button
-                      key={day}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onUpdateSchedule) {
-                          onUpdateSchedule(customer, day);
-                        }
-                      }}
-                      disabled={isUpdating}
-                      className={`block w-full text-center px-1.5 py-0.5 rounded mb-1 last:mb-0 font-medium text-[11px] transition ${schedule[day]
-                        ? "bg-green-500 text-white border border-green-600"
-                        : "bg-red-500 text-white border border-red-600"
-                        } ${isUpdating
-                          ? "opacity-50 cursor-not-allowed"
-                          : "cursor-pointer hover:opacity-90"
-                        }`}
-                    >
-                      {labels[day]}
-                    </button>
-                  ))}
-                </div>
+                <WeeklySchedulePopover
+                  schedule={schedule}
+                  days={days}
+                  labels={labels}
+                  anchorRef={scheduleBtnRef}
+                  onClose={() => setOpenSchedule(false)}
+                  onUpdateSchedule={onUpdateSchedule}
+                  customer={customer}
+                  isUpdating={isUpdating}
+                />
               )}
             </div>
           );
