@@ -67,7 +67,7 @@ export const isExcludedRoute = (routeName) => {
  * - Route 1 D: Delivery Gap G10+ Customers Only
  */
 export function evaluateSubRouteTier(customer, todayDate) {
-  const rawGap = computeDeliveryGap(customer?.last8Days, todayDate);
+  const rawGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
   const gapStr = normalizeDeliveryGap(rawGap);
   const gapNum = getDeliveryGapNumber(gapStr);
 

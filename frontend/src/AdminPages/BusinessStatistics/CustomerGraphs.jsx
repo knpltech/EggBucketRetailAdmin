@@ -267,7 +267,7 @@ const CustomerGraphs = ({ graphs }) => {
         </ResponsiveContainer>
       </GraphContainer>
 
-      <GraphContainer title="Peak Frequency (Expected vs Actual)">
+      <GraphContainer title="Peak Frequency vs Weekly Frequency">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={graphs.peakFrequencyComparison} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -275,8 +275,8 @@ const CustomerGraphs = ({ graphs }) => {
             <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
             <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
             <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-            <Bar dataKey="Expected" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
-            <Bar dataKey="Actual" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={20} />
+            <Bar dataKey="Expected" name="Peak Frequency" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+            <Bar dataKey="Actual" name="Weekly Frequency" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={20} />
           </BarChart>
         </ResponsiveContainer>
       </GraphContainer>

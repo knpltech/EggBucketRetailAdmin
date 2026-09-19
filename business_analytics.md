@@ -4,14 +4,17 @@ This document outlines the exact formulas and data sources used to calculate the
 
 ---
 
-## 1. Dashboard Overview KPIs
+## 1. Dashboard Overview KPIs & Filters
 
+- **Default Date Filter:**
+  - **Formula:** Pre-selected to **This Week (Sunday to Saturday)**.
+  - On Sundays, it selects the completed week (Sunday to yesterday Saturday) so full operational metrics are available immediately.
 - **Active Customers:** The total number of customers who successfully received a delivery today (`status === "delivered"`).
 - **Total Trays Sold:** The sum of the `quantity` (trays) across all successful deliveries today.
 - **Total Collection:** The sum of `totalAmount` (or `cashAmount` + `upiAmount`) across all successful deliveries today.
 - **Delivered:** Count of customers marked as "delivered".
-- **Reached:** Count of customers marked as "reached" (agent visited but no delivery made).
-- **Pending:** Count of customers who are scheduled for today (not marked "off") but have not been attended to yet.
+- **Reached:** Count of customers marked as "reached" (agent visited but no delivery made / shop closed / rescheduled).
+- **Pending:** Count of customers who are scheduled for today (not marked "off") but have not been visited yet.
 
 ---
 
@@ -19,15 +22,15 @@ This document outlines the exact formulas and data sources used to calculate the
 
 - **Customer Category Trend (D0-D7):** 
   - **Formula:** Counts the number of customers grouped by their official assigned `category` (e.g., D1, D7).
-- **Peak Frequency (Expected vs Actual):** 
-  - **Expected:** Grouped by the customer's officially assigned `Peak_Frequency` (Daily -> D1, Alternate -> D2, Weekly -> D7).
-  - **Actual:** Calculated dynamically by looking back exactly 7 days. If a customer received 4 deliveries in the last 7 days, they are grouped under "D4".
+- **Peak Frequency vs Weekly Frequency:** 
+  - **Peak Frequency (Expected / Target):** Grouped by the customer's officially assigned target `Peak_Frequency` profile in CRM (D1 to D7).
+  - **Weekly Frequency (Actual):** Calculated dynamically by looking back at actual deliveries over the past 7 days. If a customer received 4 deliveries in the last 7 days, they are grouped under "D4".
 - **Sales Distribution:** 
   - **Formula:** Groups customers into tray buckets (0-5 Trays, 6-15 Trays, 16-25 Trays, 26+ Trays) based on the number parsed from their `Peak_Potential` profile tag.
 - **Customer Type / Business Type Distribution:**
   - **Formula:** Groups the customer base by their `customerType` (Prime/Regular) and `businessType`.
 - **Morning vs Evening Active Users:**
-  - **Formula:** A delivery is classified as "Morning" if it was completed before 12:00 PM IST based on the actual delivery timestamp (`afterEntry.time`). "Evening" is anything delivered after 12:00 PM IST.
+  - **Formula:** A delivery is classified as "Morning" if it was completed before 4:00 PM IST based on the actual delivery timestamp (`afterEntry.time`). "Evening" is anything delivered after 4:00 PM IST.
 
 ---
 
@@ -38,16 +41,21 @@ This document outlines the exact formulas and data sources used to calculate the
 - **Peak Potential Achieved %:**
   - **Formula:** `(Total Trays Sold / Total Peak Potential for today's weekday) * 100`
   - *Note: Total Peak Potential is the historical best tray count ever recorded for this specific day of the week.*
-- **Revenue by Zone / Customer Type / Business Type:**
-  - **Formula:** Sum of `totalAmount` grouped by the respective customer attributes.
+- **Date vs Conversion (Overall Conversion %):**
+  - **Formula:** `(Delivered / (Delivered + Reached)) * 100`
+  - *Measures what percentage of attended/visited shops actually converted to a sale on each date.*
+- **Revenue by Zone:**
+  - **Formula:** Sum of `totalAmount` grouped by customer's assigned `zone`.
+- **Revenue by Customer Type / Business Type:**
+  - **Formula:** Sum of `totalAmount` grouped by the respective customer attributes (`Prime vs Regular` and `businessType`).
 
 ---
 
 ## 4. Delivery Analytics Module
 
-- **Delivery Efficiency %:**
-  - **Formula:** `(Delivered / (Delivered + Reached + Pending)) * 100`
-  - *Measures what percentage of the total route was successfully converted to a sale.*
+- **Delivery Success % (Delivery Efficiency):**
+  - **Formula:** `(Delivered / (Delivered + Reached)) * 100`
+  - *Measures the percentage of visited stops that resulted in a successful delivery. Excludes `Pending` (unvisited stops).*
 - **Attend Efficiency %:**
   - **Formula:** `((Delivered + Reached) / (Delivered + Reached + Pending)) * 100`
   - *Measures what percentage of the scheduled route was actually visited by an agent, regardless of a successful sale.*
@@ -62,8 +70,8 @@ This document outlines the exact formulas and data sources used to calculate the
 
 - **Cash / UPI Collection:** 
   - **Formula:** Sum of `cashAmount` and `upiAmount` across all successful deliveries.
-- **Collection by Zone:** 
-  - **Formula:** Sums of `cashAmount` and `upiAmount` grouped by the customer's `zone`.
+- **Revenue by Zone:** 
+  - **Formula:** Sum of collections (`cashAmount` + `upiAmount`) grouped by the customer's `zone`.
 
 ---
 
@@ -76,7 +84,7 @@ This document outlines the exact formulas and data sources used to calculate the
 - **Total Damage:** 
   - **Formula:** Sum of `quantity` from the `damage_reports` table for today.
 - **Damage %:**
-  - **Formula:** `(Total Damage / (Total Load * 30)) * 100` (Total Load is in trays; 1 tray = 30 eggs)
+  - **Formula:** `(Total Damage / (Total Load * 30)) * 100` (Total Load is in trays; 1 tray = 30 eggs).
 - **Stock Available:**
   - **Formula:** `Total Load - (Total Trays Sold + Total Returns + Total Damage)`
 - **Missed Opportunity (Trays):**
@@ -92,3 +100,14 @@ This document outlines the exact formulas and data sources used to calculate the
   - **Formula:** Checks every customer's 8-day history. A customer is counted as a Repeat Customer if they successfully received a delivery ("delivered") both today AND yesterday.
 - **Trays Per Customer:**
   - **Formula:** `Total Trays Sold / Active Customers`
+
+---
+
+## 8. Prime vs Regular Module
+
+- **Prime vs Regular Customer Revenue:**
+  - **Formula:** Daily comparison of revenue generated by Prime customers vs Regular customers across the selected date range.
+- **Customer Type Distribution:**
+  - **Formula:** Proportional distribution of the customer base (Prime vs Regular).
+- **Peak Frequency (Expected vs Actual):**
+  - **Formula:** Compares the customer base's scheduled order frequencies (D1–D7) with actual delivery occurrences over the past 7 days.

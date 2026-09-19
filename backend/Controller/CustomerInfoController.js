@@ -34,6 +34,17 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
   return new Date().toISOString().slice(0, 10);
 };
 
+const getDateDayNumber = (dateStr) => {
+  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const time = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(time)) return null;
+  return Math.floor(time / 86400000);
+};
+
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
     "T1", "T2", "T3", "T4", "T5", "T6", "T7",
@@ -65,11 +76,7 @@ const computePeakPotentialNumber = (last8Days = {}) => {
   Object.values(last8Days).forEach((entry) => {
     if (!entry) return;
 
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
+    const status = (entry?.status || "").toLowerCase();
 
     if (status !== "delivered") return;
 
@@ -202,6 +209,42 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   if (!customerData.purchaseIntent) {
     updateFields.purchaseIntent = purchaseIntent;
   }
+  // Calculate accurate deliveryGap and sync latest delivery date from field updates
+  const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
+  const todayDay = getDateDayNumber(todayStr);
+
+  let latestDeliveredDate = customerData.lastDeliveryDate || null;
+  let latestDeliveredDay = latestDeliveredDate ? getDateDayNumber(latestDeliveredDate) : null;
+
+  // Detect any delivery marked in last8Days by delivery partners
+  if (customerData.last8Days) {
+    Object.entries(customerData.last8Days).forEach(([dateStr, entry]) => {
+      const status = (entry.status || "").toLowerCase();
+      if (status !== "delivered") return;
+
+      const dayNum = getDateDayNumber(dateStr);
+      if (dayNum === null || (todayDay !== null && dayNum > todayDay)) return;
+
+      if (latestDeliveredDay === null || dayNum > latestDeliveredDay) {
+        latestDeliveredDay = dayNum;
+        latestDeliveredDate = dateStr;
+      }
+    });
+  }
+
+  if (latestDeliveredDate && latestDeliveredDate !== customerData.lastDeliveryDate) {
+    updateFields.lastDeliveryDate = latestDeliveredDate;
+  }
+
+  let deliveryGap = customerData.deliveryGap || "G0";
+  if (latestDeliveredDay !== null && todayDay !== null && todayDay >= latestDeliveredDay) {
+    deliveryGap = `G${todayDay - latestDeliveredDay}`;
+  }
+
+  if (deliveryGap !== customerData.deliveryGap) {
+    updateFields.deliveryGap = deliveryGap;
+  }
+
   if (Object.keys(updateFields).length > 0) {
     peakUpdates.push({ ref: doc.ref, ...updateFields });
   }
@@ -212,6 +255,7 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   return {
     id: doc.id,
     ...customerData,
+    deliveryGap,
     purchaseCadence,
     customerState,
     purchaseIntent,

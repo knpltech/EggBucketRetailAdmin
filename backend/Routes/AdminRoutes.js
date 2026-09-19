@@ -135,6 +135,7 @@ router.get("/analytics/delivery", getDeliveryAnalytics);
 router.get("/analytics/payment", getPaymentAnalytics);
 router.get("/analytics/inventory", getInventoryAnalytics);
 router.get("/analytics/customer-conversion", getCustomerConversionAnalytics);
+router.get("/analytics/prime-vs-regular", getCustomerConversionAnalytics);
 
 router.get("/customer/delivery-days", getCustomersByDeliveryDays);
 router.get("/customer/by-delivery-count", getCustomersByDeliveryCount);

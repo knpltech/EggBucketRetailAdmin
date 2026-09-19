@@ -26,8 +26,7 @@ export const exportToExcel = (sortedData, logicOption) => {
     const customer = item.customer;
     const suggestion = item.suggestion;
     const todayDate = getDateStringInTimeZone(new Date(), 'Asia/Kolkata');
-    const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-    const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+    const deliveryGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
 
     const normalizePotential = (value) => {
       const raw = String(value ?? "").trim().toUpperCase();

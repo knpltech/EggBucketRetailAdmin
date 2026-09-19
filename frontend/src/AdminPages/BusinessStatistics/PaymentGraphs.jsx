@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   ResponsiveContainer, LineChart, Line, BarChart, Bar, 
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, 
@@ -10,8 +10,21 @@ const PIE_COLORS = ['#22c55e', '#3b82f6'];
 const CASH_COLOR = '#22c55e';
 const UPI_COLOR = '#3b82f6';
 const TOTAL_COLOR = '#6366f1';
+const REVENUE_ZONE_COLOR = '#10b981';
 
 const PaymentGraphs = ({ graphs }) => {
+  const revenueByZoneData = useMemo(() => {
+    if (graphs?.revenueByZone?.length) return graphs.revenueByZone;
+    const zoneMap = new Map();
+    (graphs?.cashCollectionByZone || []).forEach((item) => {
+      zoneMap.set(item.name, (zoneMap.get(item.name) || 0) + (item.value || 0));
+    });
+    (graphs?.upiCollectionByZone || []).forEach((item) => {
+      zoneMap.set(item.name, (zoneMap.get(item.name) || 0) + (item.value || 0));
+    });
+    return Array.from(zoneMap.entries()).map(([name, value]) => ({ name, value }));
+  }, [graphs?.revenueByZone, graphs?.cashCollectionByZone, graphs?.upiCollectionByZone]);
+
   if (!graphs) return null;
 
   return (
@@ -57,26 +70,14 @@ const PaymentGraphs = ({ graphs }) => {
         </ResponsiveContainer>
       </GraphContainer>
 
-      <GraphContainer title="Cash Collection by Zone">
+      <GraphContainer title="Revenue by Zone">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={graphs.cashCollectionByZone} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <BarChart data={revenueByZoneData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
             <Tooltip formatter={(value) => `₹${value}`} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Bar dataKey="value" name="Cash Collection" fill={CASH_COLOR} radius={[4, 4, 0, 0]} barSize={40} />
-          </BarChart>
-        </ResponsiveContainer>
-      </GraphContainer>
-
-      <GraphContainer title="UPI Collection by Zone">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={graphs.upiCollectionByZone} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val}`} />
-            <Tooltip formatter={(value) => `₹${value}`} cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-            <Bar dataKey="value" name="UPI Collection" fill={UPI_COLOR} radius={[4, 4, 0, 0]} barSize={40} />
+            <Bar dataKey="value" name="Revenue" fill={REVENUE_ZONE_COLOR} radius={[4, 4, 0, 0]} barSize={40} />
           </BarChart>
         </ResponsiveContainer>
       </GraphContainer>

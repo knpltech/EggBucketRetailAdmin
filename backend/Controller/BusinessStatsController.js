@@ -154,7 +154,8 @@ export const getSalesAnalytics = async (req, res) => {
       revenueByCustomerType: [],
       revenueByBusinessType: [],
       averageTraysPerCustomerTrend: [],
-      potentialAchievedTrend: []
+      potentialAchievedTrend: [],
+      conversionRateTrend: []
     };
 
     const zoneRevenue = {};
@@ -166,6 +167,8 @@ export const getSalesAnalytics = async (req, res) => {
     docs.forEach(doc => {
       const sAnalytics = doc.salesAnalytics || {};
       const cAnalytics = doc.customerAnalytics || {};
+      const dAnalytics = doc.deliveryAnalytics || {};
+      const dash = doc.dashboard || {};
       
       kpis.totalCollection += sAnalytics.totalCollection || 0;
       kpis.totalTraysSold += sAnalytics.traysSold || 0;
@@ -189,6 +192,16 @@ export const getSalesAnalytics = async (req, res) => {
       graphs.potentialAchievedTrend.push({
         date: doc.id,
         achieved: sAnalytics.potentialAchieved || 0
+      });
+
+      const delivered = dAnalytics.delivered || dash.delivered || 0;
+      const reached = dAnalytics.reached || dash.reached || 0;
+      const attended = delivered + reached;
+      const conversion = attended > 0 ? Number(((delivered / attended) * 100).toFixed(2)) : 0;
+
+      graphs.conversionRateTrend.push({
+        date: doc.id,
+        conversion: conversion || 0
       });
 
       // Assuming these are stored in salesAnalytics or we mock them if missing for the demo
@@ -264,9 +277,14 @@ export const getDeliveryAnalytics = async (req, res) => {
         pending: dAnalytics.pending || 0
       });
 
+      const dayDelivered = dAnalytics.delivered || 0;
+      const dayReached = dAnalytics.reached || 0;
+      const dayAttended = dayDelivered + dayReached;
+      const dayDeliveryEfficiency = dayAttended > 0 ? Number(((dayDelivered / dayAttended) * 100).toFixed(2)) : 0;
+
       graphs.efficiencyTrend.push({
         date: doc.id,
-        deliveryEfficiency: dAnalytics.deliveryEfficiency || 0,
+        deliveryEfficiency: dayDeliveryEfficiency,
         attendEfficiency: dAnalytics.attendEfficiency || 0
       });
 
@@ -283,8 +301,8 @@ export const getDeliveryAnalytics = async (req, res) => {
       Object.keys(zd).forEach(k => { zoneDel[k] = (zoneDel[k] || 0) + zd[k]; });
     });
 
-    const totalDeliveries = kpis.delivered + kpis.reached + kpis.pending;
-    kpis.deliverySuccessPercent = totalDeliveries ? Math.round((kpis.delivered / totalDeliveries) * 100) : 0;
+    const totalAttended = kpis.delivered + kpis.reached;
+    kpis.deliverySuccessPercent = totalAttended ? Math.round((kpis.delivered / totalAttended) * 100) : 0;
 
     graphs.deliveryStatus = [
       { name: 'Delivered', value: kpis.delivered },
@@ -370,6 +388,12 @@ export const getPaymentAnalytics = async (req, res) => {
     graphs.cashCollectionByZone = Object.entries(cashZone).map(([name, value]) => ({ name, value }));
     graphs.upiCollectionByZone = Object.entries(upiZone).map(([name, value]) => ({ name, value }));
     graphs.collectionByAgent = Object.entries(agentColl).map(([name, value]) => ({ name, value }));
+
+    const totalZoneRevenue = {};
+    Object.keys({ ...cashZone, ...upiZone }).forEach((k) => {
+      totalZoneRevenue[k] = (cashZone[k] || 0) + (upiZone[k] || 0);
+    });
+    graphs.revenueByZone = Object.entries(totalZoneRevenue).map(([name, value]) => ({ name, value }));
 
     return res.status(200).json({ success: true, kpis, graphs });
   } catch (error) {
@@ -477,8 +501,13 @@ export const getCustomerConversionAnalytics = async (req, res) => {
       repeatCustomersTrend: []
     };
 
+    let aggregatedExpectedPFreq = {};
+    let aggregatedActualPFreq = {};
+    let aggregatedCustomerType = { PRIME: 0, REGULAR: 0 };
+
     docs.forEach(doc => {
       const ccAnalytics = doc.customerConversion || {};
+      const cAnalytics = doc.customerAnalytics || {};
       
       // We take the latest or average for KPIs
       kpis.revenuePerCustomer = ccAnalytics.revenuePerCustomer || kpis.revenuePerCustomer;
@@ -509,7 +538,33 @@ export const getCustomerConversionAnalytics = async (req, res) => {
         date: doc.id,
         count: ccAnalytics.repeatCustomers || 0
       });
+
+      const pFreqObj = cAnalytics.peakFrequency || {};
+      if (pFreqObj.expected || pFreqObj.actual) {
+        aggregatedExpectedPFreq = pFreqObj.expected || {};
+        aggregatedActualPFreq = pFreqObj.actual || {};
+      } else if (Object.keys(pFreqObj).length > 0) {
+        aggregatedExpectedPFreq = pFreqObj;
+        aggregatedActualPFreq = {};
+      }
+
+      const ct = cAnalytics.customerType || {};
+      if (ct.PRIME !== undefined || ct.REGULAR !== undefined) {
+        aggregatedCustomerType = { PRIME: ct.PRIME || 0, REGULAR: ct.REGULAR || 0 };
+      }
     });
+
+    const peakFreqKeys = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"];
+    graphs.peakFrequencyComparison = peakFreqKeys.map(key => ({
+      name: key,
+      Expected: aggregatedExpectedPFreq[key] || 0,
+      Actual: aggregatedActualPFreq[key] || 0
+    }));
+
+    graphs.customerTypeDistribution = [
+      { name: 'Prime', value: aggregatedCustomerType.PRIME },
+      { name: 'Regular', value: aggregatedCustomerType.REGULAR }
+    ];
 
     return res.status(200).json({ success: true, kpis, graphs });
   } catch (error) {

@@ -190,7 +190,7 @@ export default function CustomerRoutes() {
         }
 
         // Track Delivery Gap Counts
-        const rawGap = computeDeliveryGap(customer.last8Days, todayDate);
+        const rawGap = computeDeliveryGap(customer.last8Days, todayDate, customer);
         const gapStr = normalizeDeliveryGap(rawGap);
         const gapNum = getDeliveryGapNumber(gapStr);
 
@@ -767,7 +767,7 @@ export default function CustomerRoutes() {
     customers.forEach(customer => {
       if (!customer.route) return;
       counts.total += 1;
-      const rawGap = customer.deliveryGap || computeDeliveryGap(customer.last8Days, todayDate);
+      const rawGap = computeDeliveryGap(customer.last8Days, todayDate, customer);
       const gapStr = normalizeDeliveryGap(rawGap);
       const gapNum = getDeliveryGapNumber(gapStr);
 
@@ -917,19 +917,6 @@ export default function CustomerRoutes() {
               >
                 Collapse All
               </button>
-              <div className="h-4 w-[1px] bg-gray-300 mx-1 hidden sm:block"></div>
-              <label htmlFor="sort-routes" className="text-xs font-semibold text-gray-500 whitespace-nowrap">
-                Sort By:
-              </label>
-              <select
-                id="sort-routes"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-xs font-semibold text-gray-700 shadow-2xs focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="routeName">Route Name</option>
-                <option value="priority">Priority</option>
-              </select>
             </div>
           </div>
           <div className="flex-1 overflow-x-hidden bg-gray-50 p-2 sm:p-3">

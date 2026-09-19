@@ -12,6 +12,7 @@ import DeliveryGraphs from "./DeliveryGraphs";
 import PaymentGraphs from "./PaymentGraphs";
 import InventoryGraphs from "./InventoryGraphs";
 import CustomerConversionGraphs from "./CustomerConversionGraphs";
+import PrimeVsRegularGraphs from "./PrimeVsRegularGraphs";
 
 const getDateStringInTimeZone = (d = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -27,17 +28,26 @@ const getDateStringInTimeZone = (d = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const getSevenDaysAgo = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 6); // 7 days inclusive
-  return getDateStringInTimeZone(d);
+const getThisWeekDates = () => {
+  const now = new Date();
+  const day = now.getDay(); // 0 is Sunday, 6 is Saturday
+  const diffToSunday = day === 0 ? 7 : day;
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - diffToSunday);
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+  return {
+    startDate: getDateStringInTimeZone(sunday),
+    endDate: getDateStringInTimeZone(saturday),
+  };
 };
 
 const BusinessStatistics = () => {
+  const thisWeek = getThisWeekDates();
   const defaultFilters = {
     moduleType: "customer",
-    startDate: getSevenDaysAgo(),
-    endDate: getDateStringInTimeZone(),
+    startDate: thisWeek.startDate,
+    endDate: thisWeek.endDate,
     customerType: "ALL",
     agent: "ALL",
     outlet: "ALL",
@@ -53,9 +63,25 @@ const BusinessStatistics = () => {
     setLoading(true);
     setError(null);
     try {
-      const activeFilters = customFilters || filters;
+      const isValidFilterObj =
+        customFilters &&
+        typeof customFilters === "object" &&
+        !("nativeEvent" in customFilters) &&
+        !("target" in customFilters) &&
+        customFilters.moduleType !== undefined;
+
+      const activeFilters = isValidFilterObj ? customFilters : filters;
       const token = localStorage.getItem("authToken");
-      const { moduleType, startDate, endDate, customerType, agent, outlet, area } = activeFilters;
+      const defaultWeek = getThisWeekDates();
+      const {
+        moduleType = "customer",
+        startDate = defaultWeek.startDate,
+        endDate = defaultWeek.endDate,
+        customerType = "ALL",
+        agent = "ALL",
+        outlet = "ALL",
+        area = "ALL"
+      } = activeFilters || {};
       
       const queryParams = new URLSearchParams({
         startDate,
@@ -66,14 +92,9 @@ const BusinessStatistics = () => {
         area
       }).toString();
 
-      if (moduleType === "prime-vs-regular") {
-        setData({ kpis: null, graphs: {} });
-        setLoading(false);
-        return;
-      }
-
+      const apiModule = moduleType === "prime-vs-regular" ? "customer-conversion" : moduleType;
       const response = await axios.get(
-        `${ADMIN_PATH}/analytics/${moduleType}?${queryParams}`,
+        `${ADMIN_PATH}/analytics/${apiModule}?${queryParams}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -115,13 +136,7 @@ const BusinessStatistics = () => {
       case "payment": return <PaymentGraphs graphs={data.graphs} />;
       case "inventory": return <InventoryGraphs graphs={data.graphs} />;
       case "customer-conversion": return <CustomerConversionGraphs graphs={data.graphs} />;
-      case "prime-vs-regular":
-        return (
-          <div className="bg-white p-12 rounded-xl shadow-sm border border-gray-200 text-center">
-            <h3 className="text-lg font-semibold text-gray-700">Prime vs Regular Analytics</h3>
-            <p className="text-sm text-gray-400 mt-2">Graphs will be added here soon.</p>
-          </div>
-        );
+      case "prime-vs-regular": return <PrimeVsRegularGraphs graphs={data.graphs} filters={filters} />;
       default: return null;
     }
   };
@@ -158,7 +173,7 @@ const BusinessStatistics = () => {
             <h2 className="text-xl font-bold text-gray-800 mb-2">Oops! Something went wrong</h2>
             <p className="text-gray-600 mb-6">{error}</p>
             <button 
-              onClick={fetchData}
+              onClick={() => fetchData()}
               className="bg-red-600 hover:bg-red-700 text-white font-medium px-6 py-2 rounded-lg transition-colors"
             >
               Try Again

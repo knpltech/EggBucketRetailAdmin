@@ -105,29 +105,46 @@ const getDateDayNumber = (dateStr) => {
   return Math.floor(time / 86400000);
 };
 
-const computeDeliveryGap = (last8Days, todayDate) => {
-  if (!last8Days || typeof last8Days !== "object") return "G10";
+const computeDeliveryGap = (last8Days, todayDate, customerData = {}) => {
   const todayDayNumber = getDateDayNumber(todayDate);
-  if (todayDayNumber === null) return "G10";
+  if (todayDayNumber === null) return customerData?.deliveryGap || "G0";
+
   let latestDeliveredDayNumber = null;
-  Object.entries(last8Days).forEach(([dateStr, entry]) => {
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-    if (status !== "delivered") return;
-    const dayNumber = getDateDayNumber(dateStr);
-    if (dayNumber === null || dayNumber > todayDayNumber) return;
-    if (
-      latestDeliveredDayNumber === null ||
-      dayNumber > latestDeliveredDayNumber
-    ) {
-      latestDeliveredDayNumber = dayNumber;
+  if (last8Days && typeof last8Days === "object") {
+    Object.entries(last8Days).forEach(([dateStr, entry]) => {
+      const status = String(
+        typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+      )
+        .trim()
+        .toLowerCase();
+      if (status !== "delivered") return;
+      const dayNumber = getDateDayNumber(dateStr);
+      if (dayNumber === null || dayNumber > todayDayNumber) return;
+      if (
+        latestDeliveredDayNumber === null ||
+        dayNumber > latestDeliveredDayNumber
+      ) {
+        latestDeliveredDayNumber = dayNumber;
+      }
+    });
+  }
+
+  if (latestDeliveredDayNumber !== null) {
+    return `G${todayDayNumber - latestDeliveredDayNumber}`;
+  }
+
+  if (customerData?.lastDeliveryDate) {
+    const lastDayNumber = getDateDayNumber(customerData.lastDeliveryDate);
+    if (lastDayNumber !== null && todayDayNumber >= lastDayNumber) {
+      return `G${todayDayNumber - lastDayNumber}`;
     }
-  });
-  if (latestDeliveredDayNumber === null) return "G10";
-  return `G${todayDayNumber - latestDeliveredDayNumber}`;
+  }
+
+  if (customerData?.deliveryGap) {
+    return customerData.deliveryGap;
+  }
+
+  return "G0";
 };
 
 const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
@@ -144,128 +161,6 @@ const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
     : currentPeak;
 };
 
-// HELPER: Maintain denormalized last8Days field in customer doc
-
-const updateLast8Days = async (
-  db,
-  customerId,
-  deliveryDate,
-  type,
-  extraData = {},
-) => {
-  try {
-    if (!customerId || !deliveryDate || !type) return;
-
-    const today = getTodayDateString();
-    const eightDaysAgo = new Date();
-    eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
-    eightDaysAgo.setHours(0, 0, 0, 0);
-    const cutoffDateStr = getDateStringInTimeZone(eightDaysAgo, INDIA_TZ);
-
-    const customerRef = db.collection("customers").doc(customerId);
-    const customerSnap = await customerRef.get();
-
-    if (!customerSnap.exists) return;
-
-    const customerData = customerSnap.data();
-    let last8Days = customerData.last8Days || {};
-
-    // Normalize type to status
-    const normalizedType = String(type || "")
-      .trim()
-      .toLowerCase();
-    let status = "pending";
-    if (normalizedType === "delivered") {
-      status = "delivered";
-    } else if (
-      [
-        "reached",
-        "price_mismatch",
-        "shop_closed",
-        "stock_available",
-        "other_vendor",
-        "confirmed_tomorrow",
-      ].includes(normalizedType)
-    ) {
-      status = normalizedType;
-    }
-
-    // Update the specific date entry
-    const dateStr =
-      deliveryDate instanceof Date
-        ? getDateStringInTimeZone(deliveryDate, INDIA_TZ)
-        : String(deliveryDate);
-
-    // ⭐ OPTIMIZED: Preserve existing object structure and append new data
-    const existingEntry = last8Days[dateStr] || {};
-    const newEntry =
-      typeof existingEntry === "object"
-        ? { ...existingEntry }
-        : { status: existingEntry };
-
-    newEntry.status = status;
-    newEntry.time = extraData.time || Date.now();
-    if (extraData.agentId) newEntry.agentId = extraData.agentId;
-    if (extraData.agentName) newEntry.agentName = extraData.agentName;
-    if (extraData.reason) newEntry.reason = extraData.reason;
-    if (extraData.traysDelivered !== undefined) {
-      newEntry.traysDelivered = extraData.traysDelivered;
-    }
-
-    last8Days[dateStr] = newEntry;
-
-    // Remove entries older than 8 days
-    Object.keys(last8Days).forEach((key) => {
-      if (key < cutoffDateStr) {
-        delete last8Days[key];
-      }
-    });
-
-    const peakFrequency = resolvePeakFrequency(customerData, last8Days);
-    const savedPeak = normalizePeakFrequency(
-      customerData.Peak_Frequency ||
-      customerData.peakFrequency ||
-      customerData.peak_frequency,
-    );
-
-    // ⭐ COMPUTE CURRENT CATEGORY FROM last8Days
-    const currentCategory = getCurrentCategoryFromLast8Days(last8Days);
-
-    const updateData = {
-      last8Days,
-      last8DaysUpdatedAt: Date.now(),
-      category: currentCategory,
-    };
-
-    if (
-      getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeak)
-    ) {
-      updateData.Peak_Frequency = peakFrequency;
-    }
-
-    // Update customer document
-    await customerRef.update(updateData);
-
-    // Invalidate analytics cache
-    try {
-      const keys = typeof cache.keys === "function" ? cache.keys() : [];
-      const staleKeys = keys.filter(
-        (k) =>
-          k.startsWith("analytics:last8") ||
-          k.startsWith("customerInfo:aiSuggestions") ||
-          k.startsWith("customerInfo:userInfo") ||
-          k === `customer:${customerId}`,
-      );
-      if (staleKeys.length) {
-        cache.del(staleKeys);
-      }
-    } catch (cacheErr) {
-      // Silently fail if cache delete fails
-    }
-  } catch (err) {
-    console.error("updateLast8Days error:", err);
-  }
-};
 
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
@@ -1029,7 +924,7 @@ const getRetentionCustomers = async (req, res) => {
             customer.last8Days,
             new Date(`${todayKey}T00:00:00`),
           ),
-          deliveryGap: computeDeliveryGap(customer.last8Days, todayKey),
+          deliveryGap: computeDeliveryGap(customer.last8Days, todayKey, customer),
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,

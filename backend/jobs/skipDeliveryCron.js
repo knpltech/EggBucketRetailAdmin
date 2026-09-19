@@ -31,6 +31,8 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 const getTodayDateStringIST = () =>
   getDateStringInTimeZone(new Date(), INDIA_TZ);
 
+
+
 const isDebugEnabled = () =>
   String(process.env.SKIP_CRON_DEBUG || "")
     .trim()
@@ -75,7 +77,7 @@ const invalidateSkipRelatedCaches = () => {
 
     if (allDeliveriesKeys.length) cache.del(allDeliveriesKeys);
     if (userDeliveriesKeys.length) cache.del(userDeliveriesKeys);
-    invalidateActiveCountCache().catch(() => {});
+    invalidateActiveCountCache().catch(() => { });
   } catch (err) {
     console.warn("Cron cache invalidation error:", err);
   }
@@ -321,7 +323,7 @@ export const startSkipDeliveryCron = () => {
 
   const cronExpr =
     String(process.env.SKIP_CRON_DEV_EVERY_MINUTE || "").toLowerCase() ===
-    "true"
+      "true"
       ? "* * * * *"
       : "0 0 * * *";
 

@@ -1,7 +1,84 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
-const ExecutionCalendarModal = ({ customer, onClose }) => {
+const ExecutionCalendarModal = ({ customer, onClose, anchorRef, anchorEl }) => {
   const today = new Date();
+  const popoverRef = useRef(null);
+  const mountRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+
+  // Position calculation relative to anchor button
+  useLayoutEffect(() => {
+    const getTarget = () => {
+      if (anchorRef?.current) return anchorRef.current;
+      if (anchorEl) return anchorEl;
+      if (mountRef.current?.parentElement) {
+        return (
+          mountRef.current.parentElement.querySelector('button') ||
+          mountRef.current.parentElement.querySelector('div') ||
+          mountRef.current.parentElement
+        );
+      }
+      return null;
+    };
+
+    const updatePosition = () => {
+      const target = getTarget();
+      if (!target) return;
+
+      const rect = target.getBoundingClientRect();
+      const popoverHeight = 370;
+      const popoverWidth = 288; // w-72 is 288px
+
+      // Check if opening downward would overflow the viewport bottom
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openUpward = spaceBelow < popoverHeight && rect.top > popoverHeight;
+
+      const top = openUpward
+        ? Math.max(10, rect.top - popoverHeight)
+        : Math.min(window.innerHeight - popoverHeight - 10, rect.bottom + 4);
+
+      // Align right edge with button right edge, bounded by window margins
+      const right = Math.max(10, Math.min(window.innerWidth - popoverWidth - 10, window.innerWidth - rect.right));
+
+      setCoords({ top, right });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [anchorRef, anchorEl]);
+
+  // Close on Escape or click outside
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+
+    const handlePointerDown = (e) => {
+      const target = anchorRef?.current || anchorEl || mountRef.current?.parentElement;
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target) &&
+        (!target || !target.contains(e.target))
+      ) {
+        onClose?.();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [onClose, anchorRef, anchorEl]);
   
   // Generate the last 30 days (from today - 29 to today)
   const last30Days = useMemo(() => {
@@ -74,59 +151,73 @@ const ExecutionCalendarModal = ({ customer, onClose }) => {
     return "bg-red-100 text-red-800 border-red-300"; // Red for pending/others
   };
 
-  // Close when clicking outside
-  // We no longer need the backdrop click handler since we will use document click listener in the parent
-
-  return (
+  const popover = (
     <div 
-      className="absolute right-0 top-full mt-2 z-50 bg-white rounded-lg shadow-2xl border border-gray-300 w-72 overflow-hidden"
+      ref={popoverRef}
+      className="fixed z-[99999] bg-white rounded-lg shadow-2xl border border-gray-300 w-72 overflow-hidden text-left"
+      style={{
+        top: coords ? `${coords.top}px` : 'auto',
+        right: coords ? `${coords.right}px` : '10px',
+        visibility: coords ? 'visible' : 'hidden',
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex justify-between items-center p-3 border-b bg-gray-50">
-          <h2 className="text-lg font-bold text-gray-800">
-            {headerText}
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-black transition-colors">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <h2 className="text-base font-bold text-gray-800">
+          {headerText}
+        </h2>
+        <button 
+          type="button"
+          onClick={onClose} 
+          className="text-gray-500 hover:text-black transition-colors p-0.5 rounded"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <div className="p-3">
+        <div className="text-center font-bold mb-3 text-gray-800 text-sm border-b pb-2">
+          {customer?.name || customer?.customerName || "Customer"}
         </div>
         
-        <div className="p-3">
-          <div className="text-center font-semibold mb-3 text-gray-800 text-sm border-b pb-2">
-            {customer?.name || customer?.customerName || "Customer"}
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1 text-center mb-2">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-              <div key={i} className="font-bold text-gray-700 text-sm">{d}</div>
-            ))}
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-              <div key={`empty-${i}`} className="p-2"></div>
-            ))}
-            
-            {last30Days.map((d, i) => {
-              const day = d.getDate();
-              const dateStr = formatDateStr(d);
-              const colorClass = getDayColorClass(dateStr);
-              
-              return (
-                <div 
-                  key={i} 
-                  title={dateStr}
-                  className={`p-1.5 rounded-sm border flex items-center justify-center text-xs font-bold shadow-sm transition-transform hover:scale-105 ${colorClass}`}
-                >
-                  {day}
-                </div>
-              );
-            })}
-          </div>
+        <div className="grid grid-cols-7 gap-1 text-center mb-2">
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+            <div key={i} className="font-bold text-gray-700 text-xs">{d}</div>
+          ))}
         </div>
+        
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+            <div key={`empty-${i}`} className="p-1"></div>
+          ))}
+          
+          {last30Days.map((d, i) => {
+            const day = d.getDate();
+            const dateStr = formatDateStr(d);
+            const colorClass = getDayColorClass(dateStr);
+            
+            return (
+              <div 
+                key={i} 
+                title={dateStr}
+                className={`p-1.5 rounded-sm border flex items-center justify-center text-xs font-bold shadow-sm transition-transform hover:scale-105 ${colorClass}`}
+              >
+                {day}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      <span ref={mountRef} className="hidden" aria-hidden="true" />
+      {typeof document !== 'undefined' ? createPortal(popover, document.body) : popover}
+    </>
   );
 };
 

@@ -97,6 +97,18 @@ const SalesGraphs = ({ graphs }) => {
         </ResponsiveContainer>
       </GraphContainer>
 
+      <GraphContainer title="Date vs Conversion % (Overall Conversion %)">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={graphs.conversionRateTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} />
+            <Tooltip formatter={(value) => `${value}%`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Line type="monotone" dataKey="conversion" name="Overall Conversion %" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </GraphContainer>
+
     </div>
   );
 };
