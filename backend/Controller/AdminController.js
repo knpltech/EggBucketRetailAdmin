@@ -1011,14 +1011,29 @@ const resetRetentionCustomer = async (req, res) => {
         throw new Error("Customer not found during transaction");
       }
 
-      // Delete the delivery document if it exists
+      // Check if the delivery record or status is delivered
       const deliverySnap = await transaction.get(deliveryRef);
+      const deliveryData = deliverySnap.exists ? deliverySnap.data() : null;
+      const customerData = customerSnap.data() || {};
+      const dateEntry = customerData.last8Days?.[date];
+      const currentStatus = String(
+        typeof dateEntry === "string"
+          ? dateEntry
+          : dateEntry?.status || deliveryData?.status || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (currentStatus === "delivered") {
+        throw new Error("Delivered status cannot be reset");
+      }
+
+      // Delete the delivery document if it exists
       if (deliverySnap.exists) {
         transaction.delete(deliveryRef);
         console.log(`Deleted delivery record for ${customerId} on ${date}`);
       }
 
-      const customerData = customerSnap.data() || {};
       const nextLast8Days = { ...(customerData.last8Days || {}) };
       delete nextLast8Days[date];
       const currentCategory = getCurrentCategoryFromLast8Days(nextLast8Days);
@@ -1088,8 +1103,15 @@ const resetRetentionCustomer = async (req, res) => {
     const message =
       err.message === "Customer not found"
         ? "Customer not found"
+        : err.message === "Delivered status cannot be reset"
+        ? "Delivered status cannot be reset"
         : err.message || "Failed to reset customer. Please try again.";
-    const statusCode = err.message === "Customer not found" ? 404 : 500;
+    const statusCode =
+      err.message === "Customer not found"
+        ? 404
+        : err.message === "Delivered status cannot be reset"
+        ? 400
+        : 500;
 
     return res.status(statusCode).json({ message });
   }
