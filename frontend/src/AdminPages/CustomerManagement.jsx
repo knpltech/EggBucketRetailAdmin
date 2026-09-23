@@ -157,6 +157,7 @@ export default function CustomerManagement() {
   const [updatingScheduleId, setUpdatingScheduleId] = useState(null);
   const [openScheduleId, setOpenScheduleId] = useState(null);
   const [calendarCustomer, setCalendarCustomer] = useState(null);
+  const [resettingCustomerId, setResettingCustomerId] = useState("");
 
   const [assigningRouteId, setAssigningRouteId] = useState(null);
   const [editingRouteId, setEditingRouteId] = useState(null);
@@ -617,6 +618,12 @@ export default function CustomerManagement() {
     } else if (sortBy === "peakFrequency") {
       list.sort((a, b) => {
         const diff = getPeakFrequencyNumber(b) - getPeakFrequencyNumber(a);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
+    } else if (sortBy === "frequencyGap") {
+      list.sort((a, b) => {
+        const diff = getFrequencyGapNumber(b) - getFrequencyGapNumber(a);
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
@@ -1107,6 +1114,70 @@ export default function CustomerManagement() {
     }
   };
 
+  const handleResetCustomer = async (customer) => {
+    if (!customer?.id || resettingCustomerId === customer.id) return;
+
+    const status = getLatestStatus(customer);
+    if (status === "Delivered") {
+      alert("Delivered status cannot be reset.");
+      return;
+    }
+    if (status !== "Checked") {
+      alert("Only checked customers can be reset to pending.");
+      return;
+    }
+
+    const customerName = getName(customer) || "Customer";
+    const confirmed = window.confirm(
+      `Reset ${customerName} to pending for today?`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setResettingCustomerId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer-retention/reset`, {
+        customerId: customer.id,
+        date: todayDate,
+      });
+
+      if (res.status === 200 || res.data?.message) {
+        // Optimistically update customer in state
+        setCustomers((prev) =>
+          prev.map((c) => {
+            if (c.id !== customer.id) return c;
+            const updatedLast8Days = { ...(c.last8Days || {}) };
+            delete updatedLast8Days[todayDate];
+            return {
+              ...c,
+              last8Days: updatedLast8Days,
+            };
+          }),
+        );
+
+        // Also update client cache
+        patchCachedUserInfoCustomer(customer.id, (row) => {
+          const updatedLast8Days = { ...(row.last8Days || {}) };
+          delete updatedLast8Days[todayDate];
+          return {
+            ...row,
+            last8Days: updatedLast8Days,
+          };
+        });
+
+        alert("Customer reset to pending successfully!");
+      }
+    } catch (err) {
+      console.error("Reset error:", err);
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Reset failed. Please try again.";
+      alert(errorMsg);
+    } finally {
+      setResettingCustomerId("");
+    }
+  };
+
   // ─── Excel ────────────────────────────────────────────────────────────────
   const downloadExcel = () => {
     if (!canDownloadExcel) return;
@@ -1118,6 +1189,7 @@ export default function CustomerManagement() {
         Route: c.route || c.routeName || c.route_name || c.Route || "",
         Peak_Potential: normalizePotential(c.potential),
         Peak_Frequency: getPeakFrequencyLabel(c),
+        "Frequency Gap": getFrequencyGapLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
       // Add Current_Category for ALL, PRIME CUSTOMER, ONBOARDING and CALLING CUSTOMER tabs
@@ -1177,6 +1249,7 @@ export default function CustomerManagement() {
               <option value="date">Created Date</option>
               <option value="peakPotential">Peak_Potential</option>
               <option value="peakFrequency">Peak_Frequency</option>
+              <option value="frequencyGap">Frequency Gap</option>
               <option value="deliveryGap">Delivery_Gap</option>
               <option value="currentCategory">Current Category</option>
               <option value="zone">Zone</option>
@@ -1570,12 +1643,14 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Weekly Schedule</th>
               <th className="px-2 py-3">Peak_Potential</th>
               <th className="px-2 py-3">Peak_Frequency</th>
+              <th className="px-2 py-3 whitespace-nowrap">Frequency Gap</th>
               <th className="px-2 py-3">Delivery_Gap</th>
               {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
                 <th className="px-2 py-3">Current Category</th>
               )}
               <th className="px-2 py-3">Status</th>
               <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
+              <th className="px-2 py-3 whitespace-nowrap">Reset</th>
             </tr>
           </thead>
 
@@ -1836,6 +1911,15 @@ export default function CustomerManagement() {
                 <td className="px-2 py-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getFrequencyGapColor(c) }}
+                  >
+                    {getFrequencyGapLabel(c)}
+                  </span>
+                </td>
+
+                <td className="px-2 py-3">
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{
                       backgroundColor: getDeliveryGapColor(c.deliveryGap),
                     }}
@@ -1890,6 +1974,43 @@ export default function CustomerManagement() {
                       />
                     )}
                   </div>
+                </td>
+                <td className="px-2 py-3">
+                  {(() => {
+                    const status = getLatestStatus(c);
+                    const isChecked = status === "Checked";
+                    const isDelivered = status === "Delivered";
+                    const isResetting = resettingCustomerId === c.id;
+
+                    return (
+                      <div className="flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResetCustomer(c);
+                          }}
+                          disabled={!isChecked || isResetting}
+                          className={`rounded-full text-[10px] leading-3 font-semibold flex items-center justify-center text-center px-2 py-1 min-w-[32px] h-[24px] shrink-0 transition ${
+                            isChecked
+                              ? "bg-[#FF3B30] text-white shadow hover:opacity-90 cursor-pointer"
+                              : isDelivered
+                              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                              : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                          } disabled:opacity-50`}
+                          title={
+                            isDelivered
+                              ? "Delivered status cannot be reset"
+                              : isChecked
+                              ? "Reset to pending"
+                              : "Already pending"
+                          }
+                        >
+                          {isResetting ? ".." : "R"}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </td>
               </tr>
             ))}
@@ -2183,4 +2304,23 @@ function getCurrentCategoryColor(category) {
   if (num <= 2) return "#FF3B30"; // red: D0-D2
   if (num <= 4) return "#FB8C00"; // orange: D3-D4
   return "#0F9D58"; // green: D5-D7
+}
+
+function getFrequencyGapNumber(customer) {
+  const peakNum = getPeakFrequencyNumber(customer);
+  const cat = getCurrentCategory(customer);
+  const catNum = Number(String(cat).replace(/\D/g, "")) || 0;
+  const gap = peakNum - catNum;
+  return Math.max(0, Math.min(7, gap));
+}
+
+function getFrequencyGapLabel(customer) {
+  return `F${getFrequencyGapNumber(customer)}`;
+}
+
+function getFrequencyGapColor(customer) {
+  const n = getFrequencyGapNumber(customer);
+  if (n === 0) return "#0F9D58";
+  if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
 }
