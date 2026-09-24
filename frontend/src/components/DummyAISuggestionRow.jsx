@@ -14,6 +14,8 @@ import {
   getLatestDeliveryStatus,
   getCustomerRemarkDisplay,
   getStatusBadgeColor,
+  getCurrentCategoryNumber,
+  getFrequencyGapColor,
 } from "../utils/dummyAiSuggestionEngine";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
@@ -403,6 +405,10 @@ const DummyAISuggestionRow = ({
   const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
   const peakFrequency = resolvePeakFrequency(customer);
   const currentCategory = computeCurrentCategory(customer?.last8Days);
+  const peakFreqNum = getPeakFrequencyNumber(peakFrequency);
+  const currentCatNum = getCurrentCategoryNumber(currentCategory);
+  const frequencyGapNum = Math.max(0, Math.min(7, peakFreqNum - currentCatNum));
+  const frequencyGap = `F${frequencyGapNum}`;
   const computedPotential = customer?.Peak_Potential || computePeakPotential(customer?.last8Days);
   const peakPotential = normalizePotential(computedPotential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -534,6 +540,15 @@ const DummyAISuggestionRow = ({
           style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
           {peakFrequency}
+        </span>
+      </td>
+
+      <td className="px-1.5 py-2 text-gray-700 font-medium">
+        <span
+          className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
+          style={{ backgroundColor: getFrequencyGapColor(frequencyGap) }}
+        >
+          {frequencyGap}
         </span>
       </td>
 

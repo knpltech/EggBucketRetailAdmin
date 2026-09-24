@@ -135,6 +135,41 @@ export function getDeliveryGapNumber(value) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+export function getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory) {
+  let peakNum = 0;
+  let catNum = 0;
+  if (typeof customerOrPeak === "object" && customerOrPeak !== null) {
+    const peakStr = resolvePeakFrequency(customerOrPeak);
+    peakNum = getPeakFrequencyNumber(peakStr);
+    const catStr = computeCurrentCategory(customerOrPeak.last8Days);
+    catNum = getCurrentCategoryNumber(catStr);
+  } else {
+    peakNum = typeof customerOrPeak === "number" ? customerOrPeak : getPeakFrequencyNumber(customerOrPeak);
+    catNum = typeof maybeCurrentCategory === "number" ? maybeCurrentCategory : getCurrentCategoryNumber(maybeCurrentCategory);
+  }
+  const gap = peakNum - catNum;
+  return Math.max(0, Math.min(7, gap));
+}
+
+export function getFrequencyGapLabel(customerOrPeak, maybeCurrentCategory) {
+  return `F${getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory)}`;
+}
+
+export function getFrequencyGapColor(value) {
+  let n = 0;
+  if (typeof value === "number") {
+    n = value;
+  } else if (typeof value === "string") {
+    const match = value.match(/\d+/);
+    n = match ? Number(match[0]) : 0;
+  } else if (typeof value === "object" && value !== null) {
+    n = getFrequencyGapNumber(value);
+  }
+  if (n === 0) return "#0F9D58";
+  if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
+}
+
 export const getTodayEffectiveStatus = (
   customer,
   todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata"),
@@ -478,7 +513,7 @@ const onCallLogicBuyer = (customer) => {
   return {
     suggestion: "TURN_OFF_TODAY",
     confidence: 100,
-    reason: "Customer is an On Call Logic Buyer, so always suggest OFF.",
+    reason: "On Call (Always OFF)",
   };
 };
 
@@ -600,6 +635,7 @@ export const LOGIC_3_PURCHASE_INTENT = [
   "2 Alterate Day",
   "Weekly",
   "Fortnight",
+  "On Call",
 ];
 
 export const DEFAULT_LOGIC_1 = LOGIC_1_PURCHASE_CADENCE[0];
@@ -654,6 +690,11 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
       ["need credit", "other vendor"].includes(lower))
   ) {
     return "Inactive";
+  }
+
+  // On Call aliases
+  if (validList.includes("On Call") && ["on call", "oncall", "on-call"].includes(lower)) {
+    return "On Call";
   }
 
   return defaultVal;

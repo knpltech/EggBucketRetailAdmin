@@ -41,6 +41,7 @@ const DummyAISuggestionTable = ({
               <th className="p-3 text-left font-semibold text-gray-800">Weekly Schedule</th>
               <th className="p-3 text-left font-semibold text-gray-800">Peak_Potential</th>
               <th className="p-3 text-left font-semibold text-gray-800">Peak_Frequency</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Frequency Gap</th>
               <th className="p-3 text-left font-semibold text-gray-800">Delivery_Gap</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Category</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
@@ -60,6 +61,7 @@ const DummyAISuggestionTable = ({
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-12 mx-auto"></div></td>
+                <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
@@ -90,7 +92,7 @@ const DummyAISuggestionTable = ({
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full text-xs table-auto border-collapse min-w-[1150px]">
+      <table className="w-full text-xs table-auto border-collapse min-w-[1220px]">
           <thead className="bg-gray-50 border-b border-gray-100 text-xs">
             <tr>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Customer<br/>ID</th>
@@ -99,6 +101,7 @@ const DummyAISuggestionTable = ({
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Weekly<br/>Schedule</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Peak<br/>Potential</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Peak<br/>Frequency</th>
+              <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Frequency<br/>Gap</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Delivery<br/>Gap</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Current<br/>Category</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Current<br/>Toggle</th>
