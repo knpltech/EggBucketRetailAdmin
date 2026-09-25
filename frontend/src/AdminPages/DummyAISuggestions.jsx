@@ -406,6 +406,8 @@ const DummyAISuggestions = () => {
 
       const frequencyGapNumber = Math.max(0, Math.min(7, peakFrequencyNumber - currentCategoryNumber));
       const frequencyGapStr = `F${frequencyGapNumber}`;
+      const riskFactorNumber = peakFrequencyNumber > 0 ? frequencyGapNumber / peakFrequencyNumber : 0;
+      const riskFactorStr = riskFactorNumber.toFixed(2);
 
       return {
         customer: {
@@ -416,6 +418,8 @@ const DummyAISuggestions = () => {
           deliveryGapNumber,
           frequencyGapStr,
           frequencyGapNumber,
+          riskFactorStr,
+          riskFactorNumber,
         },
         customerStatus,
         customerRemark,
@@ -425,6 +429,8 @@ const DummyAISuggestions = () => {
         peakFrequencyNumber,
         frequencyGapStr,
         frequencyGapNumber,
+        riskFactorStr,
+        riskFactorNumber,
         deliveryGapStr,
         deliveryGapNumber,
         potentialNumber,
@@ -649,6 +655,10 @@ const DummyAISuggestions = () => {
       case "FREQUENCY_GAP":
         return dataToSort.sort((a, b) => {
           return b.frequencyGapNumber - a.frequencyGapNumber || compareByName(a, b);
+        });
+      case "RISK_FACTOR":
+        return dataToSort.sort((a, b) => {
+          return a.riskFactorNumber - b.riskFactorNumber || compareByName(a, b);
         });
       case "CURRENT_CATEGORY":
         return dataToSort.sort((a, b) => {
@@ -966,6 +976,7 @@ const DummyAISuggestions = () => {
               <option value="TOGGLE_OFF_FIRST">Toggle (OFF First)</option>
               <option value="PEAK_FREQUENCY">Peak Frequency</option>
               <option value="FREQUENCY_GAP">Frequency Gap</option>
+              <option value="RISK_FACTOR">Risk Factor</option>
               <option value="CURRENT_CATEGORY">Current Category (D7 to D0)</option>
               <option value="PEAK_POTENTIAL">Peak Potential</option>
               <option value="DELIVERY_GAP">Delivery Gap (G0 First)</option>
