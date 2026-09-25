@@ -39,7 +39,6 @@ export default function CustomerRoutes() {
   const [sortBy, setSortBy] = useState("routeName");
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
   const [selectedAgentIds, setSelectedAgentIds] = useState([]);
-  const [assignToCustomers, setAssignToCustomers] = useState(true);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState(false);
   const [selectedResetAgent, setSelectedResetAgent] = useState("");
@@ -685,7 +684,7 @@ export default function CustomerRoutes() {
       await axios.put(`${ADMIN_PATH}/delivery/set-route-agents`, {
         routes: targetRouteNames,
         agentIds: selectedAgentIds,
-        assignToCustomers,
+        assignToCustomers: true,
       });
 
       // Update local agents state:
@@ -719,30 +718,25 @@ export default function CustomerRoutes() {
         })
       );
 
-      // Update local customers state if assignToCustomers is true
-      if (assignToCustomers) {
-        setCustomers((prev) =>
-          prev.map((c) => {
-            if (targetRouteNames.includes(c.route)) {
-              if (selectedAgentIds.length === 0) {
-                return { ...c, assignedDeliverymen: "", deliveredBy: "" };
-              } else if (selectedAgentIds.length === 1) {
-                const primary = selectedAgentIds[0];
-                return { ...c, assignedDeliverymen: primary, deliveredBy: primary };
-              } else {
-                const isAlreadySelected =
-                  selectedAgentIds.includes(c.assignedDeliverymen) ||
-                  selectedAgentIds.includes(c.deliveredBy);
-                if (!isAlreadySelected) {
-                  const primary = selectedAgentIds[0];
-                  return { ...c, assignedDeliverymen: primary, deliveredBy: primary };
-                }
-              }
+      // Update local customers state: distribute customers across selected agents
+      let targetCustCount = 0;
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (targetRouteNames.includes(c.route)) {
+            if (selectedAgentIds.length === 0) {
+              return { ...c, assignedDeliverymen: "", deliveredBy: "" };
+            } else if (selectedAgentIds.length === 1) {
+              const primary = selectedAgentIds[0];
+              return { ...c, assignedDeliverymen: primary, deliveredBy: primary };
+            } else {
+              const assignedAgentId = selectedAgentIds[targetCustCount % selectedAgentIds.length];
+              targetCustCount++;
+              return { ...c, assignedDeliverymen: assignedAgentId, deliveredBy: assignedAgentId };
             }
-            return c;
-          })
-        );
-      }
+          }
+          return c;
+        })
+      );
 
       invalidateClientUserInfoCache();
 
@@ -1720,25 +1714,11 @@ export default function CustomerRoutes() {
               )}
             </div>
 
-            {/* Checkbox: Assign customers in route */}
-            <div className="mb-4 flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="assignToCustomersCheck"
-                checked={assignToCustomers}
-                onChange={(e) => setAssignToCustomers(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-              />
-              <label htmlFor="assignToCustomersCheck" className="text-[11px] text-gray-600 cursor-pointer select-none">
-                Assign existing customers in route
-              </label>
-            </div>
-
             {/* Main Action Button */}
             <button
               onClick={handleAssignAgent}
               disabled={isAssigning || !assignSelectedRoute || selectedAgentIds.length === 0}
-              className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all ${
+              className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all mt-1 ${
                 isAssigning || !assignSelectedRoute || selectedAgentIds.length === 0
                   ? "bg-blue-300 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700 cursor-pointer active:scale-[0.99]"
@@ -1770,11 +1750,11 @@ export default function CustomerRoutes() {
           {/* COMPACT ASSIGNED AGENTS CARDS */}
           <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col">
             <h2 className="text-base font-bold text-gray-800 mb-4">Assigned Deliverymen</h2>
-            {agentStats.filter(a => a.customersAssigned > 0).length === 0 ? (
-              <p className="text-sm text-gray-500">No deliverymen are currently assigned to any customers.</p>
+            {agentStats.filter(a => (a.displayRoute && a.displayRoute !== "No routes") || a.customersAssigned > 0).length === 0 ? (
+              <p className="text-sm text-gray-500">No deliverymen are currently assigned to any routes.</p>
             ) : (
               <div className="flex flex-col gap-3">
-                {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
+                {agentStats.filter(a => (a.displayRoute && a.displayRoute !== "No routes") || a.customersAssigned > 0).map((agent, i) => {
                   const colors = [
                     "bg-blue-50 border-blue-200 text-blue-800",
                     "bg-green-50 border-green-200 text-green-800",

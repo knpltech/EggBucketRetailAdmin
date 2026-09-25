@@ -394,19 +394,22 @@ const setRouteAgents = async (req, res) => {
     const batch = db.batch();
     const deliverySnap = await db.collection("DeliveryMan").get();
 
-    const selectedAgentIdSet = new Set(agentIds);
-    const assignedAgentNames = new Set();
-    const assignedAgentIds = new Set();
+    const selectedAgentIdSet = new Set(agentIds.map((id) => String(id).trim()));
+    const assignedAgentEntities = [];
 
     deliverySnap.docs.forEach((doc) => {
       const data = doc.data();
       const currentRoute = data.route || "";
       const routesList = currentRoute ? currentRoute.split(",").map((r) => r.trim()).filter(Boolean) : [];
 
+      const docId = doc.id;
+      const uid = data.uid || docId;
+      const name = data.name || "";
+
       const isSelected =
-        selectedAgentIdSet.has(doc.id) ||
-        (data.uid && selectedAgentIdSet.has(data.uid)) ||
-        (data.name && selectedAgentIdSet.has(data.name));
+        selectedAgentIdSet.has(docId) ||
+        (uid && selectedAgentIdSet.has(uid)) ||
+        (name && selectedAgentIdSet.has(name));
 
       let updatedList = [...routesList];
 
@@ -416,15 +419,17 @@ const setRouteAgents = async (req, res) => {
             updatedList.push(rName);
           }
         });
-        assignedAgentIds.add(doc.id);
-        if (data.uid) assignedAgentIds.add(data.uid);
-        if (data.name) assignedAgentNames.add(data.name);
+        assignedAgentEntities.push({
+          id: docId,
+          uid: uid,
+          name: name,
+        });
       } else {
         // Unassign targetRoutes from this agent
         updatedList = updatedList.filter((r) => !targetRoutes.includes(r));
       }
 
-      batch.update(doc.ref, { route: updatedList.join(",") });
+      batch.set(doc.ref, { route: updatedList.join(",") }, { merge: true });
     });
 
     await batch.commit();
@@ -440,25 +445,19 @@ const setRouteAgents = async (req, res) => {
             const chunk = custDocs.slice(i, i + chunkSize);
             const cBatch = db.batch();
 
-            chunk.forEach((cDoc) => {
-              const cData = cDoc.data();
-              const currAgent = cData.assignedDeliverymen || cData.deliveredBy || "";
-
-              if (agentIds.length === 0) {
+            chunk.forEach((cDoc, index) => {
+              if (assignedAgentEntities.length === 0) {
                 // All unassigned
                 cBatch.update(cDoc.ref, { assignedDeliverymen: "", deliveredBy: "" });
-              } else if (agentIds.length === 1) {
-                // Exactly 1 agent selected: assign that 1 agent to all customers in this route
-                const primaryAgent = agentIds[0];
-                cBatch.update(cDoc.ref, { assignedDeliverymen: primaryAgent, deliveredBy: primaryAgent });
+              } else if (assignedAgentEntities.length === 1) {
+                // Exactly 1 agent selected: assign that 1 agent (id) to all customers in this route
+                const primary = assignedAgentEntities[0].id || assignedAgentEntities[0].uid;
+                cBatch.update(cDoc.ref, { assignedDeliverymen: primary, deliveredBy: primary });
               } else {
-                // Multiple agents: if customer already belongs to one of the selected agents, keep them! Otherwise assign to primary (first)
-                const isAlreadySelected =
-                  assignedAgentIds.has(currAgent) || assignedAgentNames.has(currAgent);
-                if (!isAlreadySelected) {
-                  const primaryAgent = agentIds[0];
-                  cBatch.update(cDoc.ref, { assignedDeliverymen: primaryAgent, deliveredBy: primaryAgent });
-                }
+                // Multiple agents selected: distribute customers evenly across selected agents
+                const assignedAgent = assignedAgentEntities[(i + index) % assignedAgentEntities.length];
+                const agentIdentifier = assignedAgent.id || assignedAgent.uid;
+                cBatch.update(cDoc.ref, { assignedDeliverymen: agentIdentifier, deliveredBy: agentIdentifier });
               }
             });
 
@@ -473,7 +472,7 @@ const setRouteAgents = async (req, res) => {
 
     res.status(200).json({
       message: `Successfully updated agents for ${targetRoutes.length} route(s).`,
-      assignedCount: agentIds.length,
+      assignedCount: assignedAgentEntities.length,
     });
   } catch (err) {
     console.error("Error setting route agents:", err);
