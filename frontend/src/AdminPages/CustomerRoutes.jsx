@@ -643,33 +643,7 @@ export default function CustomerRoutes() {
 
   const handleSelectRoute = (routeVal) => {
     setAssignSelectedRoute(routeVal);
-    if (!routeVal) {
-      setSelectedAgentIds([]);
-      return;
-    }
-
-    const activeAgentIdSet = new Set(
-      agents
-        .filter((a) => a.active === true || a.active === "true")
-        .map((a) => a.id || a.uid)
-    );
-
-    let assignedIds = [];
-    if (routeVal.startsWith("PARENT:")) {
-      const parentKey = routeVal.replace("PARENT:", "");
-      const group = groupedRoutes.find((g) => g.parentKey === parentKey);
-      if (group && group.assignedAgents) {
-        assignedIds = group.assignedAgents.map((ag) => ag.id);
-      }
-    } else {
-      const r = routeData.find((route) => route.name === routeVal);
-      if (r && r.assignedAgents) {
-        assignedIds = r.assignedAgents.map((ag) => ag.id);
-      }
-    }
-
-    // Only pre-select agents that are currently active
-    setSelectedAgentIds(assignedIds.filter((id) => activeAgentIdSet.has(id)));
+    setSelectedAgentIds([]); // Clean state: do not auto-select any agent
   };
 
   const toggleAgentSelection = (agentId) => {
@@ -1763,9 +1737,9 @@ export default function CustomerRoutes() {
             {/* Main Action Button */}
             <button
               onClick={handleAssignAgent}
-              disabled={isAssigning || !assignSelectedRoute}
+              disabled={isAssigning || !assignSelectedRoute || selectedAgentIds.length === 0}
               className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all ${
-                isAssigning || !assignSelectedRoute
+                isAssigning || !assignSelectedRoute || selectedAgentIds.length === 0
                   ? "bg-blue-300 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700 cursor-pointer active:scale-[0.99]"
               }`}
@@ -1775,11 +1749,22 @@ export default function CustomerRoutes() {
                 : !assignSelectedRoute
                 ? "Select a Route First"
                 : selectedAgentIds.length === 0
-                ? "Unassign All Agents"
+                ? "Select Agent(s) to Assign"
                 : selectedAgentIds.length === 1
                 ? "Assign 1 Agent to Route"
                 : `Assign ${selectedAgentIds.length} Agents to Route`}
             </button>
+
+            {assignSelectedRoute && selectedAgentIds.length === 0 && (
+              <button
+                type="button"
+                onClick={handleAssignAgent}
+                disabled={isAssigning}
+                className="mt-2 text-center text-[11px] text-gray-400 hover:text-red-600 font-medium underline transition-colors cursor-pointer"
+              >
+                Unassign all agents from this route
+              </button>
+            )}
           </div>
 
           {/* COMPACT ASSIGNED AGENTS CARDS */}
