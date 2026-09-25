@@ -134,7 +134,7 @@ const updateDeliveryPartner = async (req, res) => {
   }
 };
 
-// Controller to assign route to a delivery partner
+// Controller to assign route to a delivery partner (supports multiple agents per route)
 const assignRouteToDeliveryPartner = async (req, res) => {
   try {
     const { uid, route } = req.body;
@@ -146,35 +146,21 @@ const assignRouteToDeliveryPartner = async (req, res) => {
     }
 
     const db = getFirestore();
-    const batch = db.batch();
-    const snapshot = await db.collection("DeliveryMan").get();
+    const docRef = db.collection("DeliveryMan").doc(uid);
+    const docSnap = await docRef.get();
 
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      const currentRoute = data.route || "";
+    if (!docSnap.exists) {
+      return res.status(404).json({ message: "Delivery partner not found." });
+    }
 
-      if (doc.id === uid) {
-        let newRouteValue = route;
-        if (currentRoute) {
-          const routesList = currentRoute.split(",").map((r) => r.trim()).filter(Boolean);
-          if (!routesList.includes(route)) {
-            routesList.push(route);
-          }
-          newRouteValue = routesList.join(",");
-        }
-        batch.update(doc.ref, { route: newRouteValue });
-      } else {
-        if (currentRoute) {
-          const routesList = currentRoute.split(",").map((r) => r.trim()).filter(Boolean);
-          if (routesList.includes(route)) {
-            const updatedList = routesList.filter((r) => r !== route);
-            batch.update(doc.ref, { route: updatedList.join(",") });
-          }
-        }
-      }
-    });
+    const data = docSnap.data();
+    const currentRoute = data.route || "";
+    const routesList = currentRoute ? currentRoute.split(",").map((r) => r.trim()).filter(Boolean) : [];
 
-    await batch.commit();
+    if (!routesList.includes(route)) {
+      routesList.push(route);
+      await docRef.update({ route: routesList.join(",") });
+    }
 
     // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
     cache.del("allDeliveryPartners:v1");
@@ -184,6 +170,40 @@ const assignRouteToDeliveryPartner = async (req, res) => {
   } catch (err) {
     console.error("Error assigning route to delivery partner:", err);
     res.status(500).json({ message: "Server error while assigning route." });
+  }
+};
+
+// Controller to unassign/remove a route from a delivery partner
+const unassignRouteFromDeliveryPartner = async (req, res) => {
+  try {
+    const { uid, route } = req.body;
+    if (!uid || !route) {
+      return res.status(400).json({ message: "UID and Route are required." });
+    }
+
+    const db = getFirestore();
+    const docRef = db.collection("DeliveryMan").doc(uid);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      return res.status(404).json({ message: "Delivery partner not found." });
+    }
+
+    const data = docSnap.data();
+    const currentRoute = data.route || "";
+    const routesList = currentRoute ? currentRoute.split(",").map((r) => r.trim()).filter(Boolean) : [];
+    const updatedList = routesList.filter((r) => r !== route);
+
+    await docRef.update({ route: updatedList.join(",") });
+
+    // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
+    res.status(200).json({ message: "Route unassigned from delivery partner successfully." });
+  } catch (err) {
+    console.error("Error unassigning route from delivery partner:", err);
+    res.status(500).json({ message: "Server error while unassigning route." });
   }
 };
 
@@ -256,6 +276,7 @@ export {
   getDeliveryPartners,
   updateDeliveryPartner,
   assignRouteToDeliveryPartner,
+  unassignRouteFromDeliveryPartner,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 };

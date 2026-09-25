@@ -33,6 +33,7 @@ import {
   getDeliveryPartners,
   updateDeliveryPartner,
   assignRouteToDeliveryPartner,
+  unassignRouteFromDeliveryPartner,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 } from "../Controller/DeliveryPartnerController.js";
@@ -160,6 +161,7 @@ router.post("/add-del-partner", addDeliveryPartner);
 router.get("/get-del-partner", getDeliveryPartners);
 router.put("/delivery/update", updateDeliveryPartner);
 router.put("/delivery/assign-route", assignRouteToDeliveryPartner);
+router.put("/delivery/unassign-route", unassignRouteFromDeliveryPartner);
 router.delete("/delivery/delete", deleteDeliveryPartner);
 router.put("/delivery/toggle/:id", toggleDeliveryPerson);
 router.get("/customer-map-status", getCustomerMapStatus);
