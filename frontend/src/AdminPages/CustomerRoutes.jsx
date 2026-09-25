@@ -265,9 +265,10 @@ export default function CustomerRoutes() {
       const rName = routeInfo.name;
       const assignedAgentsMap = new Map();
 
-      // 1. From agents list where agent.route includes rName (comma separated)
+      // 1. From agents list where agent is ACTIVE and agent.route includes rName (comma separated)
       agents.forEach(agent => {
-        if (agent.route) {
+        const isAgentActive = agent.active === true || agent.active === "true";
+        if (isAgentActive && agent.route) {
           const list = agent.route.split(",").map(r => r.trim()).filter(Boolean);
           if (list.includes(rName)) {
             const agentId = agent.id || agent.uid;
@@ -275,24 +276,27 @@ export default function CustomerRoutes() {
               id: agentId,
               name: agent.name || agent.display_name || "Agent",
               phone: agent.phone || "",
-              active: agent.active !== false,
+              active: true,
               customerCount: routeInfo.agentsAssigned[agentId] || 0,
             });
           }
         }
       });
 
-      // 2. Also from customer.assignedDeliverymen
+      // 2. Also from customer.assignedDeliverymen (only if agent is active)
       Object.keys(routeInfo.agentsAssigned).forEach(agentId => {
         if (agentId && !assignedAgentsMap.has(agentId)) {
           const foundAgent = agents.find(a => (a.id === agentId || a.uid === agentId || a.name === agentId));
-          assignedAgentsMap.set(agentId, {
-            id: agentId,
-            name: foundAgent ? (foundAgent.name || foundAgent.display_name) : agentId,
-            phone: foundAgent ? (foundAgent.phone || "") : "",
-            active: foundAgent ? (foundAgent.active !== false) : true,
-            customerCount: routeInfo.agentsAssigned[agentId] || 0,
-          });
+          const isAgentActive = foundAgent ? (foundAgent.active === true || foundAgent.active === "true") : false;
+          if (isAgentActive) {
+            assignedAgentsMap.set(agentId, {
+              id: agentId,
+              name: foundAgent ? (foundAgent.name || foundAgent.display_name) : agentId,
+              phone: foundAgent ? (foundAgent.phone || "") : "",
+              active: true,
+              customerCount: routeInfo.agentsAssigned[agentId] || 0,
+            });
+          }
         }
       });
 
@@ -420,29 +424,32 @@ export default function CustomerRoutes() {
     });
   }, [routeData, sortBy]);
 
-  // Compute Agent stats for Right Sidebar
+  // Compute Agent stats for Right Sidebar (ONLY ACTIVE AGENTS)
   const agentStats = useMemo(() => {
-    return agents.map(agent => {
-      const assigned = customers.filter(c =>
-        c.assignedDeliverymen === agent.id ||
-        c.assignedDeliverymen === agent.name
-      );
-      const customersAssigned = assigned.length;
-      const activeCustomers = assigned.filter(c => getTodayEffectiveStatus(c) === "ON").length;
+    return agents
+      .filter(agent => agent.active === true || agent.active === "true")
+      .map(agent => {
+        const assigned = customers.filter(c =>
+          c.assignedDeliverymen === agent.id ||
+          c.assignedDeliverymen === agent.name ||
+          c.assignedDeliverymen === agent.uid
+        );
+        const customersAssigned = assigned.length;
+        const activeCustomers = assigned.filter(c => getTodayEffectiveStatus(c) === "ON").length;
 
-      // Routes can come from assigned customers OR direct agent.route assignments
-      const routesFromCustomers = assigned.map(c => c.route).filter(Boolean);
-      const routesFromDoc = agent.route ? agent.route.split(",").map(r => r.trim()).filter(Boolean) : [];
-      const computedRoutes = [...new Set([...routesFromCustomers, ...routesFromDoc])].join(", ");
+        // Routes can come from assigned customers OR direct agent.route assignments
+        const routesFromCustomers = assigned.map(c => c.route).filter(Boolean);
+        const routesFromDoc = agent.route ? agent.route.split(",").map(r => r.trim()).filter(Boolean) : [];
+        const computedRoutes = [...new Set([...routesFromCustomers, ...routesFromDoc])].join(", ");
 
-      return {
-        ...agent,
-        customersAssigned,
-        activeCustomers,
-        isActive: agent.active !== false,
-        displayRoute: computedRoutes || "No routes"
-      };
-    });
+        return {
+          ...agent,
+          customersAssigned,
+          activeCustomers,
+          isActive: true,
+          displayRoute: computedRoutes || "No routes"
+        };
+      });
   }, [agents, customers]);
 
 
@@ -641,22 +648,28 @@ export default function CustomerRoutes() {
       return;
     }
 
+    const activeAgentIdSet = new Set(
+      agents
+        .filter((a) => a.active === true || a.active === "true")
+        .map((a) => a.id || a.uid)
+    );
+
+    let assignedIds = [];
     if (routeVal.startsWith("PARENT:")) {
       const parentKey = routeVal.replace("PARENT:", "");
       const group = groupedRoutes.find((g) => g.parentKey === parentKey);
       if (group && group.assignedAgents) {
-        setSelectedAgentIds(group.assignedAgents.map((ag) => ag.id));
-      } else {
-        setSelectedAgentIds([]);
+        assignedIds = group.assignedAgents.map((ag) => ag.id);
       }
     } else {
       const r = routeData.find((route) => route.name === routeVal);
       if (r && r.assignedAgents) {
-        setSelectedAgentIds(r.assignedAgents.map((ag) => ag.id));
-      } else {
-        setSelectedAgentIds([]);
+        assignedIds = r.assignedAgents.map((ag) => ag.id);
       }
     }
+
+    // Only pre-select agents that are currently active
+    setSelectedAgentIds(assignedIds.filter((id) => activeAgentIdSet.has(id)));
   };
 
   const toggleAgentSelection = (agentId) => {
@@ -1041,7 +1054,7 @@ export default function CustomerRoutes() {
               >
                 <option value="">{isResetting ? "Resetting..." : "Choose an agent"}</option>
                 <option value="ALL" className="font-bold text-red-700">All Agents</option>
-                {agents.filter(a => a.active !== false).map((a) => (
+                {agents.filter(a => a.active === true || a.active === "true").map((a) => (
                   <option key={a.id} value={a.id} className="text-gray-800">
                     {a.name || a.display_name}
                   </option>
