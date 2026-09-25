@@ -38,7 +38,7 @@ export default function CustomerRoutes() {
   // Filtering and Selection
   const [sortBy, setSortBy] = useState("routeName");
   const [assignSelectedRoute, setAssignSelectedRoute] = useState("");
-  const [assignSelectedAgent, setAssignSelectedAgent] = useState("");
+  const [selectedAgentIds, setSelectedAgentIds] = useState([]);
   const [assignToCustomers, setAssignToCustomers] = useState(true);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState(false);
@@ -445,17 +445,6 @@ export default function CustomerRoutes() {
     });
   }, [agents, customers]);
 
-  // Derive currently assigned agents for the selected route in the right panel
-  const selectedRouteAssignedAgents = useMemo(() => {
-    if (!assignSelectedRoute) return [];
-    if (assignSelectedRoute.startsWith("PARENT:")) {
-      const parentKey = assignSelectedRoute.replace("PARENT:", "");
-      const group = groupedRoutes.find((g) => g.parentKey === parentKey);
-      return group ? group.assignedAgents : [];
-    }
-    const r = routeData.find((route) => route.name === assignSelectedRoute);
-    return r ? r.assignedAgents : [];
-  }, [assignSelectedRoute, groupedRoutes, routeData]);
 
   // Compute pending sub-route optimizations based on D-category and Delivery Gap
   const optimizationData = useMemo(() => {
@@ -645,96 +634,143 @@ export default function CustomerRoutes() {
     }
   };
 
+  const handleSelectRoute = (routeVal) => {
+    setAssignSelectedRoute(routeVal);
+    if (!routeVal) {
+      setSelectedAgentIds([]);
+      return;
+    }
+
+    if (routeVal.startsWith("PARENT:")) {
+      const parentKey = routeVal.replace("PARENT:", "");
+      const group = groupedRoutes.find((g) => g.parentKey === parentKey);
+      if (group && group.assignedAgents) {
+        setSelectedAgentIds(group.assignedAgents.map((ag) => ag.id));
+      } else {
+        setSelectedAgentIds([]);
+      }
+    } else {
+      const r = routeData.find((route) => route.name === routeVal);
+      if (r && r.assignedAgents) {
+        setSelectedAgentIds(r.assignedAgents.map((ag) => ag.id));
+      } else {
+        setSelectedAgentIds([]);
+      }
+    }
+  };
+
+  const toggleAgentSelection = (agentId) => {
+    setSelectedAgentIds((prev) => {
+      if (prev.includes(agentId)) {
+        return prev.filter((id) => id !== agentId);
+      } else {
+        return [...prev, agentId];
+      }
+    });
+  };
+
   const handleAssignAgent = async () => {
-    if (!assignSelectedRoute || !assignSelectedAgent) return;
+    if (!assignSelectedRoute) {
+      alert("Please select a route first.");
+      return;
+    }
+
+    let targetRouteNames = [];
+    const isParentAssign = assignSelectedRoute.startsWith("PARENT:");
+    if (isParentAssign) {
+      const parentKey = assignSelectedRoute.replace("PARENT:", "");
+      const group = groupedRoutes.find((g) => g.parentKey === parentKey);
+      if (group) {
+        targetRouteNames = group.routes.map((r) => r.name);
+      }
+    } else {
+      targetRouteNames = [assignSelectedRoute];
+    }
+
+    if (targetRouteNames.length === 0) {
+      alert("No routes found to assign.");
+      return;
+    }
+
     setIsAssigning(true);
 
     try {
-      // Find which routes are being targeted
-      let targetRouteNames = [];
-      const isParentAssign = assignSelectedRoute.startsWith("PARENT:");
-      if (isParentAssign) {
-        const parentKey = assignSelectedRoute.replace("PARENT:", "");
-        const group = groupedRoutes.find((g) => g.parentKey === parentKey);
-        if (group) {
-          targetRouteNames = group.routes.map((r) => r.name);
-        }
-      } else {
-        targetRouteNames = [assignSelectedRoute];
-      }
+      await axios.put(`${ADMIN_PATH}/delivery/set-route-agents`, {
+        routes: targetRouteNames,
+        agentIds: selectedAgentIds,
+        assignToCustomers,
+      });
 
-      if (targetRouteNames.length === 0) {
-        alert("No route selected.");
-        setIsAssigning(false);
-        return;
-      }
+      // Update local agents state:
+      // Agents in selectedAgentIds have targetRouteNames added.
+      // Agents not in selectedAgentIds have targetRouteNames removed.
+      setAgents((prev) =>
+        prev.map((a) => {
+          const aId = a.id || a.uid;
+          const isSelected =
+            selectedAgentIds.includes(aId) ||
+            (a.uid && selectedAgentIds.includes(a.uid)) ||
+            (a.name && selectedAgentIds.includes(a.name));
 
-      // 1. Assign each target route to the delivery agent in DeliveryMan
-      for (const routeName of targetRouteNames) {
-        await axios.put(`${ADMIN_PATH}/delivery/assign-route`, {
-          uid: assignSelectedAgent,
-          route: routeName,
-        });
-      }
+          const currentRoute = a.route || "";
+          let routesList = currentRoute ? currentRoute.split(",").map((r) => r.trim()).filter(Boolean) : [];
 
-      // 2. If assignToCustomers is true, also update existing customers in these routes
-      if (assignToCustomers) {
-        const customersInRoute = customers.filter((c) => targetRouteNames.includes(c.route));
-        if (customersInRoute.length > 0) {
-          const batchSize = 10;
-          for (let i = 0; i < customersInRoute.length; i += batchSize) {
-            const batch = customersInRoute.slice(i, i + batchSize);
-            await Promise.all(
-              batch.map((customer) => {
-                return axios.put(`${ADMIN_PATH}/customer/assign-agent`, {
-                  id: customer.id,
-                  assignedDeliverymen: assignSelectedAgent,
-                  deliveredBy: assignSelectedAgent,
-                });
-              })
-            );
+          if (isSelected) {
+            targetRouteNames.forEach((rName) => {
+              if (!routesList.includes(rName)) {
+                routesList.push(rName);
+              }
+            });
+          } else {
+            routesList = routesList.filter((r) => !targetRouteNames.includes(r));
           }
 
-          const updatedCustomers = customers.map((c) => {
-            if (targetRouteNames.includes(c.route)) {
-              return {
-                ...c,
-                assignedDeliverymen: assignSelectedAgent,
-              };
-            }
-            return c;
-          });
-          setCustomers(updatedCustomers);
-        }
-      }
-
-      // Clear the cache so next reload fetches fresh data
-      invalidateClientUserInfoCache();
-
-      // Update agents local state to include new routes without overwriting other agents
-      const updatedAgents = agents.map((a) => {
-        if (a.id === assignSelectedAgent) {
-          let currentRoute = a.route || "";
-          let routesList = currentRoute ? currentRoute.split(",").map((r) => r.trim()).filter(Boolean) : [];
-          targetRouteNames.forEach((rName) => {
-            if (!routesList.includes(rName)) {
-              routesList.push(rName);
-            }
-          });
           return {
             ...a,
             route: routesList.join(","),
           };
-        }
-        return a;
-      });
-      setAgents(updatedAgents);
+        })
+      );
 
-      alert(`Agent assigned successfully to ${targetRouteNames.length} route(s)!`);
-      setAssignSelectedAgent("");
+      // Update local customers state if assignToCustomers is true
+      if (assignToCustomers) {
+        setCustomers((prev) =>
+          prev.map((c) => {
+            if (targetRouteNames.includes(c.route)) {
+              if (selectedAgentIds.length === 0) {
+                return { ...c, assignedDeliverymen: "", deliveredBy: "" };
+              } else if (selectedAgentIds.length === 1) {
+                const primary = selectedAgentIds[0];
+                return { ...c, assignedDeliverymen: primary, deliveredBy: primary };
+              } else {
+                const isAlreadySelected =
+                  selectedAgentIds.includes(c.assignedDeliverymen) ||
+                  selectedAgentIds.includes(c.deliveredBy);
+                if (!isAlreadySelected) {
+                  const primary = selectedAgentIds[0];
+                  return { ...c, assignedDeliverymen: primary, deliveredBy: primary };
+                }
+              }
+            }
+            return c;
+          })
+        );
+      }
+
+      invalidateClientUserInfoCache();
+
+      const routeLabel = isParentAssign
+        ? `all ${targetRouteNames.length} sub-routes of ${assignSelectedRoute.replace("PARENT:", "")}`
+        : targetRouteNames[0];
+
+      alert(
+        selectedAgentIds.length === 0
+          ? `Cleared all agents from ${routeLabel}.`
+          : `Successfully assigned ${selectedAgentIds.length} agent(s) to ${routeLabel}!`
+      );
     } catch (err) {
-      console.error("Error assigning agent to route:", err);
-      alert("Failed to assign agent. Check console for details.");
+      console.error("Error updating route agents:", err);
+      alert(err.response?.data?.message || "Failed to update route assignments. Check console for details.");
     } finally {
       setIsAssigning(false);
     }
@@ -1229,7 +1265,7 @@ export default function CustomerRoutes() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setAssignSelectedRoute(`PARENT:${group.parentKey}`);
+                                handleSelectRoute(`PARENT:${group.parentKey}`);
                               }}
                               className={`flex-shrink-0 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer ${
                                 assignSelectedRoute === `PARENT:${group.parentKey}`
@@ -1283,7 +1319,7 @@ export default function CustomerRoutes() {
                                   className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 truncate cursor-pointer hover:bg-blue-100"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setAssignSelectedRoute(`PARENT:${group.parentKey}`);
+                                    handleSelectRoute(`PARENT:${group.parentKey}`);
                                   }}
                                 >
                                   {group.agentSummary}
@@ -1578,14 +1614,22 @@ export default function CustomerRoutes() {
         {/* RIGHT COLUMN - ASSIGN AGENT PANEL (COMPACT 280px) */}
         <div className="w-full xl:w-[280px] flex-shrink-0 flex flex-col gap-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 flex flex-col">
-            <h2 className="text-base font-bold text-gray-800 mb-4">Assign Agents to Route</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-gray-800">Assign Route</h2>
+              {selectedAgentIds.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
+                  {selectedAgentIds.length} Selected
+                </span>
+              )}
+            </div>
 
+            {/* 1. Select Route */}
             <div className="mb-3">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Select Route</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">1. Select Route</label>
               <select
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                 value={assignSelectedRoute}
-                onChange={(e) => setAssignSelectedRoute(e.target.value)}
+                onChange={(e) => handleSelectRoute(e.target.value)}
               >
                 <option value="">Choose a route</option>
                 {groupedRoutes.map((group) => (
@@ -1606,63 +1650,91 @@ export default function CustomerRoutes() {
               {assignSelectedRoute.startsWith("PARENT:") && (
                 <div className="mt-1.5 p-1.5 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-700 font-semibold flex items-center gap-1">
                   <span>
-                    Will assign all {groupedRoutes.find(g => g.parentKey === assignSelectedRoute.replace("PARENT:", ""))?.routes.length || 0} sub-routes of {assignSelectedRoute.replace("PARENT:", "")}!
+                    Will apply to all {groupedRoutes.find(g => g.parentKey === assignSelectedRoute.replace("PARENT:", ""))?.routes.length || 0} sub-routes of {assignSelectedRoute.replace("PARENT:", "")}!
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Currently assigned agents on selected route with quick remove */}
-            {assignSelectedRoute && (
-              <div className="mb-3">
-                <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                  Assigned Agents ({selectedRouteAssignedAgents.length})
+            {/* 2. Multi-Select Delivery Agents */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-gray-700">
+                  2. Select Agent(s)
                 </label>
-                {selectedRouteAssignedAgents.length === 0 ? (
-                  <p className="text-[11px] text-gray-400 italic bg-gray-50 p-2 rounded border border-gray-100">
-                    No agents assigned to this route yet.
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 border border-gray-100 rounded-lg max-h-32 overflow-y-auto">
-                    {selectedRouteAssignedAgents.map((ag) => (
-                      <span
-                        key={ag.id}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white text-gray-800 border border-gray-200 shadow-2xs"
-                      >
-                        <span className="w-3.5 h-3.5 rounded-full bg-blue-100 text-blue-700 text-[8px] flex items-center justify-center font-bold">
-                          {getInitials(ag.name)}
-                        </span>
-                        <span className="truncate max-w-[90px]">{ag.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleUnassignAgentFromRoute(ag.id, assignSelectedRoute)}
-                          className="text-gray-400 hover:text-red-500 font-bold text-xs ml-0.5 cursor-pointer"
-                          title={`Unassign ${ag.name}`}
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                  </div>
+                {assignSelectedRoute && selectedAgentIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAgentIds([])}
+                    className="text-[10px] text-gray-400 hover:text-red-600 font-medium cursor-pointer"
+                  >
+                    Clear selection
+                  </button>
                 )}
               </div>
-            )}
 
-            <div className="mb-3">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Select Agent to Add</label>
-              <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                value={assignSelectedAgent}
-                onChange={(e) => setAssignSelectedAgent(e.target.value)}
-              >
-                <option value="">Choose an agent</option>
-                {agentStats.filter(a => a.isActive).map(a => (
-                  <option key={a.id} value={a.id}>{a.name || a.display_name}</option>
-                ))}
-              </select>
+              {!assignSelectedRoute ? (
+                <p className="text-[11px] text-gray-400 italic bg-gray-50 p-3 rounded-lg border border-gray-100 text-center">
+                  Select a route above to view and assign agents.
+                </p>
+              ) : (
+                <div className="border border-gray-200 rounded-lg p-1.5 max-h-[280px] overflow-y-auto flex flex-col gap-1.5 bg-slate-50/50">
+                  {agentStats.map((agent, i) => {
+                    const agentId = agent.id || agent.uid;
+                    const isSelected = selectedAgentIds.includes(agent.id) || (agent.uid && selectedAgentIds.includes(agent.uid));
+                    const colors = [
+                      "bg-teal-100 text-teal-700", "bg-orange-100 text-orange-700",
+                      "bg-red-100 text-red-700", "bg-purple-100 text-purple-700",
+                      "bg-blue-100 text-blue-700", "bg-pink-100 text-pink-700"
+                    ];
+                    const colorClass = colors[i % colors.length];
+
+                    return (
+                      <div
+                        key={agent.id}
+                        onClick={() => toggleAgentSelection(agentId)}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all select-none ${
+                          isSelected
+                            ? "bg-blue-50/90 border border-blue-400 shadow-2xs ring-1 ring-blue-400/50"
+                            : "bg-white hover:bg-gray-50 border border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                          />
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] flex-shrink-0 ${colorClass}`}>
+                            {getInitials(agent.name || agent.display_name)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className={`text-xs truncate ${isSelected ? "font-bold text-blue-900" : "font-semibold text-gray-800"}`}>
+                              {agent.name || agent.display_name}
+                            </p>
+                            <p className="text-[10px] text-gray-400">{agent.customersAssigned} Customers</p>
+                          </div>
+                        </div>
+
+                        {isSelected ? (
+                          <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[9px] font-bold flex-shrink-0">
+                            Assigned
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded text-[9px] font-medium flex-shrink-0">
+                            Select
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            <div className="mb-3 flex items-center gap-2">
+            {/* Checkbox: Assign customers in route */}
+            <div className="mb-4 flex items-center gap-2">
               <input
                 type="checkbox"
                 id="assignToCustomersCheck"
@@ -1675,51 +1747,25 @@ export default function CustomerRoutes() {
               </label>
             </div>
 
-            <div className="border border-gray-100 rounded-lg p-2 mb-4 max-h-[300px] overflow-y-auto">
-              <p className="text-xs font-bold text-gray-700 mb-2 px-1">Deliverymen ({agentStats.filter(a => a.customersAssigned > 0).length})</p>
-              <div className="flex flex-col gap-1.5">
-                {agentStats.filter(a => a.customersAssigned > 0).map((agent, i) => {
-                  const isSelected = assignSelectedAgent === agent.id;
-                  const colors = [
-                    "bg-teal-100 text-teal-700", "bg-orange-100 text-orange-700",
-                    "bg-red-100 text-red-700", "bg-purple-100 text-purple-700",
-                    "bg-blue-100 text-blue-700", "bg-pink-100 text-pink-700"
-                  ];
-                  const colorClass = colors[i % colors.length];
-
-                  return (
-                    <div
-                      key={agent.id}
-                      onClick={() => setAssignSelectedAgent(agent.id)}
-                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'}`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${colorClass}`}>
-                          {getInitials(agent.name || agent.display_name)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 truncate">{agent.name || agent.display_name}</p>
-                          <p className="text-[10px] text-gray-400">{agent.customersAssigned} Customers</p>
-                        </div>
-                      </div>
-                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-semibold border border-emerald-200 flex-shrink-0">
-                        Available
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
+            {/* Main Action Button */}
             <button
               onClick={handleAssignAgent}
-              disabled={isAssigning || !assignSelectedRoute || !assignSelectedAgent}
-              className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all ${isAssigning || !assignSelectedRoute || !assignSelectedAgent
+              disabled={isAssigning || !assignSelectedRoute}
+              className={`w-full py-2.5 rounded-lg text-white font-bold text-xs shadow-sm transition-all ${
+                isAssigning || !assignSelectedRoute
                   ? "bg-blue-300 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700 cursor-pointer"
-                }`}
+                  : "bg-blue-600 hover:bg-blue-700 cursor-pointer active:scale-[0.99]"
+              }`}
             >
-              {isAssigning ? "Assigning..." : "+ Assign Agent to Route"}
+              {isAssigning
+                ? "Assigning..."
+                : !assignSelectedRoute
+                ? "Select a Route First"
+                : selectedAgentIds.length === 0
+                ? "Unassign All Agents"
+                : selectedAgentIds.length === 1
+                ? "Assign 1 Agent to Route"
+                : `Assign ${selectedAgentIds.length} Agents to Route`}
             </button>
           </div>
 

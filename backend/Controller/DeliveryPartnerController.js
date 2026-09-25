@@ -380,6 +380,107 @@ const toggleDeliveryPerson = async (req, res) => {
   }
 };
 
+// Controller to set the exact list of assigned agents for given route(s)
+const setRouteAgents = async (req, res) => {
+  try {
+    const { route, routes, agentIds = [], assignToCustomers = true } = req.body;
+    const targetRoutes = Array.isArray(routes) && routes.length > 0 ? routes : route ? [route] : [];
+
+    if (targetRoutes.length === 0) {
+      return res.status(400).json({ message: "At least one route is required." });
+    }
+
+    const db = getFirestore();
+    const batch = db.batch();
+    const deliverySnap = await db.collection("DeliveryMan").get();
+
+    const selectedAgentIdSet = new Set(agentIds);
+    const assignedAgentNames = new Set();
+    const assignedAgentIds = new Set();
+
+    deliverySnap.docs.forEach((doc) => {
+      const data = doc.data();
+      const currentRoute = data.route || "";
+      const routesList = currentRoute ? currentRoute.split(",").map((r) => r.trim()).filter(Boolean) : [];
+
+      const isSelected =
+        selectedAgentIdSet.has(doc.id) ||
+        (data.uid && selectedAgentIdSet.has(data.uid)) ||
+        (data.name && selectedAgentIdSet.has(data.name));
+
+      let updatedList = [...routesList];
+
+      if (isSelected) {
+        targetRoutes.forEach((rName) => {
+          if (!updatedList.includes(rName)) {
+            updatedList.push(rName);
+          }
+        });
+        assignedAgentIds.add(doc.id);
+        if (data.uid) assignedAgentIds.add(data.uid);
+        if (data.name) assignedAgentNames.add(data.name);
+      } else {
+        // Unassign targetRoutes from this agent
+        updatedList = updatedList.filter((r) => !targetRoutes.includes(r));
+      }
+
+      batch.update(doc.ref, { route: updatedList.join(",") });
+    });
+
+    await batch.commit();
+
+    // If assignToCustomers is requested, update customers in target routes
+    if (assignToCustomers) {
+      for (const rName of targetRoutes) {
+        const custSnap = await db.collection("customers").where("route", "==", rName).get();
+        if (!custSnap.empty) {
+          const custDocs = custSnap.docs;
+          const chunkSize = 450;
+          for (let i = 0; i < custDocs.length; i += chunkSize) {
+            const chunk = custDocs.slice(i, i + chunkSize);
+            const cBatch = db.batch();
+
+            chunk.forEach((cDoc) => {
+              const cData = cDoc.data();
+              const currAgent = cData.assignedDeliverymen || cData.deliveredBy || "";
+
+              if (agentIds.length === 0) {
+                // All unassigned
+                cBatch.update(cDoc.ref, { assignedDeliverymen: "", deliveredBy: "" });
+              } else if (agentIds.length === 1) {
+                // Exactly 1 agent selected: assign that 1 agent to all customers in this route
+                const primaryAgent = agentIds[0];
+                cBatch.update(cDoc.ref, { assignedDeliverymen: primaryAgent, deliveredBy: primaryAgent });
+              } else {
+                // Multiple agents: if customer already belongs to one of the selected agents, keep them! Otherwise assign to primary (first)
+                const isAlreadySelected =
+                  assignedAgentIds.has(currAgent) || assignedAgentNames.has(currAgent);
+                if (!isAlreadySelected) {
+                  const primaryAgent = agentIds[0];
+                  cBatch.update(cDoc.ref, { assignedDeliverymen: primaryAgent, deliveredBy: primaryAgent });
+                }
+              }
+            });
+
+            await cBatch.commit();
+          }
+        }
+      }
+    }
+
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
+    res.status(200).json({
+      message: `Successfully updated agents for ${targetRoutes.length} route(s).`,
+      assignedCount: agentIds.length,
+    });
+  } catch (err) {
+    console.error("Error setting route agents:", err);
+    res.status(500).json({ message: "Server error while updating route agents." });
+  }
+};
+
 export {
   addDeliveryPartner,
   getDeliveryPartners,
@@ -387,6 +488,7 @@ export {
   assignRouteToDeliveryPartner,
   unassignRouteFromDeliveryPartner,
   resetDeliveryPartnerRoutes,
+  setRouteAgents,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 };

@@ -35,6 +35,7 @@ import {
   assignRouteToDeliveryPartner,
   unassignRouteFromDeliveryPartner,
   resetDeliveryPartnerRoutes,
+  setRouteAgents,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 } from "../Controller/DeliveryPartnerController.js";
@@ -164,6 +165,7 @@ router.put("/delivery/update", updateDeliveryPartner);
 router.put("/delivery/assign-route", assignRouteToDeliveryPartner);
 router.put("/delivery/unassign-route", unassignRouteFromDeliveryPartner);
 router.post("/delivery/reset-routes", resetDeliveryPartnerRoutes);
+router.put("/delivery/set-route-agents", setRouteAgents);
 router.delete("/delivery/delete", deleteDeliveryPartner);
 router.put("/delivery/toggle/:id", toggleDeliveryPerson);
 router.get("/customer-map-status", getCustomerMapStatus);
