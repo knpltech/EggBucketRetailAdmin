@@ -428,18 +428,31 @@ export default function CustomerRoutes() {
     return agents
       .filter(agent => agent.active === true || agent.active === "true")
       .map(agent => {
-        const assigned = customers.filter(c =>
-          c.assignedDeliverymen === agent.id ||
-          c.assignedDeliverymen === agent.name ||
-          c.assignedDeliverymen === agent.uid
-        );
+        const agentRoutes = agent.route
+          ? agent.route.split(",").map(r => r.trim()).filter(Boolean)
+          : [];
+
+        const assigned = customers.filter(c => {
+          const isDirectlyAssigned =
+            c.assignedDeliverymen === agent.id ||
+            c.assignedDeliverymen === agent.name ||
+            c.assignedDeliverymen === agent.uid ||
+            (c.assignedDeliverymen && c.assignedDeliverymen.split(",").map(s => s.trim()).includes(agent.id)) ||
+            (c.assignedDeliverymen && c.assignedDeliverymen.split(",").map(s => s.trim()).includes(agent.name)) ||
+            (c.deliveredBy && c.deliveredBy.split(",").map(s => s.trim()).includes(agent.id)) ||
+            (c.deliveredBy && c.deliveredBy.split(",").map(s => s.trim()).includes(agent.name));
+
+          const isInAgentRoute = c.route && agentRoutes.includes(c.route);
+
+          return isDirectlyAssigned || isInAgentRoute;
+        });
+
         const customersAssigned = assigned.length;
         const activeCustomers = assigned.filter(c => getTodayEffectiveStatus(c) === "ON").length;
 
         // Routes can come from assigned customers OR direct agent.route assignments
         const routesFromCustomers = assigned.map(c => c.route).filter(Boolean);
-        const routesFromDoc = agent.route ? agent.route.split(",").map(r => r.trim()).filter(Boolean) : [];
-        const computedRoutes = [...new Set([...routesFromCustomers, ...routesFromDoc])].join(", ");
+        const computedRoutes = [...new Set([...routesFromCustomers, ...agentRoutes])].join(", ");
 
         return {
           ...agent,
@@ -718,8 +731,7 @@ export default function CustomerRoutes() {
         })
       );
 
-      // Update local customers state: distribute customers across selected agents
-      let targetCustCount = 0;
+      // Update local customers state: all selected agents share all customers in the route
       setCustomers((prev) =>
         prev.map((c) => {
           if (targetRouteNames.includes(c.route)) {
@@ -729,9 +741,8 @@ export default function CustomerRoutes() {
               const primary = selectedAgentIds[0];
               return { ...c, assignedDeliverymen: primary, deliveredBy: primary };
             } else {
-              const assignedAgentId = selectedAgentIds[targetCustCount % selectedAgentIds.length];
-              targetCustCount++;
-              return { ...c, assignedDeliverymen: assignedAgentId, deliveredBy: assignedAgentId };
+              const allIds = selectedAgentIds.join(",");
+              return { ...c, assignedDeliverymen: allIds, deliveredBy: allIds };
             }
           }
           return c;
@@ -1697,16 +1708,6 @@ export default function CustomerRoutes() {
                             <p className="text-[10px] text-gray-400">{agent.customersAssigned} Customers</p>
                           </div>
                         </div>
-
-                        {isSelected ? (
-                          <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[9px] font-bold flex-shrink-0">
-                            Assigned
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded text-[9px] font-medium flex-shrink-0">
-                            Select
-                          </span>
-                        )}
                       </div>
                     );
                   })}

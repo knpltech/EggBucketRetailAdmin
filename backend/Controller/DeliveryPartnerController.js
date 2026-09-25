@@ -445,7 +445,7 @@ const setRouteAgents = async (req, res) => {
             const chunk = custDocs.slice(i, i + chunkSize);
             const cBatch = db.batch();
 
-            chunk.forEach((cDoc, index) => {
+            chunk.forEach((cDoc) => {
               if (assignedAgentEntities.length === 0) {
                 // All unassigned
                 cBatch.update(cDoc.ref, { assignedDeliverymen: "", deliveredBy: "" });
@@ -454,10 +454,9 @@ const setRouteAgents = async (req, res) => {
                 const primary = assignedAgentEntities[0].id || assignedAgentEntities[0].uid;
                 cBatch.update(cDoc.ref, { assignedDeliverymen: primary, deliveredBy: primary });
               } else {
-                // Multiple agents selected: distribute customers evenly across selected agents
-                const assignedAgent = assignedAgentEntities[(i + index) % assignedAgentEntities.length];
-                const agentIdentifier = assignedAgent.id || assignedAgent.uid;
-                cBatch.update(cDoc.ref, { assignedDeliverymen: agentIdentifier, deliveredBy: agentIdentifier });
+                // Multiple agents selected: assign all selected agent IDs (comma separated) so all agents share all customers (no splitting)
+                const allAgentIds = assignedAgentEntities.map((a) => a.id || a.uid).join(",");
+                cBatch.update(cDoc.ref, { assignedDeliverymen: allAgentIds, deliveredBy: allAgentIds });
               }
             });
 
