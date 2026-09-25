@@ -34,6 +34,14 @@ const TABS = [
   "D5",
   "D6",
   "D7",
+  "F0",
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
 ];
 
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
@@ -450,6 +458,12 @@ export default function CustomerManagement() {
         const count = c.deliveredCount ?? getDeliveredCount(c);
         return targetDays === 7 ? count >= 7 : count === targetDays;
       });
+    } else if (/^F[0-7]$/.test(activeTab)) {
+      const targetGap = Number(activeTab.slice(1));
+      list = list.filter((c) => {
+        const gap = getFrequencyGapNumber(c);
+        return targetGap === 7 ? gap >= 7 : gap === targetGap;
+      });
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -627,6 +641,12 @@ export default function CustomerManagement() {
         if (diff !== 0) return diff;
         return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
       });
+    } else if (sortBy === "riskFactor") {
+      list.sort((a, b) => {
+        const diff = getRiskFactorNumber(a) - getRiskFactorNumber(b);
+        if (diff !== 0) return diff;
+        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+      });
     } else if (sortBy === "peakPotential") {
       list.sort((a, b) => {
         const diff =
@@ -753,6 +773,14 @@ export default function CustomerManagement() {
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => targetDays === 7 ? getYesterdayDeliveredCount(c) >= 7 : getYesterdayDeliveredCount(c) === targetDays);
+    } else if (/^F[0-7]$/.test(activeTab)) {
+      const targetGap = Number(activeTab.slice(1));
+      list = list.filter((c) => {
+        const peakNum = getPeakFrequencyNumber(c);
+        const catNum = getYesterdayDeliveredCount(c);
+        const gap = Math.max(0, Math.min(7, peakNum - catNum));
+        return targetGap === 7 ? gap >= 7 : gap === targetGap;
+      });
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -1190,10 +1218,11 @@ export default function CustomerManagement() {
         Peak_Potential: normalizePotential(c.potential),
         Peak_Frequency: getPeakFrequencyLabel(c),
         "Frequency Gap": getFrequencyGapLabel(c),
+        Risk_Factor: getRiskFactorLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER, ONBOARDING and CALLING CUSTOMER tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") {
+      // Add Current_Category for ALL, PRIME CUSTOMER, ONBOARDING, CALLING CUSTOMER and F0-F7 tabs
+      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData["Purchase Cadence"] = resolveCleanPattern(c.purchaseCadence || c.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
@@ -1250,6 +1279,7 @@ export default function CustomerManagement() {
               <option value="peakPotential">Peak_Potential</option>
               <option value="peakFrequency">Peak_Frequency</option>
               <option value="frequencyGap">Frequency Gap</option>
+              <option value="riskFactor">Risk Factor</option>
               <option value="deliveryGap">Delivery_Gap</option>
               <option value="currentCategory">Current Category</option>
               <option value="zone">Zone</option>
@@ -1644,8 +1674,9 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Peak_Potential</th>
               <th className="px-2 py-3">Peak_Frequency</th>
               <th className="px-2 py-3 whitespace-nowrap">Frequency Gap</th>
+              <th className="px-2 py-3 whitespace-nowrap">Risk_Factor</th>
               <th className="px-2 py-3">Delivery_Gap</th>
-              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
+              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
                 <th className="px-2 py-3">Current Category</th>
               )}
               <th className="px-2 py-3">Status</th>
@@ -1920,6 +1951,15 @@ export default function CustomerManagement() {
                 <td className="px-2 py-3">
                   <span
                     className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getRiskFactorColor(c) }}
+                  >
+                    {getRiskFactorLabel(c)}
+                  </span>
+                </td>
+
+                <td className="px-2 py-3">
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
                     style={{
                       backgroundColor: getDeliveryGapColor(c.deliveryGap),
                     }}
@@ -1928,7 +1968,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
+                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
                   <td className="px-2 py-3">
                     <span
                       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
@@ -2322,5 +2362,24 @@ function getFrequencyGapColor(customer) {
   const n = getFrequencyGapNumber(customer);
   if (n === 0) return "#0F9D58";
   if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
+}
+
+function getRiskFactorNumber(customer) {
+  const peakNum = getPeakFrequencyNumber(customer);
+  const freqGap = getFrequencyGapNumber(customer);
+  if (!peakNum || peakNum <= 0) return 0;
+  const factor = freqGap / peakNum;
+  return Number.isFinite(factor) && factor >= 0 ? factor : 0;
+}
+
+function getRiskFactorLabel(customer) {
+  return getRiskFactorNumber(customer).toFixed(2);
+}
+
+function getRiskFactorColor(customer) {
+  const n = getRiskFactorNumber(customer);
+  if (n <= 0) return "#0F9D58";
+  if (n <= 0.50) return "#FB8C00";
   return "#FF3B30";
 }

@@ -170,6 +170,42 @@ export function getFrequencyGapColor(value) {
   return "#FF3B30";
 }
 
+export function getRiskFactorNumber(customerOrPeak, maybeCurrentCategory) {
+  let peakNum = 0;
+  let freqGap = 0;
+  if (typeof customerOrPeak === "object" && customerOrPeak !== null) {
+    const peakStr = resolvePeakFrequency(customerOrPeak);
+    peakNum = getPeakFrequencyNumber(peakStr);
+    freqGap = getFrequencyGapNumber(customerOrPeak);
+  } else {
+    peakNum = typeof customerOrPeak === "number" ? customerOrPeak : getPeakFrequencyNumber(customerOrPeak);
+    freqGap = getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory);
+  }
+  if (!peakNum || peakNum <= 0) return 0;
+  const factor = freqGap / peakNum;
+  return Number.isFinite(factor) && factor >= 0 ? factor : 0;
+}
+
+export function getRiskFactorLabel(customerOrPeak, maybeCurrentCategory) {
+  const n = getRiskFactorNumber(customerOrPeak, maybeCurrentCategory);
+  return n.toFixed(2);
+}
+
+export function getRiskFactorColor(value) {
+  let n = 0;
+  if (typeof value === "number") {
+    n = value;
+  } else if (typeof value === "string") {
+    const parsed = parseFloat(value);
+    n = Number.isFinite(parsed) ? parsed : 0;
+  } else if (typeof value === "object" && value !== null) {
+    n = getRiskFactorNumber(value);
+  }
+  if (n <= 0) return "#0F9D58";
+  if (n <= 0.50) return "#FB8C00";
+  return "#FF3B30";
+}
+
 export const getTodayEffectiveStatus = (
   customer,
   todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata"),
@@ -635,6 +671,7 @@ export const LOGIC_3_PURCHASE_INTENT = [
   "2 Alterate Day",
   "Weekly",
   "Fortnight",
+  "No Pattern",
   "On Call",
 ];
 
@@ -697,10 +734,18 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
     return "On Call";
   }
 
+  // No Pattern aliases
+  if (
+    validList.includes("No Pattern") &&
+    ["no pattern", "nopattern", "no-pattern"].includes(lower)
+  ) {
+    return "No Pattern";
+  }
+
   return defaultVal;
 };
 
-const evaluatePattern = (customer, pattern) => {
+const evaluatePattern = (customer, pattern, logicLabel = "") => {
   switch (pattern) {
     // --- Logic 1: Purchase Cadence ---
     case "Learning":
@@ -708,7 +753,7 @@ const evaluatePattern = (customer, pattern) => {
       return {
         suggestion: "TURN_ON_TODAY",
         confidence: 100,
-        reason: "Purchase Cadence: Learning (Always ON)",
+        reason: `${logicLabel || "Purchase Cadence"}: Learning (Always ON)`,
       };
     case "Everyday":
     case "Everyday (Always ON)":
@@ -741,7 +786,7 @@ const evaluatePattern = (customer, pattern) => {
       return {
         suggestion: "TURN_ON_TODAY",
         confidence: 100,
-        reason: "Purchase Cadence: No Pattern (Always ON)",
+        reason: `${logicLabel || "Purchase Cadence"}: No Pattern (Always ON)`,
       };
 
     // --- Logic 2: Customer State ---
@@ -890,25 +935,35 @@ export const generateDummyAISuggestion = (
     };
   }
 
-  const primaryResult = evaluatePattern(customer, primaryPattern);
-  const secondaryResult = evaluatePattern(customer, secondaryPattern);
-  const tertiaryResult = evaluatePattern(customer, tertiaryPattern);
+  const primaryResult = evaluatePattern(customer, primaryPattern, "Purchase Cadence");
+  const secondaryResult = evaluatePattern(customer, secondaryPattern, "Customer State");
+  const tertiaryResult = evaluatePattern(customer, tertiaryPattern, "Purchase Intent");
 
   const isPrimaryOn = primaryResult.suggestion.includes("ON");
   const isSecondaryOn = secondaryResult.suggestion.includes("ON");
   const isTertiaryOn = tertiaryResult.suggestion.includes("ON");
 
+  const formatReason = (label, result) => {
+    const raw = String(result?.reason || "").trim();
+    if (!raw) return `${label}: (Always ON)`;
+    return raw.startsWith(label) ? raw : `${label}: ${raw}`;
+  };
+
+  const primaryReason = formatReason("Purchase Cadence", primaryResult);
+  const secondaryReason = formatReason("Customer State", secondaryResult);
+  const tertiaryReason = formatReason("Purchase Intent", tertiaryResult);
+
   if (isPrimaryOn && isSecondaryOn && isTertiaryOn) {
     return {
       suggestion: "TURN_ON_TODAY",
       confidence: Math.min(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
-      reason: `Purchase Cadence: ${primaryResult.reason} | Customer State: ${secondaryResult.reason} | Purchase Intent: ${tertiaryResult.reason}`,
+      reason: `${primaryReason} | ${secondaryReason} | ${tertiaryReason}`,
     };
   } else {
     const offLogics = [];
-    if (!isPrimaryOn) offLogics.push(`Purchase Cadence: ${primaryResult.reason}`);
-    if (!isSecondaryOn) offLogics.push(`Customer State: ${secondaryResult.reason}`);
-    if (!isTertiaryOn) offLogics.push(`Purchase Intent: ${tertiaryResult.reason}`);
+    if (!isPrimaryOn) offLogics.push(primaryReason);
+    if (!isSecondaryOn) offLogics.push(secondaryReason);
+    if (!isTertiaryOn) offLogics.push(tertiaryReason);
     return {
       suggestion: "TURN_OFF_TODAY",
       confidence: Math.max(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),

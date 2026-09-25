@@ -48,6 +48,8 @@ export const exportToExcel = (sortedData, logicOption) => {
       'Business': customer.business || '',
       'Phone': customer.phone || '',
       'Peak Frequency': resolvePeakFrequency(customer) || '',
+      'Frequency Gap': item.frequencyGapStr || customer.frequencyGapStr || '',
+      'Risk Factor': item.riskFactorStr || customer.riskFactorStr || '',
       'Current Category': computeCurrentCategory(customer?.last8Days) || '',
       'Potential': normalizePotential(customer.Peak_Potential),
       'Delivery Gap': deliveryGap || '',

@@ -16,6 +16,7 @@ import {
   getStatusBadgeColor,
   getCurrentCategoryNumber,
   getFrequencyGapColor,
+  getRiskFactorColor,
 } from "../utils/dummyAiSuggestionEngine";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
@@ -409,6 +410,12 @@ const DummyAISuggestionRow = ({
   const currentCatNum = getCurrentCategoryNumber(currentCategory);
   const frequencyGapNum = Math.max(0, Math.min(7, peakFreqNum - currentCatNum));
   const frequencyGap = `F${frequencyGapNum}`;
+  const riskFactorNum =
+    customer?.riskFactorNumber !== undefined
+      ? customer.riskFactorNumber
+      : (peakFreqNum > 0 ? frequencyGapNum / peakFreqNum : 0);
+  const riskFactorLabel =
+    customer?.riskFactorStr || (Number.isFinite(riskFactorNum) ? riskFactorNum.toFixed(2) : "0.00");
   const computedPotential = customer?.Peak_Potential || computePeakPotential(customer?.last8Days);
   const peakPotential = normalizePotential(computedPotential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
@@ -549,6 +556,15 @@ const DummyAISuggestionRow = ({
           style={{ backgroundColor: getFrequencyGapColor(frequencyGap) }}
         >
           {frequencyGap}
+        </span>
+      </td>
+
+      <td className="px-1 py-2 text-gray-700 font-medium">
+        <span
+          className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold text-white shadow-sm"
+          style={{ backgroundColor: getRiskFactorColor(riskFactorNum) }}
+        >
+          {riskFactorLabel}
         </span>
       </td>
 
