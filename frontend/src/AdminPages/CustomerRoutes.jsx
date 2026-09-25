@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye, FiChevronDown, FiChevronRight, FiLayers } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye, FiChevronDown, FiChevronRight, FiLayers, FiRotateCcw } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
 import SubRouteOptimizationModal from "../components/SubRouteOptimizationModal";
@@ -42,6 +42,8 @@ export default function CustomerRoutes() {
   const [assignToCustomers, setAssignToCustomers] = useState(true);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState(false);
+  const [selectedResetAgent, setSelectedResetAgent] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
 
   // Parent route collapse state
   const [collapsedParents, setCollapsedParents] = useState({});
@@ -519,8 +521,9 @@ export default function CustomerRoutes() {
 
     if (targetRouteNames.length === 0) return;
 
-    const agentObj = agents.find((a) => a.id === agentId || a.uid === agentId);
+    const agentObj = agents.find((a) => a.id === agentId || a.uid === agentId || a.name === agentId);
     const agentName = agentObj ? (agentObj.name || agentObj.display_name) : "Agent";
+    const agentUid = agentObj?.uid || agentObj?.id || agentId;
 
     if (!window.confirm(`Are you sure you want to unassign ${agentName} from ${targetRouteNames.join(", ")}?`)) {
       return;
@@ -529,7 +532,7 @@ export default function CustomerRoutes() {
     try {
       for (const rName of targetRouteNames) {
         await axios.put(`${ADMIN_PATH}/delivery/unassign-route`, {
-          uid: agentId,
+          uid: agentUid,
           route: rName,
         });
       }
@@ -537,7 +540,7 @@ export default function CustomerRoutes() {
       // Update agents state locally
       setAgents((prev) =>
         prev.map((a) => {
-          if (a.id === agentId || a.uid === agentId) {
+          if (a.id === agentId || a.uid === agentId || a.name === agentName || a.id === agentUid) {
             const currentRoute = a.route || "";
             const list = currentRoute.split(",").map((r) => r.trim()).filter(Boolean);
             const updated = list.filter((r) => !targetRouteNames.includes(r));
@@ -547,11 +550,98 @@ export default function CustomerRoutes() {
         })
       );
 
+      // Also clear local customer state so customer.assignedDeliverymen doesn't keep agent in routeData
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (
+            targetRouteNames.includes(c.route) &&
+            (c.assignedDeliverymen === agentId ||
+              c.assignedDeliverymen === agentName ||
+              c.assignedDeliverymen === agentUid ||
+              c.deliveredBy === agentId ||
+              c.deliveredBy === agentName ||
+              c.deliveredBy === agentUid)
+          ) {
+            return {
+              ...c,
+              assignedDeliverymen: "",
+              deliveredBy: "",
+            };
+          }
+          return c;
+        })
+      );
+
       // Invalidate cache
       invalidateClientUserInfoCache();
     } catch (err) {
       console.error("Error unassigning agent from route:", err);
       alert("Failed to unassign agent. Check console for details.");
+    }
+  };
+
+  const handleResetRoutes = async (targetAgentId) => {
+    if (!targetAgentId) return;
+
+    const isAll = targetAgentId === "ALL";
+    const targetAgent = agents.find((a) => a.id === targetAgentId || a.uid === targetAgentId || a.name === targetAgentId);
+    const agentName = isAll ? "All Agents" : (targetAgent?.name || targetAgent?.display_name || "this agent");
+
+    const confirmMsg = isAll
+      ? "⚠️ Are you sure you want to RESET ALL ROUTES for ALL delivery agents? All route assignments will be cleared."
+      : `⚠️ Are you sure you want to reset and clear all assigned routes for ${agentName}?`;
+
+    if (!window.confirm(confirmMsg)) {
+      setSelectedResetAgent("");
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      await axios.post(`${ADMIN_PATH}/delivery/reset-routes`, {
+        agentId: isAll ? "ALL" : (targetAgent?.uid || targetAgent?.id || targetAgentId),
+      });
+
+      // Update local agents state
+      setAgents((prev) =>
+        prev.map((a) => {
+          if (isAll || a.id === targetAgentId || a.uid === targetAgentId || a.name === targetAgent?.name) {
+            return { ...a, route: "" };
+          }
+          return a;
+        })
+      );
+
+      // Update local customers state
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (
+            isAll ||
+            c.assignedDeliverymen === targetAgentId ||
+            c.assignedDeliverymen === targetAgent?.name ||
+            c.assignedDeliverymen === targetAgent?.uid ||
+            c.deliveredBy === targetAgentId ||
+            c.deliveredBy === targetAgent?.name ||
+            c.deliveredBy === targetAgent?.uid
+          ) {
+            return {
+              ...c,
+              assignedDeliverymen: "",
+              deliveredBy: "",
+            };
+          }
+          return c;
+        })
+      );
+
+      invalidateClientUserInfoCache();
+      alert(isAll ? "Successfully reset routes for all agents!" : `Successfully reset routes for ${agentName}!`);
+    } catch (err) {
+      console.error("Error resetting routes:", err);
+      alert("Failed to reset routes. Check console for details.");
+    } finally {
+      setIsResetting(false);
+      setSelectedResetAgent("");
     }
   };
 
@@ -891,13 +981,39 @@ export default function CustomerRoutes() {
             Organize delivery routes and assign agents to ensure efficient coverage and no overlaps.
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={addRoutePrompt}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit"
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit cursor-pointer flex items-center gap-1.5"
           >
-            + Add Route
+            <span>+ Add Route</span>
           </button>
+
+          {/* RESET ROUTES BUTTON & AGENT SELECTOR */}
+          <div className="relative flex items-center h-fit">
+            <div className="flex items-center bg-white border border-red-200 hover:border-red-300 rounded-lg shadow-2xs overflow-hidden transition-all h-[41px]">
+              <div className="px-3 flex items-center gap-1.5 text-red-600 font-bold text-xs pointer-events-none">
+                <FiRotateCcw className={isResetting ? "animate-spin text-sm" : "text-sm"} />
+                <span>Reset Routes</span>
+              </div>
+              <select
+                disabled={isResetting}
+                value={selectedResetAgent}
+                onChange={(e) => handleResetRoutes(e.target.value)}
+                className="bg-red-50 hover:bg-red-100/80 text-red-700 font-semibold text-xs px-2.5 py-2.5 border-l border-red-200 outline-none cursor-pointer transition-colors"
+                title="Select an agent or All Agents to reset their assigned routes"
+              >
+                <option value="">{isResetting ? "Resetting..." : "Choose an agent"}</option>
+                <option value="ALL" className="font-bold text-red-700">All Agents</option>
+                {agents.filter(a => a.active !== false).map((a) => (
+                  <option key={a.id} value={a.id} className="text-gray-800">
+                    {a.name || a.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="bg-white p-4 rounded-xl shadow border-l-4 border-green-500">
             <p className="text-sm text-gray-600">Total Active</p>
             <p className="text-2xl font-bold text-green-600">

@@ -182,11 +182,23 @@ const unassignRouteFromDeliveryPartner = async (req, res) => {
     }
 
     const db = getFirestore();
-    const docRef = db.collection("DeliveryMan").doc(uid);
-    const docSnap = await docRef.get();
+    let docRef = db.collection("DeliveryMan").doc(uid);
+    let docSnap = await docRef.get();
 
     if (!docSnap.exists) {
-      return res.status(404).json({ message: "Delivery partner not found." });
+      const querySnap = await db.collection("DeliveryMan").where("uid", "==", uid).get();
+      if (!querySnap.empty) {
+        docRef = querySnap.docs[0].ref;
+        docSnap = querySnap.docs[0];
+      } else {
+        const queryName = await db.collection("DeliveryMan").where("name", "==", uid).get();
+        if (!queryName.empty) {
+          docRef = queryName.docs[0].ref;
+          docSnap = queryName.docs[0];
+        } else {
+          return res.status(404).json({ message: "Delivery partner not found." });
+        }
+      }
     }
 
     const data = docSnap.data();
@@ -196,6 +208,33 @@ const unassignRouteFromDeliveryPartner = async (req, res) => {
 
     await docRef.update({ route: updatedList.join(",") });
 
+    // Also unassign customers in that route that are assigned to this deliveryman
+    const custSnap = await db.collection("customers").where("route", "==", route).get();
+    if (!custSnap.empty) {
+      const batch = db.batch();
+      let hasCustomerUpdates = false;
+      custSnap.forEach((cDoc) => {
+        const cData = cDoc.data();
+        if (
+          cData.assignedDeliverymen === uid ||
+          cData.assignedDeliverymen === data.name ||
+          cData.assignedDeliverymen === data.uid ||
+          cData.deliveredBy === uid ||
+          cData.deliveredBy === data.name ||
+          cData.deliveredBy === data.uid
+        ) {
+          batch.update(cDoc.ref, {
+            assignedDeliverymen: "",
+            deliveredBy: "",
+          });
+          hasCustomerUpdates = true;
+        }
+      });
+      if (hasCustomerUpdates) {
+        await batch.commit();
+      }
+    }
+
     // ⭐ OPTIMIZATION: Invalidate delivery partners cache on update
     cache.del("allDeliveryPartners:v1");
     cache.del("deliveryPartnerMap:v1");
@@ -204,6 +243,76 @@ const unassignRouteFromDeliveryPartner = async (req, res) => {
   } catch (err) {
     console.error("Error unassigning route from delivery partner:", err);
     res.status(500).json({ message: "Server error while unassigning route." });
+  }
+};
+
+// Controller to reset routes for all agents or a specific agent
+const resetDeliveryPartnerRoutes = async (req, res) => {
+  try {
+    const { agentId } = req.body; // if agentId is "ALL" or empty, resets all agents
+    const db = getFirestore();
+    const batch = db.batch();
+
+    const isAll = !agentId || agentId === "ALL" || agentId === "all";
+
+    const deliverySnap = await db.collection("DeliveryMan").get();
+    const targetAgentIds = new Set();
+    const targetAgentNames = new Set();
+
+    deliverySnap.docs.forEach((doc) => {
+      const data = doc.data();
+      if (isAll || doc.id === agentId || data.uid === agentId || data.name === agentId) {
+        batch.update(doc.ref, { route: "" });
+        targetAgentIds.add(doc.id);
+        if (data.uid) targetAgentIds.add(data.uid);
+        if (data.name) targetAgentNames.add(data.name);
+      }
+    });
+
+    await batch.commit();
+
+    // Also clear customer assignedDeliverymen for targeted agents
+    const customersSnap = await db.collection("customers").get();
+    if (!customersSnap.empty) {
+      const customerDocs = customersSnap.docs;
+      const chunkSize = 450;
+      for (let i = 0; i < customerDocs.length; i += chunkSize) {
+        const chunk = customerDocs.slice(i, i + chunkSize);
+        const cBatch = db.batch();
+        let chunkHasUpdates = false;
+
+        chunk.forEach((cDoc) => {
+          const cData = cDoc.data();
+          const currAgent = cData.assignedDeliverymen || cData.deliveredBy;
+          if (
+            currAgent &&
+            (isAll || targetAgentIds.has(currAgent) || targetAgentNames.has(currAgent))
+          ) {
+            cBatch.update(cDoc.ref, {
+              assignedDeliverymen: "",
+              deliveredBy: "",
+            });
+            chunkHasUpdates = true;
+          }
+        });
+
+        if (chunkHasUpdates) {
+          await cBatch.commit();
+        }
+      }
+    }
+
+    cache.del("allDeliveryPartners:v1");
+    cache.del("deliveryPartnerMap:v1");
+
+    res.status(200).json({
+      message: isAll
+        ? "Routes reset for all agents successfully."
+        : "Routes reset for the selected agent successfully.",
+    });
+  } catch (err) {
+    console.error("Error resetting routes:", err);
+    res.status(500).json({ message: "Server error while resetting routes." });
   }
 };
 
@@ -277,6 +386,7 @@ export {
   updateDeliveryPartner,
   assignRouteToDeliveryPartner,
   unassignRouteFromDeliveryPartner,
+  resetDeliveryPartnerRoutes,
   deleteDeliveryPartner,
   toggleDeliveryPerson,
 };
