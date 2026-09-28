@@ -503,7 +503,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v21:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v22:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -913,6 +913,12 @@ const getRetentionCustomers = async (req, res) => {
           }
         }
 
+        const currentCategory = getCurrentCategoryFromLast8Days(
+          customer.last8Days,
+          new Date(`${todayKey}T00:00:00`),
+        );
+        const deliveryGap = computeDeliveryGap(customer.last8Days, todayKey, customer);
+
         rows.push({
           id: customer.id,
           custid: customer.custid || "",
@@ -920,17 +926,17 @@ const getRetentionCustomers = async (req, res) => {
           phone: customer.phone || "",
           zone: customer.zone || "UNASSIGNED",
           route: customer.route || customer.routeName || customer.route_name || customer.Route || "",
-          currentCategory: getCurrentCategoryFromLast8Days(
-            customer.last8Days,
-            new Date(`${todayKey}T00:00:00`),
-          ),
-          deliveryGap: computeDeliveryGap(customer.last8Days, todayKey, customer),
+          Peak_Potential: customer.Peak_Potential || "T1",
+          Peak_Frequency: customer.Peak_Frequency || resolvePeakFrequency(customer, customer.last8Days),
+          deliveryGap: deliveryGap,
+          currentCategory: currentCategory,
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
           deliveryTime: deliveryTime,
           deliveryAgent: getRetentionAgentName(customer) || "-",
           days: dayStatuses,
+          last8Days: customer.last8Days || {},
         });
       } catch (err) {
         console.error(

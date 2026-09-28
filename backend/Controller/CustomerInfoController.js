@@ -1401,4 +1401,5 @@ export {
   getCategoryPeakPotentials,
   adjustActiveCount,
   invalidateActiveCountCache,
+  computePeakPotentialNumber,
 };
