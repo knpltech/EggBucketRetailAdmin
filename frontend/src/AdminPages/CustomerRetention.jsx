@@ -4,6 +4,15 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
+import {
+  normalizePeakFrequency,
+  getPeakFrequencyNumber,
+  getCurrentCategoryNumber,
+  resolvePeakFrequency,
+  normalizeDeliveryGap,
+  getFrequencyGapColor,
+  getRiskFactorColor,
+} from "../utils/dummyAiSuggestionEngine";
 
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All" },
@@ -128,6 +137,61 @@ const getDeliveryGapColor = (gap) => {
   if (n === 0) return "#0F9D58";
   if (n <= 2) return "#FB8C00";
   return "#FF3B30";
+};
+
+const normalizePotential = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  if (!raw) return "T1";
+  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
+  const match = normalized.match(/^T(\d+)$/);
+  if (match) {
+    const num = Number(match[1]);
+    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
+  }
+  return "T1";
+};
+
+const getPotentialColor = (value) => {
+  const potential = normalizePotential(value);
+  const num = parseInt(potential.slice(1), 10);
+  if (num <= 7) return "#FF3B30"; // red
+  if (num <= 15) return "#FB8C00"; // orange
+  return "#0F9D58"; // green
+};
+
+const getPeakFrequencyColor = (value) => {
+  const peak = normalizePeakFrequency(value);
+  const n = Number(peak.slice(1));
+  if (n <= 2) return "#FF3B30";
+  if (n <= 4) return "#FB8C00";
+  return "#0F9D58";
+};
+
+const computePeakPotential = (last8Days) => {
+  if (!last8Days || typeof last8Days !== "object") return "T1";
+  let maxTrays = 0;
+  Object.values(last8Days).forEach((entry) => {
+    if (!entry) return;
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (status !== "delivered") return;
+    const trays =
+      entry.traysDelivered ??
+      entry.trays ??
+      entry.quantity ??
+      entry?.deliveredTrays ??
+      0;
+    const numTrays = Number(trays);
+    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
+      maxTrays = numTrays;
+    }
+  });
+  return maxTrays > 0 ? `T${maxTrays}` : "T1";
 };
 
 const getDeliveredTrayCount = (status) => {
@@ -324,80 +388,80 @@ const CustomerRow = React.memo(({
   setEditingRouteId,
   assignRoute,
 }) => {
+  const currentCategory = customer.currentCategory || "-";
+  const currentCatNum = getCurrentCategoryNumber(currentCategory);
+
+  const peakFrequency = customer.Peak_Frequency
+    ? normalizePeakFrequency(customer.Peak_Frequency)
+    : resolvePeakFrequency(customer);
+  const peakFreqNum = getPeakFrequencyNumber(peakFrequency);
+
+  const frequencyGapNum = Math.max(0, Math.min(7, peakFreqNum - currentCatNum));
+  const frequencyGap = customer.frequencyGap || `F${frequencyGapNum}`;
+
+  const riskFactorNum =
+    customer.riskFactorNumber !== undefined && customer.riskFactorNumber !== null
+      ? customer.riskFactorNumber
+      : (peakFreqNum > 0 ? frequencyGapNum / peakFreqNum : 0);
+  const riskFactorLabel =
+    customer.riskFactorStr || (Number.isFinite(riskFactorNum) ? riskFactorNum.toFixed(2) : "0.00");
+
+  const computedPotential = customer.Peak_Potential || computePeakPotential(customer.last8Days);
+  const peakPotential = normalizePotential(computedPotential);
+
+  const deliveryGap = normalizeDeliveryGap(customer.deliveryGap || "G0");
+
   return (
     <tr className="border-t hover:bg-slate-50">
       <td className="px-2 py-2 font-semibold text-slate-900 text-xs">{customer.name}</td>
-      <td className="px-2 py-2 text-slate-700 text-xs">{customer.phone}</td>
       <td className="px-2 py-2 text-slate-700 text-xs">{customer.zone}</td>
-      <td
-        className="px-2 py-2 font-medium text-gray-700 text-xs text-center"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {!customer.route || customer.route === "UNASSIGNED" ? (
-          <select
-            disabled={assigningRouteId === customer.id}
-            onChange={(e) => assignRoute(customer.id, e.target.value)}
-            className="border rounded px-2 py-1 w-28 text-xs bg-white text-gray-900 cursor-pointer"
-          >
-            <option value="">Assign</option>
-            {routes.map((r) => {
-              const rName = typeof r === "string" ? r : r?.name;
-              if (!rName) return null;
-              return (
-                <option key={rName} value={rName}>
-                  {rName}
-                </option>
-              );
-            })}
-          </select>
-        ) : editingRouteId === customer.id ? (
-          <select
-            autoFocus
-            defaultValue={customer.route}
-            onBlur={() => setEditingRouteId(null)}
-            onChange={async (e) => {
-              await assignRoute(customer.id, e.target.value);
-              setEditingRouteId(null);
-            }}
-            className="border rounded px-2 py-1 w-28 text-xs bg-white text-gray-900 cursor-pointer"
-          >
-            {routes.map((r) => {
-              const rName = typeof r === "string" ? r : r?.name;
-              if (!rName) return null;
-              return (
-                <option key={rName} value={rName}>
-                  {rName}
-                </option>
-              );
-            })}
-          </select>
-        ) : (
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="truncate max-w-[100px]" title={customer.route}>{customer.route}</span>
-            <button
-              type="button"
-              onClick={() => setEditingRouteId(customer.id)}
-              className="text-gray-500 hover:text-gray-700 cursor-pointer"
-              title="Edit route"
-            >
-              <FiEdit2 size={12} />
-            </button>
-          </div>
-        )}
-      </td>
       <td className="px-2 py-2 text-slate-700 text-xs whitespace-nowrap">{formatDeliveryTime(customer.deliveryTime)}</td>
       <td className="px-2 py-2 text-slate-700 text-xs truncate max-w-[80px]">{customer.deliveryAgent}</td>
       <td className="px-2 py-2 text-center align-middle">
-        <span className={`inline-flex min-w-[42px] items-center justify-center rounded-full px-2 py-1 text-[10px] font-semibold ${getCurrentCategoryClasses(customer.currentCategory)}`}>
-          {customer.currentCategory || "-"}
+        <span
+          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
+          style={{ backgroundColor: getPotentialColor(peakPotential) }}
+        >
+          {peakPotential}
         </span>
       </td>
       <td className="px-2 py-2 text-center align-middle">
         <span
-          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2 py-1 text-[10px] font-semibold text-white"
-          style={{ backgroundColor: getDeliveryGapColor(customer.deliveryGap) }}
+          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
+          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
         >
-          {customer.deliveryGap || "-"}
+          {peakFrequency}
+        </span>
+      </td>
+      <td className="px-2 py-2 text-center align-middle">
+        <span
+          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
+          style={{ backgroundColor: getFrequencyGapColor(frequencyGap) }}
+        >
+          {frequencyGap}
+        </span>
+      </td>
+      <td className="px-2 py-2 text-center align-middle">
+        <span
+          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
+          style={{ backgroundColor: getRiskFactorColor(riskFactorNum) }}
+        >
+          {riskFactorLabel}
+        </span>
+      </td>
+      <td className="px-2 py-2 text-center align-middle">
+        <span
+          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
+          style={{ backgroundColor: getDeliveryGapColor(deliveryGap) }}
+        >
+          {deliveryGap}
+        </span>
+      </td>
+      <td className="px-2 py-2 text-center align-middle">
+        <span
+          className={`inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm ${getCurrentCategoryClasses(currentCategory)}`}
+        >
+          {currentCategory}
         </span>
       </td>
 
@@ -533,7 +597,7 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:v5:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v6:${date}:${category}:${agent}:${sort}:${page}`;
       const isToday = date === getTodayDate();
       const cached = isToday ? null : cacheRef.current[cacheKey];
 
@@ -576,6 +640,11 @@ const CustomerRetention = () => {
               todayReason: customer.todayReason || "",
               deliveryTime: customer.deliveryTime || customer.delivery_time || customer.time || null,
               deliveryAgent: customer.deliveryAgent || "-",
+              Peak_Potential: customer.Peak_Potential || null,
+              Peak_Frequency: customer.Peak_Frequency || null,
+              frequencyGap: customer.frequencyGap || null,
+              riskFactorNumber: customer.riskFactorNumber,
+              riskFactorStr: customer.riskFactorStr || null,
               days: dayStatuses,
             };
           })
@@ -829,17 +898,27 @@ const CustomerRetention = () => {
             : getPastThreeDatesPlusToday(date);
 
           (payload.customers || []).forEach((customer) => {
+            const currentCat = customer.currentCategory || "-";
+            const peakFreq = customer.Peak_Frequency || resolvePeakFrequency(customer);
+            const peakPot = normalizePotential(customer.Peak_Potential || computePeakPotential(customer.last8Days));
+            const delGap = normalizeDeliveryGap(customer.deliveryGap || "G0");
+            const freqGap = customer.frequencyGap || `F${Math.max(0, Math.min(7, getPeakFrequencyNumber(peakFreq) - getCurrentCategoryNumber(currentCat)))}`;
+            const rfLabel = customer.riskFactorStr || "0.00";
+
             const row = {
               Date: date,
               Name: customer.name || "",
-              Phone: customer.phone || "",
               Zone: customer.zone || "UNASSIGNED",
-              Route: customer.route || "UNASSIGNED",
               "Delivery Time": formatDeliveryTime(
                 customer.deliveryTime || customer.delivery_time || customer.time,
               ),
               "Delivery Agent": customer.deliveryAgent || "-",
-              "Current Category": customer.currentCategory || "-",
+              Peak_Potential: peakPot,
+              Peak_Frequency: peakFreq,
+              "Frequency Gap": freqGap,
+              Risk_Factor: rfLabel,
+              Delivery_Gap: delGap,
+              "Current Category": currentCat,
             };
 
             payloadDates.forEach((dateKey) => {
@@ -1090,18 +1169,20 @@ const CustomerRetention = () => {
         </div>
       )}
 
-      <div className="rounded-lg bg-white shadow">
+      <div className="rounded-lg bg-white shadow overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-slate-100 text-slate-700">
             <tr>
               <th className="px-2 py-2 text-left text-xs font-semibold">Name</th>
-              <th className="px-2 py-2 text-left text-xs font-semibold">Phone</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Zone</th>
-              <th className="px-2 py-2 text-center text-xs font-semibold">Route</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Peak_Potential</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Peak_Frequency</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Frequency Gap</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Risk_Factor</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Delivery_Gap</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Current Category</th>
-              <th className="px-2 py-2 text-center text-xs font-semibold">Delivery Gap</th>
               {dates.map((date, index) => {
                 const label = formatDayHeader(date);
                 const isTodayColumn = index === dates.length - 1;
@@ -1121,7 +1202,7 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={10 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -1142,7 +1223,7 @@ const CustomerRetention = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={8 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={10 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>
