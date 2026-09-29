@@ -61,10 +61,10 @@ export const isExcludedRoute = (routeName) => {
 
 /**
  * Determine recommended tier (A, B, C, D) strictly based on customer metrics:
- * - Route 1 A: Current Category D4 to D5 customers Only
- * - Route 1 B: Current Category D1 to D3 Customers Only
- * - Route 1 C: Delivery Gap G8 to G10 Customers Only
- * - Route 1 D: Delivery Gap G10+ Customers Only
+ * - Route A: Current Category D7, D6, D5
+ * - Route B: Current Category D4, D3, D2
+ * - Route C: Current Category D1
+ * - Route D: Delivery Gap G8, G9, G10, G10+
  */
 export function evaluateSubRouteTier(customer, todayDate) {
   const rawGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
@@ -75,51 +75,51 @@ export function evaluateSubRouteTier(customer, todayDate) {
   const categoryStr = normalizePeakFrequency(rawCategory);
   const dNum = parseInt(categoryStr.replace("D", ""), 10) || 0;
 
-  // Rule 1: Delivery Gap G10+ -> Route D Only (strictly gap > 10)
-  if (gapNum > 10) {
+  // Rule 1: Delivery Gap G8, G9, G10, G10+ (or D0) -> Route D
+  if (gapNum >= 8 || dNum === 0) {
     return {
       tier: "D",
-      tierLabel: "Route D (Gap G10+)",
-      reason: `Delivery Gap is ${gapStr}`,
+      tierLabel: "Route D (Delivery Gap G8+)",
+      reason: gapNum >= 8 ? `Delivery Gap is ${gapStr}` : `Current Category is ${categoryStr}`,
       category: categoryStr,
       gap: gapStr,
     };
   }
 
-  // Rule 2: Delivery Gap G8 to G10 -> Route C Only (8 <= gap <= 10)
-  if (gapNum >= 8 && gapNum <= 10) {
-    return {
-      tier: "C",
-      tierLabel: "Route C (Gap G8-G10)",
-      reason: `Delivery Gap is ${gapStr}`,
-      category: categoryStr,
-      gap: gapStr,
-    };
-  }
-
-  // Rule 3: Current Category D4 to D5 (and D6, D7) -> Route A Only
-  if (dNum >= 4) {
+  // Rule 2: Current Category D7, D6, D5 -> Route A
+  if (dNum >= 5) {
     return {
       tier: "A",
-      tierLabel: "Route A (Current Category D4-D5)",
+      tierLabel: "Route A (Current Category D5-D7)",
       reason: `Current Category is ${categoryStr}`,
       category: categoryStr,
       gap: gapStr,
     };
   }
 
-  // Rule 4: Current Category D1 to D3 -> Route B Only
-  if (dNum >= 1 && dNum <= 3) {
+  // Rule 3: Current Category D4, D3, D2 -> Route B
+  if (dNum >= 2 && dNum <= 4) {
     return {
       tier: "B",
-      tierLabel: "Route B (Current Category D1-D3)",
+      tierLabel: "Route B (Current Category D2-D4)",
       reason: `Current Category is ${categoryStr}`,
       category: categoryStr,
       gap: gapStr,
     };
   }
 
-  // If none of the conditions match (e.g. D0 with gap < 7), customer does not move
+  // Rule 4: Current Category D1 -> Route C
+  if (dNum === 1) {
+    return {
+      tier: "C",
+      tierLabel: "Route C (Current Category D1)",
+      reason: `Current Category is ${categoryStr}`,
+      category: categoryStr,
+      gap: gapStr,
+    };
+  }
+
+  // If none of the conditions match, customer does not move
   return null;
 }
 

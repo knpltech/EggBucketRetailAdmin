@@ -181,16 +181,16 @@ export default function SubRouteOptimizationModal({
           <div className="flex items-center gap-3 flex-wrap">
             <span className="font-bold text-gray-700">Rules Applied:</span>
             <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              Route A: Current Category D4 to D5
+              Route A: Current Category D5 to D7
             </span>
             <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-              Route B: Current Category D1 to D3
+              Route B: Current Category D2 to D4
             </span>
             <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-              Route C: Delivery Gap G8 to G10
+              Route C: Current Category D1
             </span>
             <span className="inline-flex items-center gap-1 font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-              Route D: Delivery Gap G10+
+              Route D: Delivery Gap G8, G9, G10, G10+
             </span>
           </div>
         </div>
@@ -257,10 +257,10 @@ export default function SubRouteOptimizationModal({
                 className="bg-white border border-gray-200 rounded-md px-2 py-1 text-xs font-semibold text-gray-700 outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="ALL">All Routes</option>
-                <option value="A">Route A (Current Category D4-D5)</option>
-                <option value="B">Route B (Current Category D1-D3)</option>
-                <option value="C">Route C (Delivery Gap G8-G10)</option>
-                <option value="D">Route D (Delivery Gap G10+)</option>
+                <option value="A">Route A (Current Category D5-D7)</option>
+                <option value="B">Route B (Current Category D2-D4)</option>
+                <option value="C">Route C (Current Category D1)</option>
+                <option value="D">Route D (Delivery Gap G8+)</option>
               </select>
             </div>
 
