@@ -17,6 +17,11 @@ import {
   getCurrentCategoryNumber,
   getFrequencyGapColor,
   getRiskFactorColor,
+  resolvePeakFrequency,
+  computeDeliveryGap,
+  normalizeDeliveryGap,
+  getDeliveryGapColor,
+  getDeliveryGapNumber,
 } from "../utils/dummyAiSuggestionEngine";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
@@ -112,39 +117,6 @@ const getPeakFrequencyNumber = (value) => {
   return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
 };
 
-const computePeakFrequency = (last8Days) => {
-  if (!last8Days || typeof last8Days !== "object") return "D0";
-
-  let count = 0;
-  const today = new Date();
-
-  for (let i = 0; i <= 6; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
-    const entry = last8Days[dateStr];
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status === "delivered") count++;
-  }
-
-  return `D${Math.min(count, 7)}`;
-};
-
-const resolvePeakFrequency = (customer) => {
-  const savedPeak = normalizePeakFrequency(
-    customer?.Peak_Frequency || customer?.peakFrequency || customer?.peak_frequency,
-  );
-  const currentPeak = computePeakFrequency(customer?.last8Days);
-
-  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
-    ? savedPeak
-    : currentPeak;
-};
 
 const computePeakPotential = (last8Days) => {
   if (!last8Days || typeof last8Days !== "object") return "T1";
@@ -214,58 +186,6 @@ function getDateStringInTimeZone(date, timeZone) {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getDateDayNumber(dateStr) {
-  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const time = Date.UTC(year, month - 1, day);
-  if (!Number.isFinite(time)) return null;
-  return Math.floor(time / 86400000);
-}
-
-function computeDeliveryGap(last8Days, todayDate) {
-  if (!last8Days || typeof last8Days !== "object") return "G10";
-  const todayDayNumber = getDateDayNumber(todayDate);
-  if (todayDayNumber === null) return "G10";
-  let latestDeliveredDayNumber = null;
-  Object.entries(last8Days).forEach(([dateStr, entry]) => {
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    ).trim().toLowerCase();
-    if (status !== "delivered") return;
-    const dayNumber = getDateDayNumber(dateStr);
-    if (dayNumber === null || dayNumber > todayDayNumber) return;
-    if (latestDeliveredDayNumber === null || dayNumber > latestDeliveredDayNumber) {
-      latestDeliveredDayNumber = dayNumber;
-    }
-  });
-  if (latestDeliveredDayNumber === null) return "G10";
-  return `G${todayDayNumber - latestDeliveredDayNumber}`;
-}
-
-function normalizeDeliveryGap(value) {
-  const raw = String(value ?? "").trim().toUpperCase();
-  const match = raw.match(/^G?(\d+)$/);
-  if (!match) return "G10";
-  const n = Number(match[1]);
-  if (!Number.isFinite(n) || n < 0) return "G10";
-  return `G${Math.floor(n)}`;
-}
-
-function getDeliveryGapNumber(value) {
-  const gap = normalizeDeliveryGap(value);
-  const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 ? n : 10;
-}
-
-function getDeliveryGapColor(value) {
-  const n = getDeliveryGapNumber(value);
-  if (n === 0) return "#0F9D58";
-  if (n <= 2) return "#FB8C00";
-  return "#FF3B30";
-}
 
 const WeeklySchedulePopover = ({
   schedule,
@@ -419,8 +339,7 @@ const DummyAISuggestionRow = ({
   const computedPotential = customer?.Peak_Potential || computePeakPotential(customer?.last8Days);
   const peakPotential = normalizePotential(computedPotential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
-  const rawDeliveryGap = computeDeliveryGap(customer?.last8Days, todayDate);
-  const deliveryGap = normalizeDeliveryGap(customer?.deliveryGap || rawDeliveryGap);
+  const deliveryGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
   const { dotClass, text, subText } = getSuggestionConfig(
     suggestionData.suggestion,
     suggestionData.reason,
@@ -432,8 +351,8 @@ const DummyAISuggestionRow = ({
 
   return (
     <tr className={`border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors ${calendarOpen ? 'relative z-50' : ''}`}>
-      <td className="px-1.5 py-2 text-xs text-gray-600 font-medium">{customer.custid}</td>
-      <td className="px-1.5 py-2 text-xs text-gray-900 font-bold uppercase leading-tight min-w-[80px]">{customer.name}</td>
+      <td className="px-1.5 py-2 text-xs text-gray-600 font-medium">{customer.custid || customer.id}</td>
+      <td className="px-1.5 py-2 text-xs text-gray-900 font-bold uppercase leading-tight min-w-[80px]">{customer.name || "-"}</td>
       <td
         className="px-1.5 py-2 text-[10.5px] text-gray-700 font-medium max-w-[130px] break-words whitespace-normal leading-tight"
         onClick={(e) => e.stopPropagation()}

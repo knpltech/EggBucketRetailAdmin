@@ -59,7 +59,8 @@ export const computeCurrentCategory = (last8Days) => {
   let count = 0;
   const today = new Date();
 
-  for (let i = 1; i <= 7; i++) {
+  // Check last 8 days (today + last 7 days: i = 0 through 7) to match CustomerManagement exactly
+  for (let i = 0; i <= 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -82,7 +83,8 @@ export const computePeakFrequency = (last8Days) => {
   let count = 0;
   const today = new Date();
 
-  for (let i = 0; i <= 6; i++) {
+  // Check last 8 days (today + last 7 days: i = 0 through 7) to match CustomerManagement exactly
+  for (let i = 0; i <= 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
@@ -133,6 +135,13 @@ export function getDeliveryGapNumber(value) {
   const gap = normalizeDeliveryGap(value);
   const n = Number(gap.slice(1));
   return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+export function getDeliveryGapColor(value) {
+  const n = getDeliveryGapNumber(value);
+  if (n === 0) return "#0F9D58";
+  if (n <= 2) return "#FB8C00";
+  return "#FF3B30";
 }
 
 export function getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory) {
@@ -668,7 +677,7 @@ export const LOGIC_3_PURCHASE_INTENT = [
   "Unknown",
   "Everyday",
   "Alternate Day",
-  "2 Alterate Day",
+  "2 Alternate Day",
   "Weekly",
   "Fortnight",
   "No Pattern",
@@ -706,12 +715,12 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
     return "For Night";
   }
 
-  // 2 Alternate / Alterate Day aliases
+  // 2 Alternate Day aliases (including typo fallback)
   if (
-    (validList.includes("2 Alterate Day") || validList.includes("2 Alternate Day")) &&
+    validList.includes("2 Alternate Day") &&
     ["2 alterate day", "2 alternate day", "2-alterate day", "2-alternate day", "2 alterate", "2 alternate"].includes(lower)
   ) {
-    return validList.includes("2 Alterate Day") ? "2 Alterate Day" : "2 Alternate Day";
+    return "2 Alternate Day";
   }
 
   // Everyday aliases
