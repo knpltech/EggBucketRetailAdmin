@@ -1634,18 +1634,26 @@ const updateRoute = async (req, res) => {
     if (newName && oldName !== newName) {
       const customersSnap = await db.collection("customers").where("route", "==", oldName).get();
       if (!customersSnap.empty) {
-        const batch = db.batch();
-        customersSnap.forEach(doc => {
+        let batch = db.batch();
+        let count = 0;
+        for (const doc of customersSnap.docs) {
           batch.update(doc.ref, { route: newName });
-        });
-        await batch.commit();
+          count++;
+          if (count % 450 === 0) {
+            await batch.commit();
+            batch = db.batch();
+          }
+        }
+        if (count % 450 !== 0) {
+          await batch.commit();
+        }
       }
 
       const deliveryManSnap = await db.collection("DeliveryMan").get();
       if (!deliveryManSnap.empty) {
-        const batch = db.batch();
+        let batch = db.batch();
         let updatedCount = 0;
-        deliveryManSnap.forEach(doc => {
+        for (const doc of deliveryManSnap.docs) {
           const data = doc.data();
           if (data.route) {
             const routesList = data.route.split(",").map(r => r.trim());
@@ -1653,10 +1661,14 @@ const updateRoute = async (req, res) => {
               const newRouteStr = routesList.map(r => r === oldName ? newName : r).join(",");
               batch.update(doc.ref, { route: newRouteStr });
               updatedCount++;
+              if (updatedCount % 450 === 0) {
+                await batch.commit();
+                batch = db.batch();
+              }
             }
           }
-        });
-        if (updatedCount > 0) {
+        }
+        if (updatedCount % 450 !== 0) {
           await batch.commit();
         }
       }
@@ -1692,11 +1704,19 @@ const deleteRoute = async (req, res) => {
 
     const customersSnap = await db.collection("customers").where("route", "==", name).get();
     if (!customersSnap.empty) {
-      const batch = db.batch();
-      customersSnap.forEach(doc => {
+      let batch = db.batch();
+      let count = 0;
+      for (const doc of customersSnap.docs) {
         batch.update(doc.ref, { route: "" });
-      });
-      await batch.commit();
+        count++;
+        if (count % 450 === 0) {
+          await batch.commit();
+          batch = db.batch();
+        }
+      }
+      if (count % 450 !== 0) {
+        await batch.commit();
+      }
     }
 
     cache.del("routes:list");
