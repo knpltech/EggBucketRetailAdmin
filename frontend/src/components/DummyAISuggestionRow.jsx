@@ -17,13 +17,10 @@ import {
 } from "../utils/dummyAiSuggestionEngine";
 import {
   getDateStringInTimeZone,
-  normalizePeakFrequency,
   getPeakFrequencyNumber,
   getCurrentCategoryNumber,
   getCurrentCategoryColor,
   resolvePeakFrequency,
-  normalizeDeliveryGap,
-  getDeliveryGapNumber,
   getDeliveryGapColor,
   computeDeliveryGap,
   getFrequencyGapColor,
@@ -35,49 +32,6 @@ import {
 } from "../utils/customerMetrics";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
-const getSuggestionConfig = (suggestion, reason, score) => {
-  const scoreReason = String(reason || "").includes("AI Score")
-    ? reason
-    : `AI Score: ${score} - ${reason}`;
-
-  switch (suggestion) {
-    case "TURN_ON_TODAY":
-      return {
-        colorClass: "text-green-600",
-        dotClass: "bg-green-500",
-        text: "Turn ON",
-        subText: `(${scoreReason})`
-      };
-    case "TURN_OFF_TODAY":
-      return {
-        colorClass: "text-red-600",
-        dotClass: "bg-red-500",
-        text: "Turn OFF",
-        subText: `(${reason})`
-      };
-    case "KEEP_ON_TODAY":
-      return {
-        colorClass: "text-green-600",
-        dotClass: "bg-green-500",
-        text: "Keep ON",
-        subText: ""
-      };
-    case "KEEP_OFF_TODAY":
-      return {
-        colorClass: "text-orange-500",
-        dotClass: "bg-orange-500",
-        text: "Keep OFF",
-        subText: ""
-      };
-    default:
-      return {
-        colorClass: "text-gray-500",
-        dotClass: "bg-gray-500",
-        text: "Unknown",
-        subText: ""
-      };
-  }
-};
 
 const getSuggestionStatus = (suggestion) => {
   switch (suggestion) {
@@ -228,8 +182,7 @@ const DummyAISuggestionRow = ({
   const [openSchedule, setOpenSchedule] = useState(false);
   const scheduleBtnRef = useRef(null);
   const isTodayOn = getTodayEffectiveStatus(customer) === "ON";
-  const suggestedStatus = getSuggestionStatus(suggestionData.suggestion);
-  const alreadyApplied = suggestedStatus === (isTodayOn ? "ON" : "OFF");
+  const suggestedStatus = getSuggestionStatus(suggestionData?.suggestion);
   const peakFrequency = resolvePeakFrequency(customer);
   const currentCategory = computeCurrentCategory(customer?.last8Days);
   const peakFreqNum = getPeakFrequencyNumber(peakFrequency);
@@ -246,11 +199,6 @@ const DummyAISuggestionRow = ({
   const peakPotential = normalizePotential(computedPotential);
   const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
   const deliveryGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
-  const { dotClass, text, subText } = getSuggestionConfig(
-    suggestionData.suggestion,
-    suggestionData.reason,
-    suggestionData.score
-  );
 
   const customerStatus = customer?.customerStatus || getLatestDeliveryStatus(customer, todayDate);
   const customerRemark = customer?.customerRemark !== undefined ? customer.customerRemark : getCustomerRemarkDisplay(customer, todayDate);

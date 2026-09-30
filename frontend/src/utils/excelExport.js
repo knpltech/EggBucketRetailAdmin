@@ -1,9 +1,5 @@
 import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
 import {
-  getDeliveryGapNumber,
-  getPeakFrequencyNumber,
-  normalizeDeliveryGap,
   resolvePeakFrequency,
   getDateStringInTimeZone,
   computeDeliveryGap,

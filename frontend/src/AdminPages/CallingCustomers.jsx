@@ -10,22 +10,17 @@ import {
 } from "../utils/customerInfoClientCache";
 import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/dummyAiSuggestionEngine";
 import {
+  getName,
   getStatusColor,
   getDateStringInTimeZone,
   normalizePotential,
-  resolvePeakFrequency,
   getPeakFrequencyLabel,
   getPeakFrequencyNumber,
-  normalizePeakFrequency,
-  getFrequencyNumber,
-  getDeliveredCountForCustomer,
   getPotentialColor,
   getPotentialNumber,
   normalizeDeliveryGap,
   getDeliveryGapNumber,
   getDeliveryGapColor,
-  computeDeliveryGap,
-  getDateDayNumber,
   computePeakFrequency,
   computePotential,
   getCurrentCategory,

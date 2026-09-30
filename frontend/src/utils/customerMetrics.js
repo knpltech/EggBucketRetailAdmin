@@ -372,7 +372,7 @@ export function getFrequencyGapNumber(customerOrValue, maybeCurrentCategory) {
   }
   if (typeof customerOrValue === "object" && customerOrValue !== null) {
     const peakNum = getPeakFrequencyNumber(customerOrValue);
-    const cat = getCurrentCategory(customerOrValue);
+    const cat = maybeCurrentCategory || getCurrentCategory(customerOrValue);
     const catNum = getCurrentCategoryNumber(cat);
     const gap = peakNum - catNum;
     return Math.max(0, Math.min(7, gap));
@@ -471,4 +471,8 @@ export function normalizeRetentionRemark(value = "") {
   }
 
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function getName(c) {
+  return c?.name || c?.customerName || "Unknown";
 }

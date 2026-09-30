@@ -9,8 +9,6 @@ import {
   getDeliveryGapNumber,
   getPeakFrequencyNumber,
   getTodayEffectiveStatus,
-  getTodayDeliveryStatus,
-  normalizeDeliveryGap,
   resolvePeakFrequency,
   generateDummyAISuggestion,
   BUYING_PATTERNS,
@@ -29,7 +27,6 @@ import {
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
 import {
-  normalizePotential,
   getPotentialNumber,
 } from "../utils/customerMetrics";
 import { exportToExcel } from "../utils/excelExport";
@@ -107,7 +104,9 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAIPatterns", JSON.stringify(updated));
-      } catch { }
+      } catch {
+        /* ignore */
+      }
       return updated;
     });
 
@@ -136,7 +135,9 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAISecondaryPatterns", JSON.stringify(updated));
-      } catch { }
+      } catch {
+        /* ignore */
+      }
       return updated;
     });
 
@@ -173,7 +174,9 @@ const DummyAISuggestions = () => {
       const updated = { ...prev, [customerId]: newPattern };
       try {
         localStorage.setItem("dummyAITertiaryPatterns", JSON.stringify(updated));
-      } catch { }
+      } catch {
+        /* ignore */
+      }
       return updated;
     });
 
