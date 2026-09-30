@@ -5,6 +5,7 @@ import { saveAs } from "file-saver";
 import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import {
+  getDateStringInTimeZone,
   normalizePeakFrequency,
   getPeakFrequencyNumber,
   getCurrentCategoryNumber,
@@ -12,7 +13,15 @@ import {
   normalizeDeliveryGap,
   getFrequencyGapColor,
   getRiskFactorColor,
-} from "../utils/dummyAiSuggestionEngine";
+  getStatusClasses,
+  getCurrentCategoryClasses,
+  getDeliveryGapColor,
+  normalizePotential,
+  getPotentialColor,
+  getPeakFrequencyColor,
+  computePeakPotential,
+  normalizeRetentionRemark,
+} from "../utils/customerMetrics";
 
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All" },
@@ -48,22 +57,7 @@ const CHECKED_TYPES = [
 const ROWS_PER_PAGE = 25;
 const RETENTION_CACHE_TTL_MS = 60 * 60 * 1000; // 1 HOUR - super aggressive caching to minimize API calls
 
-const getTodayDate = () => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
-
-  return year && month && day
-    ? `${year}-${month}-${day}`
-    : new Date().toISOString().slice(0, 10);
-};
+const getTodayDate = () => getDateStringInTimeZone();
 
 const formatDateKey = (date) => {
   const year = date.getFullYear();
@@ -112,88 +106,6 @@ const formatDayHeader = (dateString) => {
   };
 };
 
-const getStatusClasses = (statusKey) => {
-  if (statusKey === "delivered") {
-    return "bg-[#0F9D58] text-white";
-  }
-  if (statusKey === "checked") {
-    return "bg-[#FB8C00] text-white";
-  }
-  return "bg-[#FF3B30] text-white";
-};
-
-const getCurrentCategoryClasses = (category) => {
-  const match = String(category || "").match(/^D(\d+)$/);
-  const num = match ? Number(match[1]) : 0;
-
-  if (!Number.isFinite(num) || num <= 2) return "bg-[#FF3B30] text-white";
-  if (num <= 4) return "bg-[#FB8C00] text-white";
-  return "bg-[#0F9D58] text-white";
-};
-
-const getDeliveryGapColor = (gap) => {
-  const match = String(gap || "").match(/^G?(\d+)$/);
-  const n = match ? Number(match[1]) : 10;
-  if (n === 0) return "#0F9D58";
-  if (n <= 2) return "#FB8C00";
-  return "#FF3B30";
-};
-
-const normalizePotential = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-  if (!raw) return "T1";
-  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
-  const match = normalized.match(/^T(\d+)$/);
-  if (match) {
-    const num = Number(match[1]);
-    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
-  }
-  return "T1";
-};
-
-const getPotentialColor = (value) => {
-  const potential = normalizePotential(value);
-  const num = parseInt(potential.slice(1), 10);
-  if (num <= 7) return "#FF3B30"; // red
-  if (num <= 15) return "#FB8C00"; // orange
-  return "#0F9D58"; // green
-};
-
-const getPeakFrequencyColor = (value) => {
-  const peak = normalizePeakFrequency(value);
-  const n = Number(peak.slice(1));
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-};
-
-const computePeakPotential = (last8Days) => {
-  if (!last8Days || typeof last8Days !== "object") return "T1";
-  let maxTrays = 0;
-  Object.values(last8Days).forEach((entry) => {
-    if (!entry) return;
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-    if (status !== "delivered") return;
-    const trays =
-      entry.traysDelivered ??
-      entry.trays ??
-      entry.quantity ??
-      entry?.deliveredTrays ??
-      0;
-    const numTrays = Number(trays);
-    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-      maxTrays = numTrays;
-    }
-  });
-  return maxTrays > 0 ? `T${maxTrays}` : "T1";
-};
-
 const getDeliveredTrayCount = (status) => {
   const value =
     status?.traysDelivered ??
@@ -221,23 +133,6 @@ const getStatusRemark = (status) => {
   if (reason) return reason;
   const categoryLabel = normalizeRetentionRemark(status.categoryLabel);
   return categoryLabel || "";
-};
-
-const normalizeRetentionRemark = (value = "") => {
-  const text = String(value || "").trim();
-  if (!text || text === "-") return "";
-
-  const normalized = text
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (normalized === "price mismatch") {
-    return "Price Issue";
-  }
-
-  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
 const formatDeliveryTime = (timestamp) => {

@@ -1,219 +1,64 @@
-export function getDateStringInTimeZone(date, timeZone) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-    const year = parts.find((p) => p.type === "year")?.value;
-    const month = parts.find((p) => p.type === "month")?.value;
-    const day = parts.find((p) => p.type === "day")?.value;
-    if (year && month && day) return `${year}-${month}-${day}`;
-    // eslint-disable-next-line no-unused-vars
-  } catch (error) { /* empty */ }
-  return new Date().toISOString().slice(0, 10);
-}
+import {
+  INDIA_TZ,
+  getDateStringInTimeZone,
+  getDateDayNumber,
+  normalizePeakFrequency,
+  getFrequencyNumber,
+  getPeakFrequencyNumber,
+  getCurrentCategoryNumber,
+  getCurrentCategoryColor,
+  computePeakFrequency,
+  computeCurrentCategory,
+  resolvePeakFrequency,
+  normalizeDeliveryGap,
+  getDeliveryGapNumber,
+  getDeliveryGapColor,
+  computeDeliveryGap,
+  getFrequencyGapNumber,
+  getFrequencyGapLabel,
+  getFrequencyGapColor,
+  getRiskFactorNumber,
+  getRiskFactorLabel,
+  getRiskFactorColor,
+  normalizePotential,
+  getPotentialNumber,
+  computePeakPotential,
+  getPotentialColor,
+  getPeakFrequencyColor,
+  getStatusColor,
+  getStatusClasses,
+} from "./customerMetrics.js";
 
-export function getDateDayNumber(dateStr) {
-  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const time = Date.UTC(year, month - 1, day);
-  if (!Number.isFinite(time)) return null;
-  return Math.floor(time / 86400000);
-}
-
-export const normalizePeakFrequency = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (/^D[0-7]$/.test(raw)) return raw;
-  if (/^[0-7]$/.test(raw)) return `D${raw}`;
-
-  return "D0";
+export {
+  INDIA_TZ,
+  getDateStringInTimeZone,
+  getDateDayNumber,
+  normalizePeakFrequency,
+  getFrequencyNumber,
+  getPeakFrequencyNumber,
+  getCurrentCategoryNumber,
+  getCurrentCategoryColor,
+  computePeakFrequency,
+  computeCurrentCategory,
+  resolvePeakFrequency,
+  normalizeDeliveryGap,
+  getDeliveryGapNumber,
+  getDeliveryGapColor,
+  computeDeliveryGap,
+  getFrequencyGapNumber,
+  getFrequencyGapLabel,
+  getFrequencyGapColor,
+  getRiskFactorNumber,
+  getRiskFactorLabel,
+  getRiskFactorColor,
+  normalizePotential,
+  getPotentialNumber,
+  computePeakPotential,
+  getPotentialColor,
+  getPeakFrequencyColor,
+  getStatusColor,
+  getStatusClasses,
 };
-
-export const getPeakFrequencyNumber = (value) => {
-  const peak = normalizePeakFrequency(value);
-  const n = Number(peak.slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-};
-
-export const getCurrentCategoryNumber = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-  const match = raw.match(/^D([0-7])$/);
-  if (!match) return 0;
-  const n = Number(match[1]);
-  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-};
-
-export const computeCurrentCategory = (last8Days) => {
-  if (!last8Days || typeof last8Days !== "object") return "D0";
-
-  let count = 0;
-  const today = new Date();
-
-  // Check last 8 days (today + last 7 days: i = 0 through 7) to match CustomerManagement exactly
-  for (let i = 0; i <= 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
-    const entry = last8Days[dateStr];
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status === "delivered") count++;
-  }
-
-  return `D${Math.min(count, 7)}`;
-};
-
-export const computePeakFrequency = (last8Days) => {
-  if (!last8Days || typeof last8Days !== "object") return "D0";
-
-  let count = 0;
-  const today = new Date();
-
-  // Check last 8 days (today + last 7 days: i = 0 through 7) to match CustomerManagement exactly
-  for (let i = 0; i <= 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
-    const entry = last8Days[dateStr];
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status === "delivered") count++;
-  }
-
-  return `D${Math.min(count, 7)}`;
-};
-
-export const resolvePeakFrequency = (customer) => {
-  const savedPeak = normalizePeakFrequency(
-    customer?.Peak_Frequency ||
-    customer?.peakFrequency ||
-    customer?.peak_frequency,
-  );
-  const currentPeak = computePeakFrequency(customer?.last8Days);
-
-  return getPeakFrequencyNumber(savedPeak) >=
-    getPeakFrequencyNumber(currentPeak)
-    ? savedPeak
-    : currentPeak;
-};
-
-export function computeDeliveryGap(last8Days, todayDate, customer = null) {
-  // Pure direct read of the accurate deliveryGap provided by the backend / database
-  return normalizeDeliveryGap(customer?.deliveryGap || "G0");
-}
-
-export function normalizeDeliveryGap(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-  const match = raw.match(/^G?(\d+)$/);
-  if (!match) return "G0";
-  const n = Number(match[1]);
-  if (!Number.isFinite(n) || n < 0) return "G0";
-  return `G${Math.floor(n)}`;
-}
-
-export function getDeliveryGapNumber(value) {
-  const gap = normalizeDeliveryGap(value);
-  const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-
-export function getDeliveryGapColor(value) {
-  const n = getDeliveryGapNumber(value);
-  if (n === 0) return "#0F9D58";
-  if (n <= 2) return "#FB8C00";
-  return "#FF3B30";
-}
-
-export function getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory) {
-  let peakNum = 0;
-  let catNum = 0;
-  if (typeof customerOrPeak === "object" && customerOrPeak !== null) {
-    const peakStr = resolvePeakFrequency(customerOrPeak);
-    peakNum = getPeakFrequencyNumber(peakStr);
-    const catStr = computeCurrentCategory(customerOrPeak.last8Days);
-    catNum = getCurrentCategoryNumber(catStr);
-  } else {
-    peakNum = typeof customerOrPeak === "number" ? customerOrPeak : getPeakFrequencyNumber(customerOrPeak);
-    catNum = typeof maybeCurrentCategory === "number" ? maybeCurrentCategory : getCurrentCategoryNumber(maybeCurrentCategory);
-  }
-  const gap = peakNum - catNum;
-  return Math.max(0, Math.min(7, gap));
-}
-
-export function getFrequencyGapLabel(customerOrPeak, maybeCurrentCategory) {
-  return `F${getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory)}`;
-}
-
-export function getFrequencyGapColor(value) {
-  let n = 0;
-  if (typeof value === "number") {
-    n = value;
-  } else if (typeof value === "string") {
-    const match = value.match(/\d+/);
-    n = match ? Number(match[0]) : 0;
-  } else if (typeof value === "object" && value !== null) {
-    n = getFrequencyGapNumber(value);
-  }
-  if (n === 0) return "#0F9D58";
-  if (n <= 2) return "#FB8C00";
-  return "#FF3B30";
-}
-
-export function getRiskFactorNumber(customerOrPeak, maybeCurrentCategory) {
-  let peakNum = 0;
-  let freqGap = 0;
-  if (typeof customerOrPeak === "object" && customerOrPeak !== null) {
-    const peakStr = resolvePeakFrequency(customerOrPeak);
-    peakNum = getPeakFrequencyNumber(peakStr);
-    freqGap = getFrequencyGapNumber(customerOrPeak);
-  } else {
-    peakNum = typeof customerOrPeak === "number" ? customerOrPeak : getPeakFrequencyNumber(customerOrPeak);
-    freqGap = getFrequencyGapNumber(customerOrPeak, maybeCurrentCategory);
-  }
-  if (!peakNum || peakNum <= 0) return 0;
-  const factor = freqGap / peakNum;
-  return Number.isFinite(factor) && factor >= 0 ? factor : 0;
-}
-
-export function getRiskFactorLabel(customerOrPeak, maybeCurrentCategory) {
-  const n = getRiskFactorNumber(customerOrPeak, maybeCurrentCategory);
-  return n.toFixed(2);
-}
-
-export function getRiskFactorColor(value) {
-  let n = 0;
-  if (typeof value === "number") {
-    n = value;
-  } else if (typeof value === "string") {
-    const parsed = parseFloat(value);
-    n = Number.isFinite(parsed) ? parsed : 0;
-  } else if (typeof value === "object" && value !== null) {
-    n = getRiskFactorNumber(value);
-  }
-  if (n <= 0) return "#0F9D58";
-  if (n <= 0.50) return "#FB8C00";
-  return "#FF3B30";
-}
 
 export const getTodayEffectiveStatus = (
   customer,

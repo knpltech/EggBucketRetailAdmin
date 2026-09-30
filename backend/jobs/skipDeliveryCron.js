@@ -5,6 +5,7 @@ import { invalidateActiveCountCache } from "../Controller/CustomerInfoController
 import { calculateAndSavePeakPotentials } from "./categoryPeakCron.js";
 import { generateGenuineAnalytics } from "./businessAnalyticsCron.js";
 import { runCallStatusResetJobOnce } from "./callStatusCron.js";
+import { updateCustomersPeak30Days } from "../utils/peakCalculations.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -294,6 +295,13 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
     await calculateAndSavePeakPotentials(db, customersSnap);
   } catch (err) {
     console.error("[skipDeliveryCron] Error calculating peak potentials:", err);
+  }
+
+  // ⭐ Update 30-day Peak Frequency and Peak Potential using the SAME customer snapshot (0 extra reads)
+  try {
+    await updateCustomersPeak30Days(db, customersSnap);
+  } catch (err) {
+    console.error("[skipDeliveryCron] Error updating 30-day peaks:", err);
   }
 
   // ⭐ Run analytics cron with the SAME customer snapshot (saves another N reads at midnight)

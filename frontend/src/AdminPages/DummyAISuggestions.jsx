@@ -28,31 +28,12 @@ import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
+import {
+  normalizePotential,
+  getPotentialNumber,
+} from "../utils/customerMetrics";
 import { exportToExcel } from "../utils/excelExport";
 import DummyAISuggestionTable from "../components/DummyAISuggestionTable";
-
-const normalizePotential = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "T1";
-
-  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
-  const match = normalized.match(/^T(\d+)$/);
-  if (match) {
-    const num = Number(match[1]);
-    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
-  }
-
-  return "T1";
-};
-
-const getPotentialNumber = (value) => {
-  const potential = normalizePotential(value);
-  const n = Number(potential.slice(1));
-  return Number.isFinite(n) && n > 0 ? n : 1;
-};
 
 
 
