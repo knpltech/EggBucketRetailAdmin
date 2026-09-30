@@ -3,6 +3,13 @@ import { getStorage } from "firebase-admin/storage";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import cache from "./cache.js";
+import {
+  computePeakFrequency30Days,
+  computePeakPotentialNumber30Days,
+  normalizePotential,
+  normalizePeakFrequency,
+  updateCustomersPeak30Days,
+} from "../utils/peakCalculations.js";
 
 const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
@@ -44,7 +51,6 @@ const getDateDayNumber = (dateStr) => {
   if (!Number.isFinite(time)) return null;
   return Math.floor(time / 86400000);
 };
-
 const normalizeCustomerPotential = (value) => {
   const VALID_POTENTIALS = [
     "T1", "T2", "T3", "T4", "T5", "T6", "T7",
@@ -69,32 +75,7 @@ const normalizeCustomerPotential = (value) => {
 
 // ─── Prime Customer Helpers ────────────────────────────────────────────────
 // These helpers calculate and sync Prime Customer status based on Peak_Potential
-const computePeakPotentialNumber = (last8Days = {}) => {
-  if (!last8Days || typeof last8Days !== "object") return 0;
-
-  let maxTrays = 0;
-  Object.values(last8Days).forEach((entry) => {
-    if (!entry) return;
-
-    const status = (entry?.status || "").toLowerCase();
-
-    if (status !== "delivered") return;
-
-    const trays =
-      entry.traysDelivered ??
-      entry.trays ??
-      entry.quantity ??
-      entry?.deliveredTrays ??
-      0;
-    const numTrays = Number(trays);
-
-    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-      maxTrays = numTrays;
-    }
-  });
-
-  return maxTrays;
-};
+const computePeakPotentialNumber = computePeakPotentialNumber30Days;
 
 const getPrimeCustomerType = (peakPotentialNumber = 0) => {
   const num = Number(peakPotentialNumber);
@@ -141,36 +122,25 @@ const getPeakFrequencyNumber = (value) => {
   return Number.isFinite(n) && n >= 0 && n <= 7 ? n : -1;
 };
 
-const getCurrentDeliveryFrequency = (last8Days = {}) => {
-  let count = 0;
-  const today = new Date();
-
-  for (let i = 0; i <= 6; i += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
-    const entry = last8Days[dateKey];
-    const status = typeof entry === "string" ? entry : entry?.status;
-
-    if (String(status || "").toLowerCase() === "delivered") {
-      count += 1;
-    }
-  }
-
-  return `D${count}`;
-};
-
 const resolvePeakFrequency = (customerData = {}) => {
-  const currentPeak = getCurrentDeliveryFrequency(customerData.last8Days || {});
+  const peak30Days = computePeakFrequency30Days(customerData.last8Days || {});
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
     customerData.peakFrequency ||
     customerData.peak_frequency,
   );
 
-  return getPeakFrequencyNumber(savedPeak) >= getPeakFrequencyNumber(currentPeak)
-    ? savedPeak
-    : currentPeak;
+  const hasAnyDeliveries = Object.values(customerData.last8Days || {}).some((entry) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
+    ).trim().toLowerCase();
+    return status === "delivered";
+  });
+
+  if (hasAnyDeliveries) {
+    return peak30Days;
+  }
+  return savedPeak || "D0";
 };
 
 const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = []) => {
@@ -182,10 +152,20 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
     customerData?.peak_frequency,
   );
 
-  // Compute Peak_Potential from last8Days (max trays delivered)
-  const peakPotentialNum = computePeakPotentialNumber(customerData.last8Days);
-  const peakPotential = peakPotentialNum > 0 ? `T${peakPotentialNum}` : "T1";
-  const savedPeakPotential = String(customerData.Peak_Potential || "").trim();
+  // Compute Peak_Potential from last8Days (max trays delivered in 30 days)
+  const peakPotentialNum = computePeakPotentialNumber30Days(customerData.last8Days);
+  const savedPeakPotential = normalizePotential(customerData.Peak_Potential);
+
+  const hasAnyDeliveries = Object.values(customerData.last8Days || {}).some((entry) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
+    ).trim().toLowerCase();
+    return status === "delivered";
+  });
+
+  const peakPotential = hasAnyDeliveries
+    ? (peakPotentialNum > 0 ? `T${peakPotentialNum}` : "T1")
+    : (savedPeakPotential || "T1");
 
   // AI Evaluation Logics
   const purchaseCadence = String(customerData.purchaseCadence || customerData.pattern || "Learning").trim();
@@ -194,10 +174,10 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
 
   // Build update object — only include fields that need saving
   const updateFields = {};
-  if (getPeakFrequencyNumber(peakFrequency) > getPeakFrequencyNumber(savedPeakFreq)) {
+  if (hasAnyDeliveries && peakFrequency && peakFrequency !== savedPeakFreq) {
     updateFields.Peak_Frequency = peakFrequency;
   }
-  if (peakPotential !== savedPeakPotential) {
+  if (hasAnyDeliveries && peakPotential && peakPotential !== savedPeakPotential) {
     updateFields.Peak_Potential = peakPotential;
   }
   if (!customerData.purchaseCadence && !customerData.pattern) {

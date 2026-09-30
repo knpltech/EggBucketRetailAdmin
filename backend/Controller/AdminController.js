@@ -11,6 +11,10 @@ import {
   adjustActiveCount,
   invalidateActiveCountCache,
 } from "./CustomerInfoController.js";
+import {
+  computePeakFrequency30Days,
+  normalizePeakFrequency,
+} from "../utils/peakCalculations.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -53,25 +57,6 @@ const getPeakFrequencyNumber = (value) => {
   const peak = normalizePeakFrequency(value);
   const n = Number(peak.slice(1));
   return Number.isFinite(n) && n >= 0 && n <= 7 ? n : -1;
-};
-
-const getCurrentDeliveryFrequency = (last8Days = {}) => {
-  let count = 0;
-  const today = new Date();
-
-  for (let i = 0; i <= 6; i += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    const dateKey = getDateStringInTimeZone(date, INDIA_TZ);
-    const entry = last8Days[dateKey];
-    const status = typeof entry === "string" ? entry : entry?.status;
-
-    if (String(status || "").toLowerCase() === "delivered") {
-      count += 1;
-    }
-  }
-
-  return `D${count}`;
 };
 
 const getCurrentCategoryFromLast8Days = (last8Days = {}, baseDate = new Date()) => {
@@ -148,17 +133,24 @@ const computeDeliveryGap = (last8Days, todayDate, customerData = {}) => {
 };
 
 const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
-  const currentPeak = getCurrentDeliveryFrequency(last8Days);
+  const peak30Days = computePeakFrequency30Days(last8Days);
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
     customerData.peakFrequency ||
     customerData.peak_frequency,
   );
 
-  return getPeakFrequencyNumber(savedPeak) >=
-    getPeakFrequencyNumber(currentPeak)
-    ? savedPeak
-    : currentPeak;
+  const hasAnyDeliveries = Object.values(last8Days || {}).some((entry) => {
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
+    ).trim().toLowerCase();
+    return status === "delivered";
+  });
+
+  if (hasAnyDeliveries) {
+    return peak30Days;
+  }
+  return savedPeak || "D0";
 };
 
 

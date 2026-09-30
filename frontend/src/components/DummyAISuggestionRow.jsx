@@ -14,15 +14,25 @@ import {
   getLatestDeliveryStatus,
   getCustomerRemarkDisplay,
   getStatusBadgeColor,
+} from "../utils/dummyAiSuggestionEngine";
+import {
+  getDateStringInTimeZone,
+  normalizePeakFrequency,
+  getPeakFrequencyNumber,
   getCurrentCategoryNumber,
+  getCurrentCategoryColor,
+  resolvePeakFrequency,
+  normalizeDeliveryGap,
+  getDeliveryGapNumber,
+  getDeliveryGapColor,
+  computeDeliveryGap,
   getFrequencyGapColor,
   getRiskFactorColor,
-  resolvePeakFrequency,
-  computeDeliveryGap,
-  normalizeDeliveryGap,
-  getDeliveryGapColor,
-  getDeliveryGapNumber,
-} from "../utils/dummyAiSuggestionEngine";
+  normalizePotential,
+  getPotentialColor,
+  getPeakFrequencyColor,
+  computePeakPotential,
+} from "../utils/customerMetrics";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
 const getSuggestionConfig = (suggestion, reason, score) => {
@@ -69,35 +79,6 @@ const getSuggestionConfig = (suggestion, reason, score) => {
   }
 };
 
-const normalizePeakFrequency = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (/^D[0-7]$/.test(raw)) return raw;
-  if (/^[0-7]$/.test(raw)) return `D${raw}`;
-
-  return "D0";
-};
-
-const getPeakFrequencyColor = (value) => {
-  const peak = normalizePeakFrequency(value);
-  const n = Number(peak.slice(1));
-
-  if (n <= 2) return "#FF3B30"; // red
-  if (n <= 4) return "#FB8C00"; // orange
-  return "#0F9D58"; // green
-};
-
-const getCurrentCategoryColor = (value) => {
-  const currentCategory = normalizePeakFrequency(value);
-  const n = Number(currentCategory.slice(1));
-
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-};
-
 const getSuggestionStatus = (suggestion) => {
   switch (suggestion) {
     case "TURN_ON_TODAY":
@@ -110,81 +91,6 @@ const getSuggestionStatus = (suggestion) => {
       return null;
   }
 };
-
-const getPeakFrequencyNumber = (value) => {
-  const peak = normalizePeakFrequency(value);
-  const n = Number(peak.slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-};
-
-
-const computePeakPotential = (last8Days) => {
-  if (!last8Days || typeof last8Days !== "object") return "T1";
-  let maxTrays = 0;
-  Object.values(last8Days).forEach((entry) => {
-    if (!entry) return;
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-    if (status !== "delivered") return;
-    const trays =
-      entry.traysDelivered ??
-      entry.trays ??
-      entry.quantity ??
-      entry?.deliveredTrays ??
-      0;
-    const numTrays = Number(trays);
-    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-      maxTrays = numTrays;
-    }
-  });
-  return maxTrays > 0 ? `T${maxTrays}` : "T1";
-};
-
-const normalizePotential = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "T1";
-
-  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
-  const match = normalized.match(/^T(\d+)$/);
-  if (match) {
-    const num = Number(match[1]);
-    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
-  }
-
-  return "T1";
-};
-
-const getPotentialColor = (value) => {
-  const potential = normalizePotential(value);
-  const num = parseInt(potential.slice(1), 10);
-
-  // T1-T7 = red, T8-T15 = orange, T20+ = green
-  if (num <= 7) return "#FF3B30"; // red
-  if (num <= 15) return "#FB8C00"; // orange
-  return "#0F9D58"; // green
-};
-
-function getDateStringInTimeZone(date, timeZone) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-    const year = parts.find((p) => p.type === "year")?.value;
-    const month = parts.find((p) => p.type === "month")?.value;
-    const day = parts.find((p) => p.type === "day")?.value;
-    if (year && month && day) return `${year}-${month}-${day}`;
-  } catch (error) {}
-  return new Date().toISOString().slice(0, 10);
-}
 
 
 const WeeklySchedulePopover = ({

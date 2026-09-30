@@ -9,6 +9,7 @@ import {
   computeDeliveryGap,
   computeCurrentCategory,
 } from './dummyAiSuggestionEngine';
+import { normalizePotential } from './customerMetrics';
 
 /**
  * Export AI Suggestions to Excel
@@ -27,18 +28,6 @@ export const exportToExcel = (sortedData, logicOption) => {
     const suggestion = item.suggestion;
     const todayDate = getDateStringInTimeZone(new Date(), 'Asia/Kolkata');
     const deliveryGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
-
-    const normalizePotential = (value) => {
-      const raw = String(value ?? "").trim().toUpperCase();
-      if (!raw) return "T1";
-      const normalized = raw.replace(/T\s*(\d+)/, "T$1");
-      const match = normalized.match(/^T(\d+)$/);
-      if (match) {
-        const num = Number(match[1]);
-        return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
-      }
-      return "T1";
-    };
 
     return {
       'Status': item.customerStatus || customer.customerStatus || '',

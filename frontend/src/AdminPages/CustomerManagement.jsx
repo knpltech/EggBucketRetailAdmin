@@ -19,6 +19,38 @@ import {
   resolveCleanPattern,
   getTodayEffectiveStatus as resolveTodayEffectiveStatus,
 } from "../utils/dummyAiSuggestionEngine";
+import {
+  getDateStringInTimeZone,
+  getDateDayNumber,
+  normalizePeakFrequency,
+  getFrequencyNumber,
+  getPeakFrequencyNumber,
+  computePeakFrequency,
+  resolvePeakFrequency,
+  getPeakFrequencyLabel,
+  getPeakFrequencyColor,
+  normalizePotential,
+  getPotentialNumber,
+  computePeakPotentialNumber,
+  computePeakPotential,
+  computePotential,
+  getPotentialColor,
+  getDeliveredCountForCustomer,
+  getCurrentCategory,
+  getCurrentCategoryNumber,
+  getCurrentCategoryColor,
+  normalizeDeliveryGap,
+  getDeliveryGapNumber,
+  getDeliveryGapColor,
+  computeDeliveryGap,
+  getFrequencyGapNumber,
+  getFrequencyGapLabel,
+  getFrequencyGapColor,
+  getRiskFactorNumber,
+  getRiskFactorLabel,
+  getRiskFactorColor,
+  getStatusColor,
+} from "../utils/customerMetrics";
 
 // TABS
 const TABS = [
@@ -45,40 +77,6 @@ const TABS = [
 ];
 
 // ─── Prime Customer Helpers ───────────────────────────────────────────────
-/**
- * Compute Peak_Potential numeric value from last8Days
- * Returns the maximum number of trays delivered (0 if no deliveries)
- */
-function computePeakPotentialNumber(last8Days = {}) {
-  if (!last8Days || typeof last8Days !== "object") return 0;
-
-  let maxTrays = 0;
-  Object.values(last8Days).forEach((entry) => {
-    if (!entry) return;
-
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status !== "delivered") return;
-
-    const trays =
-      entry.traysDelivered ??
-      entry.trays ??
-      entry.quantity ??
-      entry?.deliveredTrays ??
-      0;
-    const numTrays = Number(trays);
-
-    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-      maxTrays = numTrays;
-    }
-  });
-
-  return maxTrays;
-}
 
 /**
  * Determine Prime Customer type based on Peak_Potential
@@ -2090,296 +2088,3 @@ function getName(c) {
   return c.name || c.customerName || "Unknown";
 }
 
-function getStatusColor(value) {
-  const status = String(value || "")
-    .trim()
-    .toLowerCase();
-
-  switch (status) {
-    case "delivered":
-      return "bg-green-100 text-green-800 border border-green-300";
-    case "checked":
-      return "bg-yellow-100 text-yellow-800 border border-yellow-300";
-    default:
-      return "bg-red-100 text-red-800 border border-red-300";
-  }
-}
-
-function getDateStringInTimeZone(date, timeZone) {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
-
-    const year = parts.find((p) => p.type === "year")?.value;
-    const month = parts.find((p) => p.type === "month")?.value;
-    const day = parts.find((p) => p.type === "day")?.value;
-
-    if (year && month && day) return `${year}-${month}-${day}`;
-    // eslint-disable-next-line no-unused-vars
-  } catch (error) {
-    // fall through
-  }
-
-  return new Date().toISOString().slice(0, 10);
-}
-
-function normalizePotential(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (!raw) return "T1";
-
-  const normalized = raw.replace(/T\s*(\d+)/, "T$1");
-  const match = normalized.match(/^T(\d+)$/);
-  if (match) {
-    const num = Number(match[1]);
-    return Number.isFinite(num) && num > 0 ? `T${num}` : "T1";
-  }
-
-  return "T1";
-}
-
-function resolvePeakFrequency(customer) {
-  const currentPeak = `D${customer.deliveredCount ?? getDeliveredCountForCustomer(customer)}`;
-  const savedPeak = normalizePeakFrequency(
-    customer?.Peak_Frequency ||
-    customer?.peakFrequency ||
-    customer?.peak_frequency,
-  );
-
-  if (!savedPeak) return currentPeak;
-
-  return getFrequencyNumber(savedPeak) >= getFrequencyNumber(currentPeak)
-    ? savedPeak
-    : currentPeak;
-}
-
-function getPeakFrequencyLabel(customer) {
-  return resolvePeakFrequency(customer);
-}
-
-function getPeakFrequencyNumber(customer) {
-  return getFrequencyNumber(getPeakFrequencyLabel(customer));
-}
-
-function normalizePeakFrequency(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (/^D[0-7]$/.test(raw)) return raw;
-  if (/^[0-7]$/.test(raw)) return `D${raw}`;
-
-  return "";
-}
-
-function getFrequencyNumber(value) {
-  const normalized = normalizePeakFrequency(value);
-  const n = Number(String(normalized).slice(1));
-  return Number.isFinite(n) && n >= 0 && n <= 7 ? n : 0;
-}
-
-function getDeliveredCountForCustomer(customer) {
-  const last8Days = customer?.last8Days || {};
-  let count = 0;
-  const today = new Date();
-
-  // Check last 8 days (today + last 7 days: i = 0 through 7)
-  for (let i = 0; i <= 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
-
-    const entry = last8Days[dateStr];
-    const status = typeof entry === "string" ? entry : entry?.status;
-    if (status === "delivered") {
-      count++;
-    }
-  }
-
-  return Math.min(count, 7);
-}
-
-function getPeakFrequencyColor(customer) {
-  const n = getPeakFrequencyNumber(customer);
-
-  if (n <= 2) return "#FF3B30";
-  if (n <= 4) return "#FB8C00";
-  return "#0F9D58";
-}
-
-function getPotentialColor(value) {
-  const potential = normalizePotential(value);
-  const num = parseInt(potential.slice(1), 10);
-
-  // T1-T7 = red, T8-T15 = orange, T20+ = green
-  if (num <= 7) return "#FF3B30"; // red
-  if (num <= 15) return "#FB8C00"; // orange
-  return "#0F9D58"; // green
-}
-
-function getPotentialNumber(value) {
-  const potential = normalizePotential(value);
-  const n = Number(potential.slice(1));
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-function normalizeDeliveryGap(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  const match = raw.match(/^G?(\d+)$/);
-  if (!match) return "G0";
-
-  const n = Number(match[1]);
-  if (!Number.isFinite(n) || n < 0) return "G0";
-
-  return `G${Math.floor(n)}`;
-}
-
-function getDeliveryGapNumber(value) {
-  const gap = normalizeDeliveryGap(value);
-  const n = Number(gap.slice(1));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-
-function getDeliveryGapColor(value) {
-  const n = getDeliveryGapNumber(value);
-
-  if (n === 0) return "#0F9D58";
-  if (n <= 2) return "#FB8C00";
-  return "#FF3B30";
-}
-
-function computeDeliveryGap(last8Days, todayDate, customer = null) {
-  return normalizeDeliveryGap(customer?.deliveryGap || "G0");
-}
-
-function getDateDayNumber(dateStr) {
-  const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const time = Date.UTC(year, month - 1, day);
-
-  if (!Number.isFinite(time)) return null;
-
-  return Math.floor(time / 86400000);
-}
-
-function computePeakFrequency(last8Days) {
-  if (!last8Days || typeof last8Days !== "object") return "D0";
-
-  let count = 0;
-  const today = new Date();
-
-  for (let i = 0; i <= 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = getDateStringInTimeZone(d, "Asia/Kolkata");
-    const entry = last8Days[dateStr];
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status === "delivered") count++;
-  }
-
-  return `D${Math.min(count, 7)}`;
-}
-
-function computePotential(last8Days) {
-  if (!last8Days || typeof last8Days !== "object") return "T1";
-
-  let maxTrays = 0;
-
-  Object.values(last8Days).forEach((entry) => {
-    if (!entry) return;
-
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || "",
-    )
-      .trim()
-      .toLowerCase();
-
-    if (status !== "delivered") return;
-
-    const trays =
-      entry.traysDelivered ??
-      entry.trays ??
-      entry.quantity ??
-      entry?.deliveredTrays ??
-      0;
-    const numTrays = Number(trays);
-
-    if (Number.isFinite(numTrays) && numTrays > maxTrays) {
-      maxTrays = numTrays;
-    }
-  });
-
-  return maxTrays > 0 ? `T${maxTrays}` : "T1";
-}
-
-function getCurrentCategory(customer) {
-  return `D${customer.deliveredCount ?? getDeliveredCountForCustomer(customer)}`;
-}
-
-function getCurrentCategoryColor(category) {
-  const match = String(category || "").match(/^D(\d+)$/);
-  if (!match) return "#FF3B30";
-
-  const num = Number(match[1]);
-  if (!Number.isFinite(num)) return "#FF3B30";
-
-  if (num <= 2) return "#FF3B30"; // red: D0-D2
-  if (num <= 4) return "#FB8C00"; // orange: D3-D4
-  return "#0F9D58"; // green: D5-D7
-}
-
-function getFrequencyGapNumber(customer) {
-  const peakNum = getPeakFrequencyNumber(customer);
-  const cat = getCurrentCategory(customer);
-  const catNum = Number(String(cat).replace(/\D/g, "")) || 0;
-  const gap = peakNum - catNum;
-  return Math.max(0, Math.min(7, gap));
-}
-
-function getFrequencyGapLabel(customer) {
-  return `F${getFrequencyGapNumber(customer)}`;
-}
-
-function getFrequencyGapColor(customer) {
-  const n = getFrequencyGapNumber(customer);
-  if (n === 0) return "#0F9D58";
-  if (n <= 2) return "#FB8C00";
-  return "#FF3B30";
-}
-
-function getRiskFactorNumber(customer) {
-  const peakNum = getPeakFrequencyNumber(customer);
-  const freqGap = getFrequencyGapNumber(customer);
-  if (!peakNum || peakNum <= 0) return 0;
-  const factor = freqGap / peakNum;
-  return Number.isFinite(factor) && factor >= 0 ? factor : 0;
-}
-
-function getRiskFactorLabel(customer) {
-  return getRiskFactorNumber(customer).toFixed(2);
-}
-
-function getRiskFactorColor(customer) {
-  const n = getRiskFactorNumber(customer);
-  if (n <= 0) return "#0F9D58";
-  if (n <= 0.50) return "#FB8C00";
-  return "#FF3B30";
-}
