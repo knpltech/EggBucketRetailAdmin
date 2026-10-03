@@ -42,6 +42,42 @@ const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
 
 const getTodayDateString = () => getDateStringInTimeZone(new Date(), INDIA_TZ);
 
+const parseTimestampToIso = (val) => {
+  if (!val) return null;
+  if (typeof val.toDate === "function") {
+    try {
+      return val.toDate().toISOString();
+    } catch (e) {}
+  }
+  if (typeof val === "object") {
+    const s = val.seconds ?? val._seconds;
+    const ns = val.nanoseconds ?? val._nanoseconds ?? 0;
+    if (typeof s === "number") {
+      try {
+        return new Date(s * 1000 + Math.floor(ns / 1e6)).toISOString();
+      } catch (e) {}
+    }
+  }
+  if (typeof val === "string" || typeof val === "number") {
+    try {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    } catch (e) {}
+    return String(val);
+  }
+  return null;
+};
+
+const normalizePeakFrequency = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (/^D[0-7]$/.test(raw)) return raw;
+  if (/^[0-7]$/.test(raw)) return `D${raw}`;
+
+  return "";
+};
 const getPeakFrequencyNumber = (value) => {
   const peak = normalizePeakFrequency(value);
   const n = Number(peak.slice(1));
@@ -2579,7 +2615,9 @@ const getInventoryMetrics = async (req, res) => {
       foodAllowanceSnap,
       incentiveSnap,
       upiHandoverSnap,
-      penaltySnap,
+      penaltyReportsSnap,
+      penaltyEntriesSnap,
+      advanceSnap,
       locksSnap,
     ] = await Promise.all([
       db.collection("loading_entries").where("dateKey", "==", date).get(),
@@ -2589,7 +2627,9 @@ const getInventoryMetrics = async (req, res) => {
       db.collection("food_allowance_entries").where("dateKey", "==", date).get(),
       db.collection("incentive_entries").where("dateKey", "==", date).get(),
       db.collection("upi_handover_entries").where("dateKey", "==", date).get(),
-      db.collection("penalty_entries").where("dateKey", "==", date).get(),
+      db.collection("penalty_reports").where("dateKey", "==", date).get().catch(() => ({ docs: [], forEach: () => {} })),
+      db.collection("penalty_entries").where("dateKey", "==", date).get().catch(() => ({ docs: [], forEach: () => {} })),
+      db.collection("advance_entries").where("dateKey", "==", date).get().catch(() => ({ docs: [], forEach: () => {} })),
       db.collection("daily_agent_locks").where("dateKey", "==", date).get(),
     ]);
 
@@ -2736,9 +2776,12 @@ const getInventoryMetrics = async (req, res) => {
     });
 
     const penaltyEntries = [];
-    penaltySnap.forEach((doc) => {
+    const penaltyIds = new Set();
+    const parsePenaltyDoc = (doc) => {
+      if (penaltyIds.has(doc.id)) return;
+      penaltyIds.add(doc.id);
       const data = doc.data();
-      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : 0));
+      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : (data.value !== undefined ? data.value : 0)));
       let cashVal = 0;
       if (typeof val === "number" && !isNaN(val)) {
         cashVal = val;
@@ -2750,14 +2793,43 @@ const getInventoryMetrics = async (req, res) => {
         id: doc.id,
         cash: cashVal,
         amount: cashVal,
-        agentName: data.agentName || "",
-        outletName: data.outletName || "",
-        supervisorName: data.supervisorName || "",
-        remarks: data.remarks || "",
+        agentName: data.agentName || data.agent || data.deliveryAgent || "",
+        outletName: data.outletName || data.outlet || "",
+        outletId: data.outletId || "",
+        supervisorName: data.supervisorName || data.supervisor || "",
+        supervisorId: data.supervisorId || "",
+        remarks: data.remarks || data.reason || "",
         penaltyType: data.penaltyType || data.type || "Early Log Out",
-        photoUrl: data.photoUrl || "",
-        createdAt: data.createdAt || null,
-        timestamp: data.timestamp || data.createdAt || null,
+        photoUrl: data.photoUrl || data.photo || "",
+        createdAt: parseTimestampToIso(data.createdAt),
+        timestamp: parseTimestampToIso(data.timestamp || data.createdAt),
+      });
+    };
+    penaltyReportsSnap.forEach(parsePenaltyDoc);
+    penaltyEntriesSnap.forEach(parsePenaltyDoc);
+
+    const advanceEntries = [];
+    advanceSnap.forEach((doc) => {
+      const data = doc.data();
+      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : (data.value !== undefined ? data.value : 0)));
+      let cashVal = 0;
+      if (typeof val === "number" && !isNaN(val)) {
+        cashVal = val;
+      } else if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed)) cashVal = parsed;
+      }
+      advanceEntries.push({
+        id: doc.id,
+        cash: cashVal,
+        amount: cashVal,
+        agentName: data.agentName || data.agent || data.deliveryAgent || "",
+        outletName: data.outletName || data.outlet || "",
+        outletId: data.outletId || "",
+        supervisorName: data.supervisorName || data.supervisor || "",
+        remarks: data.remarks || "",
+        createdAt: parseTimestampToIso(data.createdAt),
+        timestamp: parseTimestampToIso(data.timestamp || data.createdAt),
       });
     });
 
@@ -2792,6 +2864,7 @@ const getInventoryMetrics = async (req, res) => {
       incentiveEntries,
       upiHandoverEntries,
       penaltyEntries,
+      advanceEntries,
       lockedAgents,
       loadingEntries,
       returnEntries,
@@ -2835,7 +2908,8 @@ const addInventoryEntry = async (req, res) => {
       upi_handover: "upi_handover_entries",
       food_allowance: "food_allowance_entries",
       incentive: "incentive_entries",
-      penalty: "penalty_entries",
+      penalty: "penalty_reports",
+      advance: "advance_entries",
     };
 
     const collectionName = collectionMap[type];
@@ -2886,12 +2960,14 @@ const addInventoryEntry = async (req, res) => {
 
     const docData = {
       dateKey,
+      monthKey: dateKey.slice(0, 7),
+      year: parseInt(dateKey.slice(0, 4), 10) || new Date().getFullYear(),
       agentName,
       outletName,
       supervisorName: req.body.supervisorName || "Admin (Web)",
       remarks: remarks || "",
       photoUrl: req.body.photoUrl || "",
-      createdAt: timestamp,
+      createdAt: FieldValue.serverTimestamp(),
       timestamp: timestamp,
     };
 
@@ -3178,24 +3254,42 @@ const getPenalties = async (req, res) => {
     const inventoryApp = getInventoryApp();
     const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
 
-    let queryRef = invDb.collection("penalty_entries");
-
-    if (fromDate && toDate) {
-      if (fromDate === toDate) {
-        queryRef = queryRef.where("dateKey", "==", fromDate);
-      } else {
-        queryRef = queryRef.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+    const fetchCollection = async (collName) => {
+      let queryRef = invDb.collection(collName);
+      if (fromDate && toDate && fromDate !== "all" && toDate !== "all") {
+        if (fromDate === toDate) {
+          queryRef = queryRef.where("dateKey", "==", fromDate);
+        } else {
+          queryRef = queryRef.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+        }
+      } else if (fromDate && fromDate !== "all") {
+        queryRef = queryRef.where("dateKey", ">=", fromDate);
+      } else if (toDate && toDate !== "all") {
+        queryRef = queryRef.where("dateKey", "<=", toDate);
       }
-    } else if (fromDate) {
-      queryRef = queryRef.where("dateKey", "==", fromDate);
-    }
+      return queryRef.get();
+    };
 
-    const snap = await queryRef.get();
+    const [reportsSnap, entriesSnap] = await Promise.all([
+      fetchCollection("penalty_reports").catch((err) => {
+        console.warn("Error fetching penalty_reports:", err?.message || err);
+        return { docs: [], empty: true, forEach: () => {} };
+      }),
+      fetchCollection("penalty_entries").catch((err) => {
+        console.warn("Error fetching penalty_entries:", err?.message || err);
+        return { docs: [], empty: true, forEach: () => {} };
+      }),
+    ]);
+
     let penalties = [];
+    const seenIds = new Set();
 
-    snap.forEach((doc) => {
+    const processDoc = (doc) => {
+      if (seenIds.has(doc.id)) return;
+      seenIds.add(doc.id);
       const data = doc.data();
-      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : 0));
+
+      const val = data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.amount !== undefined ? data.amount : (data.value !== undefined ? data.value : 0)));
       let cashVal = 0;
       if (typeof val === "number" && !isNaN(val)) {
         cashVal = val;
@@ -3204,21 +3298,35 @@ const getPenalties = async (req, res) => {
         if (!isNaN(parsed)) cashVal = parsed;
       }
 
+      const isoCreatedAt = parseTimestampToIso(data.createdAt);
+      const isoTimestamp = parseTimestampToIso(data.timestamp);
+
+      let docDateKey = data.dateKey || "";
+      if (!docDateKey && isoCreatedAt) {
+        docDateKey = isoCreatedAt.slice(0, 10);
+      }
+
       penalties.push({
         id: doc.id,
-        dateKey: data.dateKey || "",
-        agentName: data.agentName || "",
-        outletName: data.outletName || "",
-        supervisorName: data.supervisorName || "Admin (Web)",
-        penaltyType: data.penaltyType || "Early Log Out",
+        dateKey: docDateKey,
+        monthKey: data.monthKey || (docDateKey ? docDateKey.slice(0, 7) : ""),
+        agentName: data.agentName || data.agent || data.deliveryAgent || "",
+        outletName: data.outletName || data.outlet || "",
+        outletId: data.outletId || "",
+        supervisorName: data.supervisorName || data.supervisor || "Admin (Web)",
+        supervisorId: data.supervisorId || "",
+        penaltyType: data.penaltyType || data.type || "Early Log Out",
         cash: cashVal,
         amount: cashVal,
-        remarks: data.remarks || "",
-        photoUrl: data.photoUrl || "",
-        createdAt: data.createdAt || null,
-        timestamp: data.timestamp || data.createdAt || null,
+        remarks: data.remarks || data.reason || "",
+        photoUrl: data.photoUrl || data.photo || "",
+        createdAt: isoCreatedAt,
+        timestamp: isoTimestamp || isoCreatedAt,
       });
-    });
+    };
+
+    reportsSnap.forEach(processDoc);
+    entriesSnap.forEach(processDoc);
 
     if (agentName && agentName !== "__all__" && agentName !== "all") {
       const targetAgent = agentName.toLowerCase().trim();
@@ -3258,8 +3366,14 @@ const deletePenaltyEntry = async (req, res) => {
     const inventoryApp = getInventoryApp();
     const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
 
-    const docRef = invDb.collection("penalty_entries").doc(id);
-    const docSnap = await docRef.get();
+    // Check penalty_reports first, then penalty_entries
+    let docRef = invDb.collection("penalty_reports").doc(id);
+    let docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      docRef = invDb.collection("penalty_entries").doc(id);
+      docSnap = await docRef.get();
+    }
 
     if (!docSnap.exists) {
       return res.status(404).json({ success: false, message: "Penalty entry not found" });
@@ -3297,6 +3411,169 @@ const deletePenaltyEntry = async (req, res) => {
   }
 };
 
+// Controller to fetch advances over a date range
+const getAdvances = async (req, res) => {
+  try {
+    const { fromDate, toDate, agentName } = req.query;
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+
+    const fetchCollection = async (collName) => {
+      let queryRef = invDb.collection(collName);
+      if (fromDate && toDate && fromDate !== "all" && toDate !== "all") {
+        if (fromDate === toDate) {
+          queryRef = queryRef.where("dateKey", "==", fromDate);
+        } else {
+          queryRef = queryRef.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+        }
+      } else if (fromDate && fromDate !== "all") {
+        queryRef = queryRef.where("dateKey", ">=", fromDate);
+      } else if (toDate && toDate !== "all") {
+        queryRef = queryRef.where("dateKey", "<=", toDate);
+      }
+      return queryRef.get();
+    };
+
+    const [advancesSnap, reportsSnap] = await Promise.all([
+      fetchCollection("advance_entries").catch((err) => {
+        console.warn("Error fetching advance_entries:", err?.message || err);
+        return { docs: [], empty: true, forEach: () => {} };
+      }),
+      fetchCollection("advance_reports").catch((err) => {
+        return { docs: [], empty: true, forEach: () => {} };
+      }),
+    ]);
+
+    let advances = [];
+    const seenIds = new Set();
+
+    const processDoc = (doc) => {
+      if (seenIds.has(doc.id)) return;
+      seenIds.add(doc.id);
+      const data = doc.data();
+
+      const val = data.amount !== undefined ? data.amount : (data.Cash !== undefined ? data.Cash : (data.cash !== undefined ? data.cash : (data.value !== undefined ? data.value : 0)));
+      let cashVal = 0;
+      if (typeof val === "number" && !isNaN(val)) {
+        cashVal = val;
+      } else if (typeof val === "string") {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed)) cashVal = parsed;
+      }
+
+      const isoCreatedAt = parseTimestampToIso(data.createdAt);
+      const isoTimestamp = parseTimestampToIso(data.timestamp);
+
+      let docDateKey = data.dateKey || "";
+      if (!docDateKey && isoCreatedAt) {
+        docDateKey = isoCreatedAt.slice(0, 10);
+      }
+
+      advances.push({
+        id: doc.id,
+        dateKey: docDateKey,
+        monthKey: data.monthKey || (docDateKey ? docDateKey.slice(0, 7) : ""),
+        agentName: data.agentName || data.agent || data.deliveryAgent || "",
+        outletName: data.outletName || data.outlet || "",
+        outletId: data.outletId || "",
+        supervisorName: data.supervisorName || data.supervisor || "Admin (Web)",
+        supervisorId: data.supervisorId || "",
+        cash: cashVal,
+        amount: cashVal,
+        remarks: data.remarks || data.reason || "",
+        createdAt: isoCreatedAt,
+        timestamp: isoTimestamp || isoCreatedAt,
+      });
+    };
+
+    advancesSnap.forEach(processDoc);
+    reportsSnap.forEach(processDoc);
+
+    if (agentName && agentName !== "__all__" && agentName !== "all") {
+      const targetAgent = agentName.toLowerCase().trim();
+      advances = advances.filter((p) => (p.agentName || "").toLowerCase().trim() === targetAgent);
+    }
+
+    // Sort descending by date/timestamp
+    advances.sort((a, b) => {
+      const tA = a.createdAt ? new Date(a.createdAt).getTime() : (a.dateKey ? new Date(a.dateKey).getTime() : 0);
+      const tB = b.createdAt ? new Date(b.createdAt).getTime() : (b.dateKey ? new Date(b.dateKey).getTime() : 0);
+      return tB - tA;
+    });
+
+    const totalAmount = advances.reduce((sum, item) => sum + (item.amount || 0), 0);
+
+    return res.status(200).json({
+      success: true,
+      advances,
+      totalAmount,
+      count: advances.length,
+    });
+  } catch (err) {
+    console.error("getAdvances error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch advances",
+      error: err.message,
+    });
+  }
+};
+
+// Controller to delete an advance entry
+const deleteAdvanceEntry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Advance ID is required" });
+    }
+
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : getFirestore();
+
+    let docRef = invDb.collection("advance_entries").doc(id);
+    let docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      docRef = invDb.collection("advance_reports").doc(id);
+      docSnap = await docRef.get();
+    }
+
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, message: "Advance entry not found" });
+    }
+
+    const data = docSnap.data();
+    const dateKey = data.dateKey;
+    const agentName = data.agentName;
+
+    // Check lock status
+    if (dateKey && agentName) {
+      const lockDocId = `${dateKey}_${agentName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_")}`;
+      const lockSnap = await invDb.collection("daily_agent_locks").doc(lockDocId).get();
+      if (lockSnap.exists && lockSnap.data()?.isLocked) {
+        return res.status(403).json({
+          success: false,
+          message: `Cannot delete: Data for agent "${agentName}" on date ${dateKey} is locked and finalized.`,
+        });
+      }
+    }
+
+    await docRef.delete();
+
+    return res.status(200).json({
+      success: true,
+      message: "Advance entry deleted successfully",
+    });
+  } catch (err) {
+    console.error("deleteAdvanceEntry error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete advance entry",
+      error: err.message,
+    });
+  }
+};
+
 export {
   getCustomerMapStatus,
   updateCustomerMeta,
@@ -3325,6 +3602,8 @@ export {
   getAgentDayLockStatus,
   getPenalties,
   deletePenaltyEntry,
+  getAdvances,
+  deleteAdvanceEntry,
   // Priority management
   getPriorities,
   addPriority,

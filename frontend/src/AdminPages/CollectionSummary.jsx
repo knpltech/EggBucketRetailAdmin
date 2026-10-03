@@ -19,6 +19,18 @@ import {
 import { FiTrendingUp } from "react-icons/fi";
 import * as XLSX from "xlsx";
 
+const TYPE_CONFIG = {
+  load: { title: "Loading", label: "Loading Trays (Qty)" },
+  return: { title: "Return Load", label: "Return Trays (Qty)" },
+  damage: { title: "Damage", label: "Damage Pieces (Pcs)" },
+  cash_handover: { title: "Cash Handover", label: "Cash Amount (₹)" },
+  upi_handover: { title: "UPI Handover", label: "UPI Amount (₹)" },
+  food_allowance: { title: "Food Allowance", label: "Food Allowance (₹)" },
+  incentive: { title: "Incentive", label: "Incentive Amount (₹)" },
+  penalty: { title: "Penalty", label: "Penalty Amount (₹)" },
+  advance: { title: "Advance", label: "Advance Amount (₹)" },
+};
+
 const CollectionSummary = () => {
   // Parse timestamp in multiple formats
   const parseTimestamp = (value) => {
@@ -110,6 +122,7 @@ const CollectionSummary = () => {
     incentiveEntries: [],
     upiHandoverEntries: [],
     penaltyEntries: [],
+    advanceEntries: [],
     lockedAgents: {},
     loadingEntries: [],
     returnEntries: [],
@@ -217,6 +230,9 @@ const CollectionSummary = () => {
         optimisticEntry.amount = valNum;
         optimisticEntry.upi = valNum;
       }
+      if (addModalType === "advance") {
+        optimisticEntry.amount = valNum;
+      }
     }
 
     // ⭐ Optimistic UI update: Immediately update local state with zero delay
@@ -243,6 +259,8 @@ const CollectionSummary = () => {
         updated.incentiveEntries = [...(prev.incentiveEntries || []), optimisticEntry];
       } else if (addModalType === "penalty") {
         updated.penaltyEntries = [...(prev.penaltyEntries || []), optimisticEntry];
+      } else if (addModalType === "advance") {
+        updated.advanceEntries = [...(prev.advanceEntries || []), optimisticEntry];
       }
       return updated;
     });
@@ -1673,14 +1691,14 @@ const CollectionSummary = () => {
       )}
 
       {/* Filter Tabs and Actions Bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
+      <div className="flex flex-wrap items-center gap-2 md:gap-2.5 mb-6">
         {/* Tab Filters */}
-        <div className="flex gap-1.5 bg-gray-200/70 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-200/70 p-1 rounded-xl shrink-0">
           {["ALL", "CASH", "UPI"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-bold transition cursor-pointer ${activeTab === tab
+              className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold transition cursor-pointer ${activeTab === tab
                 ? "bg-black text-white shadow-sm"
                 : "text-gray-700 hover:text-black hover:bg-gray-200"
                 }`}
@@ -1691,8 +1709,8 @@ const CollectionSummary = () => {
         </div>
 
         {/* Delivery Agent Filter */}
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-semibold text-gray-700">Agent:</label>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <label className="text-xs md:text-sm font-semibold text-gray-700">Agent:</label>
           <select
             value={selectedAgent}
             onChange={(e) => {
@@ -1711,7 +1729,7 @@ const CollectionSummary = () => {
                 }
               }
             }}
-            className={`border rounded-xl px-3 py-2 text-sm font-medium bg-white transition-all duration-300 ${agentSelectHighlight
+            className={`border rounded-xl px-2.5 py-1.5 text-xs md:text-sm font-medium bg-white transition-all duration-300 max-w-[170px] md:max-w-[210px] truncate ${agentSelectHighlight
               ? "border-orange-500 ring-4 ring-orange-300 shadow-md font-bold text-orange-900"
               : isCurrentAgentLocked
                 ? "border-emerald-500 ring-2 ring-emerald-200 text-emerald-900 font-bold"
@@ -1731,8 +1749,8 @@ const CollectionSummary = () => {
         </div>
 
         {/* Outlet Filter */}
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-semibold text-gray-700">Outlet:</label>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <label className="text-xs md:text-sm font-semibold text-gray-700">Outlet:</label>
           <select
             value={selectedOutlet}
             onChange={(e) => {
@@ -1751,7 +1769,7 @@ const CollectionSummary = () => {
                 }
               }
             }}
-            className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-300 rounded-xl px-2.5 py-1.5 text-xs md:text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 max-w-[160px] md:max-w-[200px] truncate"
           >
             <option value="all">All Outlets</option>
             {Array.from(
@@ -1773,17 +1791,31 @@ const CollectionSummary = () => {
         <button
           onClick={() => openAddModal("penalty")}
           disabled={isCurrentAgentLocked}
-          className={`px-4 py-2 text-white font-semibold rounded-xl transition whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 ${isCurrentAgentLocked
+          className={`px-3 py-1.5 text-xs md:text-sm text-white font-semibold rounded-xl transition whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 ${isCurrentAgentLocked
             ? "bg-gray-400 cursor-not-allowed opacity-60"
             : "bg-rose-600 hover:bg-rose-700 cursor-pointer"
             }`}
           title={isCurrentAgentLocked ? "Day is locked for this agent" : "Add penalty for selected agent"}
         >
-          <AlertTriangle size={16} />
+          <AlertTriangle size={15} />
           <span>Penalty</span>
         </button>
 
-        {/* ⭐ Lock / Save Data Button */}
+        {/* ⭐ Advance Button */}
+        <button
+          onClick={() => openAddModal("advance")}
+          disabled={isCurrentAgentLocked}
+          className={`px-3 py-1.5 text-xs md:text-sm text-white font-semibold rounded-xl transition whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 ${isCurrentAgentLocked
+            ? "bg-gray-400 cursor-not-allowed opacity-60"
+            : "bg-amber-600 hover:bg-amber-700 cursor-pointer"
+            }`}
+          title={isCurrentAgentLocked ? "Day is locked for this agent" : "Add advance payment for selected agent"}
+        >
+          <Zap size={15} />
+          <span>Advance</span>
+        </button>
+
+        {/* ⭐ Lock Button (Renamed from Lock / Save to Lock) */}
         {selectedAgent === "all" ? (
           <button
             onClick={() => {
@@ -1792,36 +1824,36 @@ const CollectionSummary = () => {
               setTimeout(() => setAgentSelectHighlight(false), 3500);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2 px-4 rounded-xl transition shadow-sm cursor-pointer active:scale-95"
+            className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-1.5 px-3 rounded-xl text-xs md:text-sm transition shadow-sm cursor-pointer active:scale-95 shrink-0"
             title="Select a delivery agent first to lock daily data"
           >
-            <Lock size={16} />
-            <span>Lock / Save</span>
+            <Lock size={15} />
+            <span>Lock</span>
           </button>
         ) : isCurrentAgentLocked ? (
           <button
             onClick={handleToggleLock}
             disabled={lockingAgent}
-            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold py-2 px-4 rounded-xl transition shadow-sm cursor-pointer border border-emerald-500 active:scale-95"
+            className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold py-1.5 px-3 rounded-xl text-xs md:text-sm transition shadow-sm cursor-pointer border border-emerald-500 active:scale-95 shrink-0"
             title={`Data is locked for ${selectedAgent}. Click to Unlock`}
           >
-            {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
-            <span>Data Locked 🔒</span>
+            {lockingAgent ? <RefreshCw size={15} className="animate-spin" /> : <Lock size={15} />}
+            <span>Locked 🔒</span>
           </button>
         ) : (
           <button
             onClick={handleToggleLock}
             disabled={lockingAgent}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 text-white font-bold py-2 px-4 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
-            title={`Lock & Save all entries for ${selectedAgent} on ${selectedDate}`}
+            className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 text-white font-bold py-1.5 px-3 rounded-xl text-xs md:text-sm transition shadow-md active:scale-95 cursor-pointer shrink-0"
+            title={`Lock all entries for ${selectedAgent} on ${selectedDate}`}
           >
-            {lockingAgent ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
-            <span>Lock / Save</span>
+            {lockingAgent ? <RefreshCw size={15} className="animate-spin" /> : <Lock size={15} />}
+            <span>Lock</span>
           </button>
         )}
 
         {/* Today's Price & Calculate Button */}
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-1.5 ml-auto shrink-0">
           <input
             type="number"
             value={todaysPrice}
@@ -1833,11 +1865,11 @@ const CollectionSummary = () => {
               }
             }}
             placeholder="Today's Price"
-            className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-medium w-32 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="border border-gray-300 rounded-xl px-2.5 py-1.5 text-xs md:text-sm font-medium w-24 md:w-28 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           />
           <button
             onClick={handleCalculate}
-            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-xl transition whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-1.5 px-3 rounded-xl text-xs md:text-sm transition whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
           >
             Calculate
           </button>

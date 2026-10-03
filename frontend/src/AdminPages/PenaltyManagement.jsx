@@ -29,6 +29,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ShieldAlert,
+  Zap,
 } from "lucide-react";
 
 // Exact Penalty Types from Mobile App (Pic 2)
@@ -49,6 +50,21 @@ function getFirstDayOfMonthKey(d = new Date()) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}-01`;
+}
+
+function getFirstDayOfPrevMonthKey(d = new Date()) {
+  const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const year = prev.getFullYear();
+  const month = String(prev.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+function getLastDayOfPrevMonthKey(d = new Date()) {
+  const last = new Date(d.getFullYear(), d.getMonth(), 0);
+  const year = last.getFullYear();
+  const month = String(last.getMonth() + 1).padStart(2, "0");
+  const day = String(last.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getTodayDateKey(d = new Date()) {
@@ -73,10 +89,60 @@ function getTodayDateKey(d = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function getFirstDayOfWeekKey(d = new Date()) {
+  const date = new Date(d);
+  const day = date.getDay();
+  // Monday as first day of week (Sunday is 0)
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  return getTodayDateKey(date);
+}
+
 function getDateDaysAgoKey(days) {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return getTodayDateKey(d);
+}
+
+function formatDateTimeDisplay(dateVal, createdAtVal) {
+  let timeStr = "";
+  let dateStr = dateVal || "";
+
+  if (createdAtVal) {
+    if (typeof createdAtVal === "object" && (createdAtVal._seconds || createdAtVal.seconds)) {
+      const s = createdAtVal._seconds || createdAtVal.seconds;
+      const d = new Date(s * 1000);
+      timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      if (!dateStr) {
+        dateStr = d.toISOString().slice(0, 10);
+      }
+    } else if (typeof createdAtVal === "string" || typeof createdAtVal === "number") {
+      const d = new Date(createdAtVal);
+      if (!isNaN(d.getTime())) {
+        timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+        if (!dateStr) {
+          dateStr = d.toISOString().slice(0, 10);
+        }
+      }
+    }
+  }
+
+  return { date: dateStr, time: timeStr };
+}
+
+function getPenaltySortTime(p) {
+  if (p?.createdAt) {
+    if (typeof p.createdAt === "object" && (p.createdAt._seconds || p.createdAt.seconds)) {
+      return (p.createdAt._seconds || p.createdAt.seconds) * 1000;
+    }
+    const t = new Date(p.createdAt).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (p?.dateKey) {
+    const t = new Date(p.dateKey).getTime();
+    if (!isNaN(t)) return t;
+  }
+  return 0;
 }
 
 export default function PenaltyManagement() {
@@ -91,14 +157,25 @@ export default function PenaltyManagement() {
   const [refreshing, setRefreshing] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  // Filters for Reports Page
-  const [fromDate, setFromDate] = useState(() => getFirstDayOfMonthKey());
-  const [toDate, setToDate] = useState(() => getTodayDateKey());
+  // Filters for Reports Page (Default to all recorded entries so existing records immediately show)
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedAgent, setSelectedAgent] = useState("__all__");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("summary"); // 'summary' | 'detailed'
   const [hideZeroPenalties, setHideZeroPenalties] = useState(true);
   const [sortBy, setSortBy] = useState("date_desc");
+
+  // ⭐ Advance Reports State
+  const [advances, setAdvances] = useState([]);
+  const [loadingAdvances, setLoadingAdvances] = useState(false);
+  const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+  const [advancePreset, setAdvancePreset] = useState("today"); // 'today' | 'this_week' | 'this_month' | 'all_time' | 'custom'
+  const [advanceFromDate, setAdvanceFromDate] = useState(() => getTodayDateKey());
+  const [advanceToDate, setAdvanceToDate] = useState(() => getTodayDateKey());
+  const [advanceSelectedAgent, setAdvanceSelectedAgent] = useState("__all__");
+  const [advanceSearchQuery, setAdvanceSearchQuery] = useState("");
+  const [advanceViewMode, setAdvanceViewMode] = useState("summary"); // 'summary' | 'detailed'
 
   // Full Page Entry Form State (Pic 2)
   const [formOutlet, setFormOutlet] = useState("");
@@ -157,13 +234,12 @@ export default function PenaltyManagement() {
   const fetchPenalties = useCallback(async () => {
     try {
       setRefreshing(true);
-      const res = await axios.get(`${ADMIN_PATH}/penalties`, {
-        params: {
-          fromDate,
-          toDate,
-          agentName: selectedAgent !== "__all__" ? selectedAgent : undefined,
-        },
-      });
+      const params = {};
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
+      if (selectedAgent && selectedAgent !== "__all__") params.agentName = selectedAgent;
+
+      const res = await axios.get(`${ADMIN_PATH}/penalties`, { params });
 
       if (res.data && res.data.success) {
         setPenalties(res.data.penalties || []);
@@ -176,6 +252,37 @@ export default function PenaltyManagement() {
       setRefreshing(false);
     }
   }, [fromDate, toDate, selectedAgent]);
+
+  // Fetch Advances
+  const fetchAdvances = useCallback(async (customFrom, customTo, customAgent) => {
+    try {
+      setLoadingAdvances(true);
+      const from = customFrom !== undefined ? customFrom : advanceFromDate;
+      const to = customTo !== undefined ? customTo : advanceToDate;
+      const ag = customAgent !== undefined ? customAgent : advanceSelectedAgent;
+
+      const params = {};
+      if (from) params.fromDate = from;
+      if (to) params.toDate = to;
+      if (ag && ag !== "__all__") params.agentName = ag;
+
+      const res = await axios.get(`${ADMIN_PATH}/advances`, { params });
+      if (res.data && res.data.success) {
+        setAdvances(res.data.advances || []);
+      }
+    } catch (err) {
+      console.error("Error fetching advances:", err);
+      showToast("Failed to load advances");
+    } finally {
+      setLoadingAdvances(false);
+    }
+  }, [advanceFromDate, advanceToDate, advanceSelectedAgent]);
+
+  useEffect(() => {
+    if (isAdvanceModalOpen) {
+      fetchAdvances();
+    }
+  }, [isAdvanceModalOpen, fetchAdvances]);
 
   useEffect(() => {
     fetchAllPersonnel();
@@ -338,6 +445,99 @@ export default function PenaltyManagement() {
     }
   };
 
+  // Delete Advance Entry
+  const handleDeleteAdvance = async (entry) => {
+    const confirmMsg = `Are you sure you want to delete advance entry of ₹${entry.amount || entry.cash} for ${entry.agentName} on ${entry.dateKey}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setAdvances((prev) => prev.filter((a) => a.id !== entry.id));
+    showToast("Advance entry deleted.");
+
+    try {
+      await axios.delete(`${ADMIN_PATH}/advances/${entry.id}`);
+      fetchAdvances();
+    } catch (err) {
+      console.error("Error deleting advance:", err);
+      const msg = err.response?.data?.message || "Failed to delete advance entry.";
+      showToast(msg);
+      fetchAdvances();
+    }
+  };
+
+  // Filtered advances for Advance Reports Modal
+  const filteredAdvances = useMemo(() => {
+    return advances.filter((adv) => {
+      if (advanceSelectedAgent !== "__all__") {
+        if ((adv.agentName || "").toLowerCase().trim() !== advanceSelectedAgent.toLowerCase().trim()) {
+          return false;
+        }
+      }
+      if (advanceSearchQuery.trim()) {
+        const q = advanceSearchQuery.toLowerCase().trim();
+        const matchesAgent = (adv.agentName || "").toLowerCase().includes(q);
+        const matchesOutlet = (adv.outletName || "").toLowerCase().includes(q);
+        const matchesRemarks = (adv.remarks || "").toLowerCase().includes(q);
+        if (!matchesAgent && !matchesOutlet && !matchesRemarks) return false;
+      }
+      return true;
+    });
+  }, [advances, advanceSelectedAgent, advanceSearchQuery]);
+
+  // Total Advance Amount for current Advance Modal filter
+  const totalAdvanceAmount = useMemo(() => {
+    return filteredAdvances.reduce((sum, item) => sum + (Number(item.amount) || Number(item.cash) || 0), 0);
+  }, [filteredAdvances]);
+
+  // Group advances by Agent for Agent-Wise Summary
+  const advanceAgentSummaries = useMemo(() => {
+    const map = new Map();
+    filteredAdvances.forEach((adv) => {
+      const name = (adv.agentName || "Unknown").trim();
+      const amt = Number(adv.amount) || Number(adv.cash) || 0;
+      if (!map.has(name)) {
+        map.set(name, {
+          agentName: name,
+          outletName: adv.outletName || agentOutletMap[name.toLowerCase()] || "",
+          totalAmount: 0,
+          count: 0,
+          entries: [],
+        });
+      }
+      const item = map.get(name);
+      item.totalAmount += amt;
+      item.count += 1;
+      item.entries.push(adv);
+    });
+    return Array.from(map.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [filteredAdvances, agentOutletMap]);
+
+  // Copy Advance Summary
+  const handleCopyAdvanceSummary = () => {
+    const dateLabel =
+      advanceFromDate && advanceToDate
+        ? (advanceFromDate === advanceToDate ? advanceFromDate : `${advanceFromDate} to ${advanceToDate}`)
+        : advanceFromDate
+        ? `From ${advanceFromDate}`
+        : advanceToDate
+        ? `Up to ${advanceToDate}`
+        : "All Recorded Dates";
+
+    const targetLabel = advanceSelectedAgent !== "__all__" ? `Agent: ${advanceSelectedAgent}` : "All Delivery Agents Combined";
+
+    const summaryText = [
+      `ADVANCE PAYMENT REPORT — SALARY DEDUCTION MATH`,
+      `Date Range: ${dateLabel}`,
+      `Scope: ${targetLabel}`,
+      `Total Advance Disbursed: ₹${totalAdvanceAmount.toLocaleString("en-IN")}`,
+      `Total Transactions: ${filteredAdvances.length}`,
+      `Agent Breakdown:`,
+      ...advanceAgentSummaries.map((s) => `  - ${s.agentName} (${s.outletName || "No Outlet"}): ₹${s.totalAmount.toLocaleString("en-IN")} [${s.count}x]`),
+    ].join("\n");
+
+    navigator.clipboard.writeText(summaryText);
+    showToast("Advance summary copied to clipboard!");
+  };
+
   // Filtered penalties for Reports Dashboard
   const filteredPenalties = useMemo(() => {
     return penalties.filter((p) => {
@@ -369,8 +569,8 @@ export default function PenaltyManagement() {
   const sortedDetailedPenalties = useMemo(() => {
     const list = [...filteredPenalties];
     list.sort((a, b) => {
-      const tA = a.createdAt ? new Date(a.createdAt).getTime() : (a.dateKey ? new Date(a.dateKey).getTime() : 0);
-      const tB = b.createdAt ? new Date(b.createdAt).getTime() : (b.dateKey ? new Date(b.dateKey).getTime() : 0);
+      const tA = getPenaltySortTime(a);
+      const tB = getPenaltySortTime(b);
       if (sortBy === "date_desc") return tB - tA;
       if (sortBy === "date_asc") return tA - tB;
       if (sortBy === "agent_asc") return (a.agentName || "").localeCompare(b.agentName || "");
@@ -396,11 +596,7 @@ export default function PenaltyManagement() {
       });
 
       // Sort chronological
-      matches.sort((a, b) => {
-        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return tB - tA;
-      });
+      matches.sort((a, b) => getPenaltySortTime(b) - getPenaltySortTime(a));
 
       return {
         agent,
@@ -458,10 +654,19 @@ export default function PenaltyManagement() {
 
   // Copy Summary to Clipboard formatted for payroll / salary math
   const handleCopySalarySummary = () => {
+    const dateRangeLabel =
+      fromDate && toDate
+        ? `${fromDate} to ${toDate}`
+        : fromDate
+        ? `From ${fromDate}`
+        : toDate
+        ? `Up to ${toDate}`
+        : "All Recorded Dates";
+
     if (selectedAgentObj) {
       const summaryText = [
         `OUTLET / AGENT PENALTY REPORT — SALARY TABULATION`,
-        `Date Range: ${fromDate} to ${toDate}`,
+        `Date Range: ${dateRangeLabel}`,
         `Agent: ${selectedAgentObj.name}`,
         `Outlet / Route: ${selectedAgentObj.outlet || "Not Assigned"}`,
         `Total Penalties: ${totalPenaltiesCount}`,
@@ -474,7 +679,7 @@ export default function PenaltyManagement() {
     } else {
       const summaryText = [
         `ALL PERSONNEL PENALTY REPORT — SALARY TABULATION`,
-        `Date Range: ${fromDate} to ${toDate}`,
+        `Date Range: ${dateRangeLabel}`,
         `Total Reports Logged: ${totalPenaltiesCount}`,
         `Breakdown:`,
         ...overallTypeBreakdown.map(([type, count]) => `  - ${count}x ${type}`),
@@ -691,100 +896,161 @@ export default function PenaltyManagement() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                   <ShieldAlert className="h-6 w-6 text-rose-600" />
-                  Penalty Reports
+                  Penalty & Advance Reports
                 </h2>
                 <p className="text-xs text-gray-500 font-medium mt-0.5">
-                  Filter by outlet & tabulate penalties for monthly salary calculations
+                  Filter by outlet & tabulate penalties and advance payouts for monthly salary calculations
                 </p>
               </div>
 
-              {/* Date Range & Quick Presets */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs font-semibold">
+              {/* Right column with controls row 1 (presets, custom date, refresh) and controls row 2 (View Advance, Log Penalty) */}
+              <div className="flex flex-col items-start lg:items-end justify-end gap-2.5">
+                {/* Row 1: Date Range & Quick Presets */}
+                <div className="flex flex-wrap items-center justify-start lg:justify-end gap-2">
+                  <div className="inline-flex items-center gap-0.5 bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFromDate("");
+                        setToDate("");
+                      }}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        !fromDate && !toDate
+                          ? "bg-blue-600 text-white font-bold shadow-xs"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                      }`}
+                    >
+                      All Time
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFromDate(getFirstDayOfMonthKey());
+                        setToDate(getTodayDateKey());
+                      }}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        fromDate === getFirstDayOfMonthKey() && toDate === getTodayDateKey()
+                          ? "bg-blue-600 text-white font-bold shadow-xs"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                      }`}
+                    >
+                      This Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFromDate(getFirstDayOfPrevMonthKey());
+                        setToDate(getLastDayOfPrevMonthKey());
+                      }}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        fromDate === getFirstDayOfPrevMonthKey() && toDate === getLastDayOfPrevMonthKey()
+                          ? "bg-blue-600 text-white font-bold shadow-xs"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                      }`}
+                    >
+                      Last Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFromDate(getDateDaysAgoKey(30));
+                        setToDate(getTodayDateKey());
+                      }}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        fromDate === getDateDaysAgoKey(30) && toDate === getTodayDateKey()
+                          ? "bg-blue-600 text-white font-bold shadow-xs"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                      }`}
+                    >
+                      Last 30 Days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFromDate(getTodayDateKey());
+                        setToDate(getTodayDateKey());
+                      }}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        fromDate === getTodayDateKey() && toDate === getTodayDateKey()
+                          ? "bg-blue-600 text-white font-bold shadow-xs"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                      }`}
+                    >
+                      Today
+                    </button>
+                  </div>
+
+                  {/* Custom Date Inputs */}
+                  <div className="inline-flex items-center gap-1.5 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 shadow-2xs text-xs">
+                    <CalendarDays className="h-4 w-4 text-gray-500 shrink-0" />
+                    <span className="text-gray-500 font-medium">From:</span>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="bg-transparent border-none outline-none font-semibold text-gray-900 cursor-pointer text-xs"
+                    />
+                    <span className="text-gray-400">•</span>
+                    <span className="text-gray-500 font-medium">To:</span>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="bg-transparent border-none outline-none font-semibold text-gray-900 cursor-pointer text-xs"
+                    />
+                    {(fromDate || toDate) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        title="Clear custom date filter (View all records)"
+                        className="text-gray-400 hover:text-gray-700 p-0.5 rounded cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Refresh Button */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setFromDate(getFirstDayOfMonthKey());
-                      setToDate(getTodayDateKey());
-                    }}
-                    className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                      fromDate === getFirstDayOfMonthKey() && toDate === getTodayDateKey()
-                        ? "bg-blue-600 text-white font-bold shadow-sm"
-                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
-                    }`}
+                    onClick={fetchPenalties}
+                    disabled={refreshing}
+                    title="Refresh data"
+                    className="p-2 border border-gray-300 hover:bg-gray-50 rounded-lg text-gray-600 transition shadow-2xs cursor-pointer"
                   >
-                    This Month
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFromDate(getTodayDateKey());
-                      setToDate(getTodayDateKey());
-                    }}
-                    className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                      fromDate === getTodayDateKey() && toDate === getTodayDateKey()
-                        ? "bg-blue-600 text-white font-bold shadow-sm"
-                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
-                    }`}
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFromDate(getDateDaysAgoKey(1));
-                      setToDate(getDateDaysAgoKey(1));
-                    }}
-                    className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                      fromDate === getDateDaysAgoKey(1) && toDate === getDateDaysAgoKey(1)
-                        ? "bg-blue-600 text-white font-bold shadow-sm"
-                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
-                    }`}
-                  >
-                    Yesterday
+                    <RefreshCw size={15} className={refreshing ? "animate-spin text-blue-600" : ""} />
                   </button>
                 </div>
 
-                {/* Custom Date Inputs */}
-                <div className="inline-flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 py-1.5 shadow-sm text-xs">
-                  <CalendarDays className="h-4 w-4 text-gray-500 shrink-0" />
-                  <span className="text-gray-500 font-medium">From:</span>
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value || getFirstDayOfMonthKey())}
-                    className="bg-transparent border-none outline-none font-semibold text-gray-900 cursor-pointer"
-                  />
-                  <span className="text-gray-400">•</span>
-                  <span className="text-gray-500 font-medium">To:</span>
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value || getTodayDateKey())}
-                    className="bg-transparent border-none outline-none font-semibold text-gray-900 cursor-pointer"
-                  />
+                {/* Row 2: View Advance Button (left) and Log Penalty Button (right, directly below refresh button) */}
+                <div className="flex items-center justify-end gap-2 self-start lg:self-end">
+                  {/* View Advance Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAdvanceModalOpen(true);
+                      fetchAdvances();
+                    }}
+                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                    title="View advance reports and payout summary"
+                  >
+                    <Zap size={15} />
+                    <span>View Advance</span>
+                  </button>
+
+                  {/* Log New Penalty Button */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage("entry")}
+                    className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                  >
+                    <Plus size={15} />
+                    <span>Log Penalty</span>
+                  </button>
                 </div>
-
-                {/* Refresh Button */}
-                <button
-                  type="button"
-                  onClick={fetchPenalties}
-                  disabled={refreshing}
-                  title="Refresh data"
-                  className="p-2 border border-gray-300 hover:bg-gray-50 rounded-lg text-gray-600 transition shadow-sm cursor-pointer"
-                >
-                  <RefreshCw size={15} className={refreshing ? "animate-spin text-blue-600" : ""} />
-                </button>
-
-                {/* Log New Penalty Button */}
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage("entry")}
-                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer ml-1 active:scale-95"
-                >
-                  <Plus size={15} />
-                  <span>Log Penalty</span>
-                </button>
               </div>
             </div>
 
@@ -856,7 +1122,15 @@ export default function PenaltyManagement() {
                   <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                     <span>Salary Math Tabulation</span>
                     <span className="text-rose-600 font-bold">•</span>
-                    <span className="text-gray-900 font-semibold">{fromDate} to {toDate}</span>
+                    <span className="text-gray-900 font-semibold">
+                      {fromDate && toDate
+                        ? `${fromDate} to ${toDate}`
+                        : fromDate
+                        ? `From ${fromDate}`
+                        : toDate
+                        ? `Up to ${toDate}`
+                        : "All Recorded Dates"}
+                    </span>
                   </div>
                   <div className="text-xl font-bold text-gray-900 flex items-center gap-2.5 mt-0.5">
                     {selectedAgentObj ? (
@@ -1122,20 +1396,14 @@ export default function PenaltyManagement() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {sortedDetailedPenalties.map((p) => {
-                      const dateDisplay = p.dateKey || "";
-                      const timeDisplay = p.createdAt
-                        ? new Date(p.createdAt).toLocaleTimeString("en-IN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "";
+                      const { date: dateDisplay, time: timeDisplay } = formatDateTimeDisplay(p.dateKey, p.createdAt);
 
                       return (
                         <tr key={p.id} className="hover:bg-blue-50/40 transition-colors">
                           <td className="px-4 py-3.5 font-semibold text-gray-900 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <Calendar className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                              <span>{dateDisplay}</span>
+                              <span>{dateDisplay || "—"}</span>
                               {timeDisplay && (
                                 <span className="text-gray-400 font-normal text-[11px]">
                                   ({timeDisplay})
@@ -1281,13 +1549,10 @@ export default function PenaltyManagement() {
                     <Calendar className="h-3.5 w-3.5 text-blue-600" /> Date & Time
                   </div>
                   <div className="font-bold text-gray-900 mt-1 truncate">
-                    {viewingPenalty.dateKey}
-                    {viewingPenalty.createdAt && (
+                    {formatDateTimeDisplay(viewingPenalty.dateKey, viewingPenalty.createdAt).date || viewingPenalty.dateKey || "—"}
+                    {formatDateTimeDisplay(viewingPenalty.dateKey, viewingPenalty.createdAt).time && (
                       <span className="text-gray-500 block text-[11px] font-normal">
-                        ({new Date(viewingPenalty.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })})
+                        ({formatDateTimeDisplay(viewingPenalty.dateKey, viewingPenalty.createdAt).time})
                       </span>
                     )}
                   </div>
@@ -1339,6 +1604,507 @@ export default function PenaltyManagement() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* FULL SCREEN VIEW: ADVANCE AMOUNT REPORTS & DISBURSEMENTS                  */}
+      {/* ========================================================================= */}
+      {isAdvanceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col w-screen h-screen overflow-hidden font-sans">
+          {/* Top Navigation Bar */}
+          <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-orange-700 px-6 py-4 flex items-center justify-between text-white shrink-0 shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shadow-inner">
+                <Zap className="h-5 w-5 text-amber-100" />
+              </div>
+              <div>
+                <h3 className="text-lg md:text-xl font-bold tracking-tight">Advance Amount Reports</h3>
+                <p className="text-xs text-amber-100/90 font-medium">
+                  Review agent advance disbursements, date-wise totals, and salary deductions
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAdvanceModalOpen(false)}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold text-white bg-white/15 hover:bg-white/25 px-3.5 py-2 rounded-xl transition cursor-pointer backdrop-blur-xs border border-white/20"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Penalty Reports</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAdvanceModalOpen(false)}
+                className="text-white/80 hover:text-white p-2 rounded-xl hover:bg-white/15 transition cursor-pointer"
+                title="Close full-screen view"
+              >
+                <X size={22} />
+              </button>
+            </div>
+          </div>
+
+          {/* Full Screen Body */}
+          <div className="p-6 md:p-8 space-y-6 overflow-y-auto flex-1 w-full max-w-[1600px] mx-auto">
+            {/* Filter Section Card */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Presets: Today (default), This Week, This Month, All Time */}
+                <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvancePreset("today");
+                      setAdvanceFromDate(getTodayDateKey());
+                      setAdvanceToDate(getTodayDateKey());
+                      fetchAdvances(getTodayDateKey(), getTodayDateKey());
+                    }}
+                    className={`px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                      advancePreset === "today"
+                        ? "bg-amber-600 text-white font-bold shadow-sm"
+                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvancePreset("this_week");
+                      setAdvanceFromDate(getFirstDayOfWeekKey());
+                      setAdvanceToDate(getTodayDateKey());
+                      fetchAdvances(getFirstDayOfWeekKey(), getTodayDateKey());
+                    }}
+                    className={`px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                      advancePreset === "this_week"
+                        ? "bg-amber-600 text-white font-bold shadow-sm"
+                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                    }`}
+                  >
+                    This Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvancePreset("this_month");
+                      setAdvanceFromDate(getFirstDayOfMonthKey());
+                      setAdvanceToDate(getTodayDateKey());
+                      fetchAdvances(getFirstDayOfMonthKey(), getTodayDateKey());
+                    }}
+                    className={`px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                      advancePreset === "this_month"
+                        ? "bg-amber-600 text-white font-bold shadow-sm"
+                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                    }`}
+                  >
+                    This Month
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvancePreset("all_time");
+                      setAdvanceFromDate("");
+                      setAdvanceToDate("");
+                      fetchAdvances("", "");
+                    }}
+                    className={`px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                      advancePreset === "all_time"
+                        ? "bg-amber-600 text-white font-bold shadow-sm"
+                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+                    }`}
+                  >
+                    All Time
+                  </button>
+                </div>
+
+                {/* Custom Date Inputs & Refresh */}
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex items-center gap-2 bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-1.5 shadow-2xs text-xs">
+                    <CalendarDays className="h-4 w-4 text-gray-500 shrink-0" />
+                    <span className="text-gray-500 font-medium">From:</span>
+                    <input
+                      type="date"
+                      value={advanceFromDate}
+                      onChange={(e) => {
+                        setAdvancePreset("custom");
+                        setAdvanceFromDate(e.target.value);
+                      }}
+                      className="bg-transparent border-none outline-none font-semibold text-gray-900 cursor-pointer"
+                    />
+                    <span className="text-gray-400">•</span>
+                    <span className="text-gray-500 font-medium">To:</span>
+                    <input
+                      type="date"
+                      value={advanceToDate}
+                      onChange={(e) => {
+                        setAdvancePreset("custom");
+                        setAdvanceToDate(e.target.value);
+                      }}
+                      className="bg-transparent border-none outline-none font-semibold text-gray-900 cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fetchAdvances()}
+                      disabled={loadingAdvances}
+                      className="text-xs bg-amber-600 text-white hover:bg-amber-700 px-3 py-1 rounded-lg font-bold transition cursor-pointer shadow-xs active:scale-95"
+                    >
+                      Apply
+                    </button>
+                  </div>
+
+                  {/* Refresh Advances Button */}
+                  <button
+                    type="button"
+                    onClick={() => fetchAdvances()}
+                    disabled={loadingAdvances}
+                    title="Refresh advance data"
+                    className="p-2 border border-gray-300 bg-white hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-2xs cursor-pointer"
+                  >
+                    <RefreshCw size={16} className={loadingAdvances ? "animate-spin text-amber-600" : ""} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Agent & Search Row */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+                {/* Agent Selector Dropdown */}
+                <div className="flex items-center gap-2 flex-1 max-w-lg">
+                  <span className="text-xs font-bold text-gray-600 uppercase shrink-0 flex items-center gap-1">
+                    <User className="h-4 w-4 text-amber-600" /> Filter Delivery Agent:
+                  </span>
+                  <select
+                    value={advanceSelectedAgent}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdvanceSelectedAgent(val);
+                      fetchAdvances(advanceFromDate, advanceToDate, val);
+                    }}
+                    className="h-10 rounded-xl text-xs font-semibold bg-white border border-gray-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 px-3.5 py-1.5 outline-none flex-1 shadow-2xs cursor-pointer"
+                  >
+                    <option value="__all__">All Delivery Agents ({sortedAgentsList.length})</option>
+                    {sortedAgentsList.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.name} {a.outlet ? `(${a.outlet})` : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {advanceSelectedAgent !== "__all__" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdvanceSelectedAgent("__all__");
+                        fetchAdvances(advanceFromDate, advanceToDate, "__all__");
+                      }}
+                      className="h-9 w-9 shrink-0 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition grid place-items-center cursor-pointer"
+                      title="Clear agent filter"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Search box in Advance Modal */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search agent, outlet, remarks..."
+                    value={advanceSearchQuery}
+                    onChange={(e) => setAdvanceSearchQuery(e.target.value)}
+                    className="pl-10 pr-9 h-10 text-xs font-medium rounded-xl bg-white border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none w-full transition shadow-2xs"
+                  />
+                  {advanceSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setAdvanceSearchQuery("")}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Total Advance Amount Tabulation Banner */}
+            <div className="rounded-2xl border border-gray-200 border-l-4 border-l-amber-500 bg-white p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-2xl bg-amber-50 text-amber-700 grid place-items-center font-bold shrink-0 border border-amber-200 shadow-xs">
+                  <Zap className="h-7 w-7" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                    <span>Advance Payout Total</span>
+                    <span className="text-amber-600 font-bold">•</span>
+                    <span className="text-gray-900 font-bold">
+                      {advanceFromDate && advanceToDate
+                        ? (advanceFromDate === advanceToDate ? advanceFromDate : `${advanceFromDate} to ${advanceToDate}`)
+                        : advanceFromDate
+                        ? `From ${advanceFromDate}`
+                        : advanceToDate
+                        ? `Up to ${advanceToDate}`
+                        : "All Time"}
+                    </span>
+                  </div>
+                  <div className="text-3xl font-black text-gray-900 flex items-center gap-3 mt-1">
+                    <span>₹{totalAdvanceAmount.toLocaleString("en-IN")}</span>
+                    <span className="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                      {filteredAdvances.length} {filteredAdvances.length === 1 ? "Transaction" : "Transactions"}
+                    </span>
+                  </div>
+                  {advanceSelectedAgent !== "__all__" && (
+                    <p className="text-xs text-gray-600 font-semibold mt-1">
+                      Selected Agent: <span className="text-amber-700 font-bold">{advanceSelectedAgent}</span>
+                      {agentOutletMap[advanceSelectedAgent.toLowerCase().trim()] && (
+                        <span className="text-gray-500 ml-1">
+                          ({agentOutletMap[advanceSelectedAgent.toLowerCase().trim()]})
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 self-end md:self-auto">
+                <button
+                  type="button"
+                  onClick={handleCopyAdvanceSummary}
+                  className="h-10 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl px-4 border border-gray-300 shadow-xs flex items-center gap-2 transition cursor-pointer active:scale-95"
+                >
+                  <Copy className="h-4 w-4 text-amber-600" />
+                  <span>Copy Summary</span>
+                </button>
+                {advanceSelectedAgent !== "__all__" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvanceSelectedAgent("__all__");
+                      fetchAdvances(advanceFromDate, advanceToDate, "__all__");
+                    }}
+                    className="h-10 text-xs font-semibold rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3.5 transition cursor-pointer"
+                  >
+                    View All Agents
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* View Switcher: Summary vs Detailed */}
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <div className="inline-flex items-center p-1 rounded-xl bg-gray-100 border border-gray-200 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAdvanceViewMode("summary")}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+                    advanceViewMode === "summary"
+                      ? "bg-white text-gray-900 shadow-xs border border-gray-200"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4 text-amber-600" />
+                  <span>Agent Breakdown ({advanceAgentSummaries.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdvanceViewMode("detailed")}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+                    advanceViewMode === "detailed"
+                      ? "bg-white text-gray-900 shadow-xs border border-gray-200"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <TableIcon className="h-4 w-4 text-amber-600" />
+                  <span>Detailed Transactions Log ({filteredAdvances.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* VIEW 1: AGENT-WISE ADVANCE SUMMARY */}
+            {advanceViewMode === "summary" && (
+              <div className="space-y-4">
+                {advanceAgentSummaries.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {advanceAgentSummaries.map((item) => {
+                      const isSelected = advanceSelectedAgent.toLowerCase().trim() === item.agentName.toLowerCase().trim();
+                      return (
+                        <div
+                          key={item.agentName}
+                          className={`rounded-2xl border p-4 bg-white shadow-2xs transition flex flex-col justify-between space-y-3 ${
+                            isSelected
+                              ? "ring-2 ring-amber-500 border-amber-500 bg-amber-50/20"
+                              : "border-gray-200 hover:border-amber-300 hover:shadow-md"
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">
+                                  <User className="h-4 w-4 text-amber-600" />
+                                  {item.agentName}
+                                </h4>
+                                <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1 font-medium">
+                                  <Building2 className="h-3 w-3 text-gray-400" />
+                                  Outlet: <span className="text-gray-700 font-semibold">{item.outletName || "Not Assigned"}</span>
+                                </p>
+                              </div>
+                              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                {item.count} {item.count === 1 ? "entry" : "entries"}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 pt-3 border-t border-gray-100 flex items-baseline justify-between">
+                              <span className="text-xs text-gray-500 font-semibold">Total Advance:</span>
+                              <span className="text-lg font-black text-amber-700">
+                                ₹{item.totalAmount.toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdvanceSelectedAgent(item.agentName);
+                                fetchAdvances(advanceFromDate, advanceToDate, item.agentName);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Filter className="h-3 w-3 text-amber-600" />
+                              <span>Filter</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdvanceSelectedAgent(item.agentName);
+                                setAdvanceViewMode("detailed");
+                                fetchAdvances(advanceFromDate, advanceToDate, item.agentName);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span>View Log</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center space-y-2 shadow-2xs">
+                    <Zap className="h-10 w-10 text-gray-300 mx-auto" />
+                    <div className="font-bold text-base text-gray-800">No advance records found</div>
+                    <div className="text-xs text-gray-500 max-w-sm mx-auto">
+                      No advance payouts logged matching the current date range or agent filter.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VIEW 2: DETAILED ADVANCE TRANSACTIONS LIST */}
+            {advanceViewMode === "detailed" && (
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-2xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-gray-700 font-bold uppercase tracking-wider text-[11px]">
+                        <th className="px-5 py-3.5">Date & Time</th>
+                        <th className="px-5 py-3.5">Agent Name</th>
+                        <th className="px-5 py-3.5">Outlet</th>
+                        <th className="px-5 py-3.5 text-right">Advance Amount</th>
+                        <th className="px-5 py-3.5">Supervisor</th>
+                        <th className="px-5 py-3.5">Remarks</th>
+                        <th className="px-5 py-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredAdvances.map((adv) => {
+                        const { date: dateDisplay, time: timeDisplay } = formatDateTimeDisplay(adv.dateKey, adv.createdAt);
+                        const amt = Number(adv.amount) || Number(adv.cash) || 0;
+
+                        return (
+                          <tr key={adv.id} className="hover:bg-amber-50/30 transition-colors">
+                            <td className="px-5 py-3.5 font-semibold text-gray-900 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-amber-600 shrink-0" />
+                                <span>{dateDisplay || "—"}</span>
+                                {timeDisplay && (
+                                  <span className="text-gray-400 font-normal text-xs">
+                                    ({timeDisplay})
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="px-5 py-3.5 font-bold text-gray-900 whitespace-nowrap">
+                              {adv.agentName || "Unknown"}
+                            </td>
+
+                            <td className="px-5 py-3.5 font-medium text-gray-700 whitespace-nowrap">
+                              {adv.outletName || agentOutletMap[(adv.agentName || "").toLowerCase().trim()] || "—"}
+                            </td>
+
+                            <td className="px-5 py-3.5 text-right font-black text-amber-700 whitespace-nowrap text-sm">
+                              ₹{amt.toLocaleString("en-IN")}
+                            </td>
+
+                            <td className="px-5 py-3.5 text-gray-600 font-medium whitespace-nowrap">
+                              {adv.supervisorName || "Admin (Web)"}
+                            </td>
+
+                            <td className="px-5 py-3.5 text-gray-600 max-w-sm truncate" title={adv.remarks}>
+                              {adv.remarks || <span className="text-gray-300 italic">None</span>}
+                            </td>
+
+                            <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAdvance(adv)}
+                                title="Delete advance entry"
+                                className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {filteredAdvances.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-5 py-12 text-center text-gray-500 space-y-2">
+                            <Zap className="h-10 w-10 text-gray-300 mx-auto" />
+                            <div className="font-bold text-sm text-gray-700">No advance entries recorded</div>
+                            <div className="text-xs text-gray-400">
+                              No advance entries found matching the current date range or agent filter.
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Full Screen Footer */}
+          <div className="bg-white px-6 md:px-8 py-3.5 border-t border-gray-200 flex items-center justify-between shrink-0 shadow-xs">
+            <span className="text-xs font-semibold text-gray-600">
+              Total Advance: <span className="font-black text-gray-900">₹{totalAdvanceAmount.toLocaleString("en-IN")}</span> ({filteredAdvances.length} entries)
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsAdvanceModalOpen(false)}
+              className="px-4 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-xl transition shadow-2xs cursor-pointer active:scale-95"
+            >
+              Back to Penalty Reports
+            </button>
           </div>
         </div>
       )}
