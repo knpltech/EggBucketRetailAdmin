@@ -68,16 +68,6 @@ const parseTimestampToIso = (val) => {
   return null;
 };
 
-const normalizePeakFrequency = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toUpperCase();
-
-  if (/^D[0-7]$/.test(raw)) return raw;
-  if (/^[0-7]$/.test(raw)) return `D${raw}`;
-
-  return "";
-};
 const getPeakFrequencyNumber = (value) => {
   const peak = normalizePeakFrequency(value);
   const n = Number(peak.slice(1));
