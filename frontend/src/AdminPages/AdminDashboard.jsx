@@ -20,6 +20,7 @@ import {
   FiMap,
   FiLogOut,
   FiAlertTriangle,
+  FiZap,
 } from "react-icons/fi";
 
 export default function AdminDashboard() {
@@ -64,7 +65,8 @@ export default function AdminDashboard() {
     { label: "Customer Retention", path: "/admin/customer-retention", icon: FiRefreshCw },
     { label: "Dummy AI Suggestions", path: "/admin/dummy-ai-suggestions", icon: FiCompass },
     { label: "Collections", path: "/admin/collections", icon: FiDollarSign },
-    { label: "Penalty & Advance", path: "/admin/penalty", icon: FiAlertTriangle },
+    { label: "Penalty Reports", path: "/admin/penalty", icon: FiAlertTriangle },
+    { label: "Advance", path: "/admin/advance", icon: FiZap },
     { label: "Business Statistics", path: "/admin/business-statistics", icon: FiTrendingUp },
     { label: "Customer Management", path: "/admin/customer-management", icon: FiLayers },
     { label: "Calling Customers", path: "/admin/calling-customers", icon: FiPhoneCall },
