@@ -3602,6 +3602,442 @@ export {
   getPriorityDashboard,
   batchUpdateCustomerRoutes,
   batchUpdateCustomerLogics,
+  // Incentive management
+  getIncentiveSettings,
+  updateIncentiveSettings,
+  getIncentiveProgress,
+};
+
+// -------------------------------------------------------------
+// INCENTIVE MANAGEMENT (4-Tier Milestone Targets & Progress Tracker)
+// -------------------------------------------------------------
+
+const DEFAULT_INCENTIVE_SETTINGS = {
+  routes: {
+    enabled: true,
+    title: "Weekly Incentive Target",
+    description: "Complete more trays and earn more!",
+    period: "weekly",
+    goalTrays: 1000,
+    goalReward: 2000,
+    slabs: [
+      { tier: 1, trayTarget: 700, incentive: 700 },
+      { tier: 2, trayTarget: 800, incentive: 1000 },
+      { tier: 3, trayTarget: 900, incentive: 1300 },
+      { tier: 4, trayTarget: 1000, incentive: 2000 },
+    ],
+  },
+  sales: {
+    enabled: true,
+    title: "Weekly Incentive Target",
+    description: "Complete more trays and earn more!",
+    period: "weekly",
+    goalTrays: 1000,
+    goalReward: 1800,
+    slabs: [
+      { tier: 1, trayTarget: 500, incentive: 500 },
+      { tier: 2, trayTarget: 700, incentive: 800 },
+      { tier: 3, trayTarget: 900, incentive: 1200 },
+      { tier: 4, trayTarget: 1000, incentive: 1800 },
+    ],
+  },
+};
+
+// GET /api/admin/incentive-settings
+const getIncentiveSettings = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const docSnap = await db.collection("incentive_settings").doc("targets").get().catch(() => null);
+
+    let settings = JSON.parse(JSON.stringify(DEFAULT_INCENTIVE_SETTINGS));
+    if (docSnap && docSnap.exists) {
+      const data = docSnap.data();
+      if (data.routes) {
+        settings.routes = { ...settings.routes, ...data.routes };
+        if (Array.isArray(data.routes.slabs) && data.routes.slabs.length > 0) {
+          settings.routes.slabs = data.routes.slabs;
+        }
+      }
+      if (data.sales) {
+        settings.sales = { ...settings.sales, ...data.sales };
+        if (Array.isArray(data.sales.slabs) && data.sales.slabs.length > 0) {
+          settings.sales.slabs = data.sales.slabs;
+        }
+      }
+      if (data.updatedAt) settings.updatedAt = data.updatedAt;
+      if (data.updatedBy) settings.updatedBy = data.updatedBy;
+    }
+
+    return res.status(200).json({ success: true, settings });
+  } catch (err) {
+    console.error("getIncentiveSettings error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch incentive settings",
+      error: err.message,
+    });
+  }
+};
+
+// POST /api/admin/incentive-settings
+const updateIncentiveSettings = async (req, res) => {
+  try {
+    const { routes, sales } = req.body;
+    if (!routes && !sales) {
+      return res.status(400).json({
+        success: false,
+        message: "Settings payload for routes and/or sales is required",
+      });
+    }
+
+    const db = getFirestore();
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : null;
+
+    // Load current
+    const currentSnap = await db.collection("incentive_settings").doc("targets").get().catch(() => null);
+    const existing = currentSnap && currentSnap.exists ? currentSnap.data() : DEFAULT_INCENTIVE_SETTINGS;
+
+    const updated = {
+      routes: routes
+        ? {
+            ...existing.routes,
+            ...routes,
+            goalTrays: Number(routes.goalTrays) || 1000,
+            goalReward: Number(routes.goalReward) || 2000,
+            updatedAt: new Date().toISOString(),
+          }
+        : existing.routes,
+      sales: sales
+        ? {
+            ...existing.sales,
+            ...sales,
+            goalTrays: Number(sales.goalTrays) || 1000,
+            goalReward: Number(sales.goalReward) || 1800,
+            updatedAt: new Date().toISOString(),
+          }
+        : existing.sales,
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user?.phone || req.user?.email || "admin",
+    };
+
+    // Ensure slabs have numeric values
+    if (updated.routes?.slabs && Array.isArray(updated.routes.slabs)) {
+      updated.routes.slabs = updated.routes.slabs.map((s, idx) => ({
+        tier: Number(s.tier || idx + 1),
+        trayTarget: Number(s.trayTarget || 0),
+        incentive: Number(s.incentive || 0),
+      }));
+    }
+    if (updated.sales?.slabs && Array.isArray(updated.sales.slabs)) {
+      updated.sales.slabs = updated.sales.slabs.map((s, idx) => ({
+        tier: Number(s.tier || idx + 1),
+        trayTarget: Number(s.trayTarget || 0),
+        incentive: Number(s.incentive || 0),
+      }));
+    }
+
+    // Persist to both collections so web admin, routes app, and sales app can read immediately
+    const writePromises = [
+      db.collection("incentive_settings").doc("targets").set(updated, { merge: true }),
+      db.collection("app_settings").doc("incentive_config").set(updated, { merge: true }),
+    ];
+
+    if (updated.routes) {
+      writePromises.push(
+        db.collection("incentive_settings").doc("routes").set(updated.routes, { merge: true }).catch(() => null)
+      );
+    }
+    if (updated.sales) {
+      writePromises.push(
+        db.collection("incentive_settings").doc("sales").set(updated.sales, { merge: true }).catch(() => null)
+      );
+    }
+    if (invDb) {
+      writePromises.push(
+        invDb.collection("incentive_settings").doc("targets").set(updated, { merge: true }).catch(() => null)
+      );
+    }
+
+    await Promise.all(writePromises);
+
+    return res.status(200).json({
+      success: true,
+      message: "Incentive targets updated successfully",
+      settings: updated,
+    });
+  } catch (err) {
+    console.error("updateIncentiveSettings error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update incentive settings",
+      error: err.message,
+    });
+  }
+};
+
+// GET /api/admin/incentive-progress
+const getIncentiveProgress = async (req, res) => {
+  try {
+    const { fromDate, toDate, role } = req.query;
+    const db = getFirestore();
+    const inventoryApp = getInventoryApp();
+    const invDb = inventoryApp ? getFirestore(inventoryApp) : null;
+
+    // 1. Fetch settings
+    const settingsSnap = await db.collection("incentive_settings").doc("targets").get().catch(() => null);
+    let settings = JSON.parse(JSON.stringify(DEFAULT_INCENTIVE_SETTINGS));
+    if (settingsSnap && settingsSnap.exists) {
+      const data = settingsSnap.data();
+      if (data.routes) settings.routes = { ...settings.routes, ...data.routes };
+      if (data.sales) settings.sales = { ...settings.sales, ...data.sales };
+    }
+
+    // 2. Fetch Personnel (Delivery partners & Sales partners)
+    const [delPartnersSnap, salesPartnersSnap] = await Promise.all([
+      db.collection("DeliveryMan").get().catch(() => ({ docs: [] })),
+      db.collection("Salesman").get().catch(() => ({ docs: [] })),
+    ]);
+
+    const deliveryPartners = delPartnersSnap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        uid: d.uid || doc.id,
+        name: d.name || "",
+        phone: d.phone || "",
+        outlet: d.outlet || "",
+        active: d.active !== false,
+        role: "delivery",
+        roleLabel: "Delivery Executive (Routes)",
+      };
+    });
+
+    const salesPartners = salesPartnersSnap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        uid: d.uid || doc.id,
+        name: d.name || "",
+        phone: d.phone || "",
+        sales_id: d.sales_id || "",
+        outlet: d.outlet || "",
+        active: d.active !== false,
+        role: "sales",
+        roleLabel: "Sales Executive",
+      };
+    });
+
+    // 3. Aggregate Delivered Trays per agent across date range
+    const agentDeliveredTrays = {}; // normalized name -> quantity
+
+    // A. From business_statistics_daily if available
+    let dailyStatsQuery = db.collection("business_statistics_daily");
+    if (fromDate && toDate) {
+      dailyStatsQuery = dailyStatsQuery.where("__name__", ">=", fromDate).where("__name__", "<=", toDate);
+    } else if (fromDate) {
+      dailyStatsQuery = dailyStatsQuery.where("__name__", ">=", fromDate);
+    } else if (toDate) {
+      dailyStatsQuery = dailyStatsQuery.where("__name__", "<=", toDate);
+    }
+
+    const [dailyStatsSnap, customersSnap] = await Promise.all([
+      dailyStatsQuery.get().catch(() => ({ docs: [] })),
+      db.collection("customers").get().catch(() => ({ docs: [] })),
+    ]);
+
+    // Track dates processed from daily stats
+    const processedDailyDates = new Set();
+    dailyStatsSnap.docs.forEach((doc) => {
+      processedDailyDates.add(doc.id);
+      const data = doc.data();
+      const agentSales = data.deliveryAnalytics?.agentWiseSales || {};
+      Object.entries(agentSales).forEach(([agent, qty]) => {
+        if (!agent) return;
+        const norm = agent.toLowerCase().trim();
+        agentDeliveredTrays[norm] = (agentDeliveredTrays[norm] || 0) + (Number(qty) || 0);
+      });
+    });
+
+    // B. From customers collection last8Days (for today or any dates not yet archived in business_statistics_daily)
+    customersSnap.docs.forEach((doc) => {
+      const cData = doc.data();
+      const last8Days = cData.last8Days || {};
+
+      Object.entries(last8Days).forEach(([dateKey, entry]) => {
+        // Only include if date is in requested range
+        if (fromDate && dateKey < fromDate) return;
+        if (toDate && dateKey > toDate) return;
+
+        // If this date is already aggregated from business_statistics_daily, skip to avoid double counting
+        if (processedDailyDates.has(dateKey)) return;
+
+        const isDelivered =
+          typeof entry === "string"
+            ? entry.toLowerCase() === "delivered"
+            : (entry?.status || "").toLowerCase() === "delivered";
+
+        if (isDelivered) {
+          const agent = entry?.agentName || cData.agentName || "";
+          if (agent) {
+            const norm = agent.toLowerCase().trim();
+            const qty = Number(entry?.quantity || entry?.trays) || 0;
+            agentDeliveredTrays[norm] = (agentDeliveredTrays[norm] || 0) + qty;
+          }
+        }
+      });
+    });
+
+    // C. Also check loading_entries vs return_load_entries from inventory app if present
+    if (invDb && fromDate && toDate) {
+      try {
+        let loadQ = invDb.collection("loading_entries");
+        let retQ = invDb.collection("return_load_entries");
+        if (fromDate === toDate) {
+          loadQ = loadQ.where("dateKey", "==", fromDate);
+          retQ = retQ.where("dateKey", "==", fromDate);
+        } else {
+          loadQ = loadQ.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+          retQ = retQ.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+        }
+
+        const [loadSnap, retSnap] = await Promise.all([
+          loadQ.get().catch(() => ({ docs: [] })),
+          retQ.get().catch(() => ({ docs: [] })),
+        ]);
+
+        const invLoad = {};
+        const invReturn = {};
+        loadSnap.docs.forEach((doc) => {
+          const d = doc.data();
+          const ag = (d.agentName || "").toLowerCase().trim();
+          if (ag) invLoad[ag] = (invLoad[ag] || 0) + (Number(d.quantity) || 0);
+        });
+        retSnap.docs.forEach((doc) => {
+          const d = doc.data();
+          const ag = (d.agentName || "").toLowerCase().trim();
+          if (ag) invReturn[ag] = (invReturn[ag] || 0) + (Number(d.quantity) || 0);
+        });
+
+        // If an agent had load - return > 0 and wasn't populated from customers, incorporate it
+        Object.keys(invLoad).forEach((ag) => {
+          const nett = Math.max(0, (invLoad[ag] || 0) - (invReturn[ag] || 0));
+          if (nett > 0 && !agentDeliveredTrays[ag]) {
+            agentDeliveredTrays[ag] = nett;
+          }
+        });
+      } catch (e) {
+        console.warn("Inventory check skipped:", e?.message);
+      }
+    }
+
+    // 4. Combine all personnel and calculate metrics
+    let allPersonnel = [];
+    if (!role || role === "all") {
+      allPersonnel = [...deliveryPartners, ...salesPartners];
+    } else if (role === "delivery") {
+      allPersonnel = deliveryPartners;
+    } else if (role === "sales") {
+      allPersonnel = salesPartners;
+    }
+
+    const agentRows = allPersonnel.map((agent) => {
+      const norm = (agent.name || "").toLowerCase().trim();
+      const deliveredQty = agentDeliveredTrays[norm] || 0;
+
+      const roleKey = agent.role === "sales" ? "sales" : "routes";
+      const config = settings[roleKey] || DEFAULT_INCENTIVE_SETTINGS[roleKey];
+      const goalTrays = Number(config.goalTrays) || 1000;
+      const slabs = Array.isArray(config.slabs) ? [...config.slabs] : [];
+      slabs.sort((a, b) => (Number(a.trayTarget) || 0) - (Number(b.trayTarget) || 0));
+
+      // Calculate progress %
+      const progressPercent = goalTrays > 0 ? Number(((deliveredQty / goalTrays) * 100).toFixed(1)) : 0;
+
+      // Find highest tier achieved
+      let currentTier = 0;
+      let earnedIncentive = 0;
+      let nextTierTarget = slabs[0]?.trayTarget || goalTrays;
+      let nextTierReward = slabs[0]?.incentive || 0;
+      let traysLeft = Math.max(0, nextTierTarget - deliveredQty);
+
+      for (let i = slabs.length - 1; i >= 0; i--) {
+        const slab = slabs[i];
+        if (deliveredQty >= slab.trayTarget) {
+          currentTier = slab.tier || i + 1;
+          earnedIncentive = Number(slab.incentive) || 0;
+
+          // Next tier
+          if (i < slabs.length - 1) {
+            const nextSlab = slabs[i + 1];
+            nextTierTarget = nextSlab.trayTarget;
+            nextTierReward = nextSlab.incentive;
+            traysLeft = Math.max(0, nextTierTarget - deliveredQty);
+          } else {
+            // Reached top goal!
+            nextTierTarget = slab.trayTarget;
+            nextTierReward = slab.incentive;
+            traysLeft = 0;
+          }
+          break;
+        }
+      }
+
+      let status = "Needs Push";
+      if (deliveredQty >= goalTrays) {
+        status = "Goal Achieved";
+      } else if (currentTier >= 1) {
+        status = "On Track";
+      }
+
+      return {
+        id: agent.id || agent.uid,
+        uid: agent.uid,
+        name: agent.name,
+        phone: agent.phone,
+        outlet: agent.outlet || "-",
+        role: agent.role,
+        roleLabel: agent.roleLabel,
+        deliveredQuantity: deliveredQty,
+        targetTrays: goalTrays,
+        progressPercent,
+        currentTier,
+        earnedIncentive,
+        traysLeft,
+        nextTierTarget,
+        nextTierReward,
+        status,
+        slabs,
+      };
+    });
+
+    // Sort by delivered quantity descending
+    agentRows.sort((a, b) => b.deliveredQuantity - a.deliveredQuantity);
+
+    // Summary calculations
+    const summary = {
+      totalAgents: agentRows.length,
+      activeAgents: agentRows.filter((a) => a.deliveredQuantity > 0).length,
+      totalDeliveredTrays: agentRows.reduce((sum, a) => sum + a.deliveredQuantity, 0),
+      totalIncentiveEarned: agentRows.reduce((sum, a) => sum + a.earnedIncentive, 0),
+      goalAchievedCount: agentRows.filter((a) => a.deliveredQuantity >= a.targetTrays).length,
+    };
+
+    return res.status(200).json({
+      success: true,
+      summary,
+      agents: agentRows,
+      settings,
+      dateRange: { fromDate, toDate },
+    });
+  } catch (err) {
+    console.error("getIncentiveProgress error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch incentive progress",
+      error: err.message,
+    });
+  }
 };
 
 

@@ -86,6 +86,9 @@ import {
   updatePriority,
   deletePriority,
   getPriorityDashboard,
+  getIncentiveSettings,
+  updateIncentiveSettings,
+  getIncentiveProgress,
 } from "../Controller/AdminController.js";
 
 
@@ -160,6 +163,11 @@ router.get("/advances", getAdvances);
 router.delete("/advances/:id", deleteAdvanceEntry);
 router.post("/agent-day-lock", toggleAgentDayLock);
 router.get("/agent-day-lock-status", getAgentDayLockStatus);
+
+// Incentive management routes
+router.get("/incentive-settings", getIncentiveSettings);
+router.post("/incentive-settings", updateIncentiveSettings);
+router.get("/incentive-progress", getIncentiveProgress);
 
 
 // Delivery partner related routes

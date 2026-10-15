@@ -15,6 +15,7 @@ import DummyAISuggestions from "./AdminPages/DummyAISuggestions";
 import CollectionSummary from "./AdminPages/CollectionSummary";
 import PenaltyManagement from "./AdminPages/PenaltyManagement";
 import AdvanceManagement from "./AdminPages/AdvanceManagement";
+import IncentiveManagement from "./AdminPages/IncentiveManagement";
 import BusinessStatistics from "./AdminPages/BusinessStatistics/index";
 import CustomerView from "./Admin-View/CustomerView";
 import CustomerDetails from "./CustomerPages/CustomerDetails";
@@ -93,6 +94,7 @@ function App() {
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="penalty" element={<PenaltyManagement />} />
         <Route path="advance" element={<AdvanceManagement />} />
+        <Route path="incentive-management" element={<IncentiveManagement />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
         <Route path="customer-management" element={<CustomerManagement />} />
         <Route path="calling-customers" element={<CallingCustomers />} />
@@ -136,6 +138,7 @@ function App() {
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="penalty" element={<PenaltyManagement />} />
         <Route path="advance" element={<AdvanceManagement />} />
+        <Route path="incentive-management" element={<IncentiveManagement />} />
         <Route path="report" element={<SupReport />} />
         <Route path="customer-management" element={<SupCustomerManagement />} />
         <Route path="customer-map" element={<SupcustomerMap />} />
