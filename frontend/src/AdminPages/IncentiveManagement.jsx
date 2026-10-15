@@ -234,9 +234,18 @@ export default function IncentiveManagement() {
     }
   };
 
-  // Handle slab field edit
-  const handleSlabChange = (index, field, value) => {
-    const num = Number(value) || 0;
+  // Handle slab field edit by milestone tier (1..4)
+  const handleSlabChange = (tier, field, value) => {
+    // If user cleared the input (empty string), preserve "" so input stays clear and doesn't snap to 0
+    let cleanVal = value;
+    if (value === "" || value === null || value === undefined) {
+      cleanVal = "";
+    } else {
+      const parsed = Number(value);
+      // If valid number, use parsed number (which also automatically strips accidental leading 0s like "0700" -> 700)
+      cleanVal = isNaN(parsed) ? "" : Math.max(0, parsed);
+    }
+
     setSettings((prev) => {
       const copy = JSON.parse(JSON.stringify(prev));
       // If syncBothApps is active, apply edits to BOTH 'routes' and 'sales'
@@ -244,34 +253,30 @@ export default function IncentiveManagement() {
 
       targetApps.forEach((appKey) => {
         if (!copy[appKey]) copy[appKey] = {};
-        const targetSlabs = copy[appKey].slabs || [];
-        if (targetSlabs[index]) {
-          targetSlabs[index][field] = num;
+        if (!Array.isArray(copy[appKey].slabs) || copy[appKey].slabs.length === 0) {
+          copy[appKey].slabs = JSON.parse(JSON.stringify(DEFAULT_CONFIG[appKey]?.slabs || []));
         }
-        // If updating tier 4 (goal), sync with goalTrays & goalReward
-        if (index === 3) {
-          if (field === "trayTarget") copy[appKey].goalTrays = num;
-          if (field === "incentive") copy[appKey].goalReward = num;
+
+        // Locate slab by exact tier so index never shifts
+        let slabItem = copy[appKey].slabs.find((s) => Number(s.tier) === tier);
+        if (!slabItem) {
+          const fallbackIdx = tier - 1;
+          if (copy[appKey].slabs[fallbackIdx]) {
+            slabItem = copy[appKey].slabs[fallbackIdx];
+            slabItem.tier = tier;
+          } else {
+            slabItem = { tier, trayTarget: 0, incentive: 0 };
+            copy[appKey].slabs.push(slabItem);
+          }
         }
-      });
-      return copy;
-    });
-  };
 
-  // Handle Goal fields edit
-  const handleGoalChange = (field, value) => {
-    const num = Number(value) || 0;
-    setSettings((prev) => {
-      const copy = JSON.parse(JSON.stringify(prev));
-      const targetApps = syncBothApps ? ["routes", "sales"] : [activeConfigTab];
+        slabItem[field] = cleanVal;
 
-      targetApps.forEach((appKey) => {
-        if (!copy[appKey]) copy[appKey] = {};
-        copy[appKey][field] = num;
-        // sync with slab 4
-        if (copy[appKey].slabs?.[3]) {
-          if (field === "goalTrays") copy[appKey].slabs[3].trayTarget = num;
-          if (field === "goalReward") copy[appKey].slabs[3].incentive = num;
+        // If tier 4 (Weekly Goal), keep goalTrays & goalReward synchronized
+        if (tier === 4) {
+          const numVal = cleanVal === "" ? "" : (Number(cleanVal) || 0);
+          if (field === "trayTarget") copy[appKey].goalTrays = numVal;
+          if (field === "incentive") copy[appKey].goalReward = numVal;
         }
       });
       return copy;
@@ -282,13 +287,35 @@ export default function IncentiveManagement() {
   const handleSaveSettings = async () => {
     try {
       setSavingSettings(true);
-      const res = await axios.post(`${ADMIN_PATH}/incentive-settings`, settings, {
+      const payload = JSON.parse(JSON.stringify(settings));
+
+      ["routes", "sales"].forEach((appKey) => {
+        if (!payload[appKey]) {
+          payload[appKey] = JSON.parse(JSON.stringify(DEFAULT_CONFIG[appKey]));
+        }
+        const rawSlabs = payload[appKey].slabs || DEFAULT_CONFIG[appKey]?.slabs || [];
+        payload[appKey].slabs = [1, 2, 3, 4].map((tierNum) => {
+          const s = rawSlabs.find((item) => Number(item.tier) === tierNum) || {};
+          return {
+            tier: tierNum,
+            trayTarget: s.trayTarget === "" || s.trayTarget === undefined ? 0 : Math.max(0, Number(s.trayTarget) || 0),
+            incentive: s.incentive === "" || s.incentive === undefined ? 0 : Math.max(0, Number(s.incentive) || 0),
+          };
+        });
+
+        const tier4 = payload[appKey].slabs.find((s) => s.tier === 4);
+        payload[appKey].goalTrays = tier4 ? tier4.trayTarget : (Number(payload[appKey].goalTrays) || 1000);
+        payload[appKey].goalReward = tier4 ? tier4.incentive : (Number(payload[appKey].goalReward) || 2000);
+      });
+
+      const res = await axios.post(`${ADMIN_PATH}/incentive-settings`, payload, {
         headers: getAuthHeader(),
       });
 
       if (res.data?.success) {
         showToast("Incentive targets saved & synced with mobile apps!");
-        setInitialSettings(JSON.parse(JSON.stringify(settings)));
+        setSettings(payload);
+        setInitialSettings(JSON.parse(JSON.stringify(payload)));
         // Re-fetch progress to re-evaluate milestones with new target slabs
         fetchProgress(fromDate, toDate, roleFilter);
       } else {
@@ -329,36 +356,66 @@ export default function IncentiveManagement() {
     });
   }, [progressData, roleFilter, searchQuery]);
 
-  // Current active configuration for the live preview
+  // Current active configuration
   const activeConfig = settings[activeConfigTab] || DEFAULT_CONFIG[activeConfigTab];
-  const activeSlabs = useMemo(() => {
-    const s = [...(activeConfig.slabs || [])];
-    return s.sort((a, b) => (Number(a.trayTarget) || 0) - (Number(b.trayTarget) || 0));
-  }, [activeConfig.slabs]);
 
-  // Calculate live preview milestones based on the preview slider
-  const previewGoal = Number(activeConfig.goalTrays) || 1000;
-  const previewReward = Number(activeConfig.goalReward) || 2000;
-  const previewProgressPercent = previewGoal > 0 ? Math.min(100, Math.round((previewTestTrays / previewGoal) * 100)) : 0;
+  // Milestone slabs for the active tab, kept strictly in stable Tier order (1, 2, 3, 4)
+  const configSlabs = useMemo(() => {
+    const rawSlabs = activeConfig?.slabs || DEFAULT_CONFIG[activeConfigTab]?.slabs || [];
+    return [1, 2, 3, 4].map((tierNum) => {
+      const existing = rawSlabs.find((s) => Number(s.tier) === tierNum);
+      if (existing) return existing;
+      const fallback = DEFAULT_CONFIG[activeConfigTab]?.slabs?.find((s) => s.tier === tierNum);
+      return fallback || { tier: tierNum, trayTarget: 0, incentive: 0 };
+    });
+  }, [activeConfig?.slabs, activeConfigTab]);
+
+  // Calculation slabs sorted by target for preview simulation only
+  const calculationSlabs = useMemo(() => {
+    return [...configSlabs]
+      .map((s) => ({
+        tier: Number(s.tier) || 1,
+        trayTarget: s.trayTarget === "" ? 0 : Number(s.trayTarget) || 0,
+        incentive: s.incentive === "" ? 0 : Number(s.incentive) || 0,
+      }))
+      .filter((s) => s.trayTarget > 0)
+      .sort((a, b) => a.trayTarget - b.trayTarget);
+  }, [configSlabs]);
+
+  // Goal & Reward for preview
+  const tier4Slab = configSlabs.find((s) => Number(s.tier) === 4);
+  const previewGoal = tier4Slab && tier4Slab.trayTarget !== ""
+    ? (Number(tier4Slab.trayTarget) || 0)
+    : (Number(activeConfig.goalTrays) || 1000);
+  const previewReward = tier4Slab && tier4Slab.incentive !== ""
+    ? (Number(tier4Slab.incentive) || 0)
+    : (Number(activeConfig.goalReward) || 2000);
+  const previewProgressPercent =
+    previewGoal > 0 ? Math.min(100, Math.round((previewTestTrays / previewGoal) * 100)) : 0;
 
   // Find preview remaining trays for next tier
   let previewTraysLeft = 0;
-  let previewNextTarget = activeSlabs[0]?.trayTarget || previewGoal;
+  let previewNextTarget = calculationSlabs[0]?.trayTarget || previewGoal;
   let previewEarned = 0;
-  for (let i = activeSlabs.length - 1; i >= 0; i--) {
-    if (previewTestTrays >= activeSlabs[i].trayTarget) {
-      previewEarned = activeSlabs[i].incentive;
-      if (i < activeSlabs.length - 1) {
-        previewNextTarget = activeSlabs[i + 1].trayTarget;
-        previewTraysLeft = Math.max(0, previewNextTarget - previewTestTrays);
-      } else {
-        previewTraysLeft = 0;
+
+  if (calculationSlabs.length > 0) {
+    for (let i = calculationSlabs.length - 1; i >= 0; i--) {
+      if (previewTestTrays >= calculationSlabs[i].trayTarget) {
+        previewEarned = calculationSlabs[i].incentive;
+        if (i < calculationSlabs.length - 1) {
+          previewNextTarget = calculationSlabs[i + 1].trayTarget;
+          previewTraysLeft = Math.max(0, previewNextTarget - previewTestTrays);
+        } else {
+          previewTraysLeft = 0;
+        }
+        break;
       }
-      break;
+      if (i === 0 && previewTestTrays < calculationSlabs[0].trayTarget) {
+        previewTraysLeft = Math.max(0, calculationSlabs[0].trayTarget - previewTestTrays);
+      }
     }
-    if (i === 0 && previewTestTrays < activeSlabs[0].trayTarget) {
-      previewTraysLeft = Math.max(0, activeSlabs[0].trayTarget - previewTestTrays);
-    }
+  } else {
+    previewTraysLeft = Math.max(0, previewGoal - previewTestTrays);
   }
 
   // Quick Preset Handlers
@@ -523,11 +580,12 @@ export default function IncentiveManagement() {
 
             {/* 4 Milestone Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {activeSlabs.map((slab, idx) => {
-                const isGoal = idx === 3;
+              {configSlabs.map((slab) => {
+                const tierNum = Number(slab.tier) || 1;
+                const isGoal = tierNum === 4;
                 return (
                   <div
-                    key={slab.tier || idx}
+                    key={tierNum}
                     className={`rounded-xl p-4 border transition-all ${
                       isGoal
                         ? "bg-gradient-to-br from-amber-500/10 via-amber-50 to-white border-amber-300 shadow-xs ring-1 ring-amber-300/50"
@@ -543,14 +601,14 @@ export default function IncentiveManagement() {
                               : "bg-gray-200 text-gray-700"
                           }`}
                         >
-                          {idx + 1}
+                          {tierNum}
                         </span>
                         <span className="text-xs font-bold text-gray-800">
-                          Milestone {idx + 1} {isGoal && "(Weekly Goal 👑)"}
+                          Milestone {tierNum} {isGoal && "(Weekly Goal 👑)"}
                         </span>
                       </div>
                       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                        Tier {idx + 1}
+                        Tier {tierNum}
                       </span>
                     </div>
 
@@ -564,8 +622,9 @@ export default function IncentiveManagement() {
                             type="number"
                             min="0"
                             step="10"
-                            value={slab.trayTarget}
-                            onChange={(e) => handleSlabChange(idx, "trayTarget", e.target.value)}
+                            placeholder="0"
+                            value={slab.trayTarget ?? ""}
+                            onChange={(e) => handleSlabChange(tierNum, "trayTarget", e.target.value)}
                             className="w-full pl-2.5 pr-8 py-1.5 text-sm font-bold text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
                           />
                           <span className="absolute right-2.5 top-2 text-[10px] font-semibold text-gray-400">
@@ -586,8 +645,9 @@ export default function IncentiveManagement() {
                             type="number"
                             min="0"
                             step="50"
-                            value={slab.incentive}
-                            onChange={(e) => handleSlabChange(idx, "incentive", e.target.value)}
+                            placeholder="0"
+                            value={slab.incentive ?? ""}
+                            onChange={(e) => handleSlabChange(tierNum, "incentive", e.target.value)}
                             className="w-full pl-6 pr-2.5 py-1.5 text-sm font-bold text-emerald-700 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
                           />
                         </div>
@@ -736,16 +796,23 @@ export default function IncentiveManagement() {
 
                   {/* 4 Milestones markers below slider */}
                   <div className="flex justify-between items-start mt-2 text-center">
-                    {activeSlabs.map((slab, idx) => (
-                      <div key={idx} className="flex-1 px-0.5">
-                        <span className="block text-[10px] font-bold text-gray-700">
-                          {slab.trayTarget}
-                        </span>
-                        <span className="block text-[10px] font-bold text-amber-700">
-                          ₹{slab.incentive}
-                        </span>
-                      </div>
-                    ))}
+                    {configSlabs.map((slab) => {
+                      const tierNum = Number(slab.tier) || 1;
+                      return (
+                        <div key={tierNum} className="flex-1 px-0.5">
+                          <span className="block text-[10px] font-bold text-gray-700">
+                            {slab.trayTarget !== "" && slab.trayTarget !== undefined
+                              ? Number(slab.trayTarget).toLocaleString()
+                              : "-"}
+                          </span>
+                          <span className="block text-[10px] font-bold text-amber-700">
+                            ₹{slab.incentive !== "" && slab.incentive !== undefined
+                              ? Number(slab.incentive).toLocaleString()
+                              : 0}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
