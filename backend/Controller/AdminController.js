@@ -3776,6 +3776,44 @@ const updateIncentiveSettings = async (req, res) => {
   }
 };
 
+// Weekly Incentive Cycle: Sunday to Saturday (resets every Saturday at midnight)
+function getIncentiveWeekRange(d = new Date()) {
+  try {
+    const dayStr = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", weekday: "short" }).format(d);
+    const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const day = weekdayMap[dayStr] ?? d.getDay();
+
+    const sunday = new Date(d);
+    sunday.setDate(d.getDate() - day);
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+
+    const formatParts = (dt) => {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(dt);
+      const year = parts.find((p) => p.type === "year")?.value;
+      const month = parts.find((p) => p.type === "month")?.value;
+      const dayVal = parts.find((p) => p.type === "day")?.value;
+      if (year && month && dayVal) return `${year}-${month}-${dayVal}`;
+      return dt.toISOString().slice(0, 10);
+    };
+
+    return {
+      fromDate: formatParts(sunday),
+      toDate: formatParts(saturday),
+    };
+  } catch (e) {
+    return {
+      fromDate: d.toISOString().slice(0, 10),
+      toDate: d.toISOString().slice(0, 10),
+    };
+  }
+}
+
 // GET /api/admin/incentive-progress
 const getIncentiveProgress = async (req, res) => {
   try {
@@ -3783,6 +3821,10 @@ const getIncentiveProgress = async (req, res) => {
     const db = getFirestore();
     const inventoryApp = getInventoryApp();
     const invDb = inventoryApp ? getFirestore(inventoryApp) : null;
+
+    const defaultWeek = getIncentiveWeekRange();
+    const effectiveFromDate = fromDate || defaultWeek.fromDate;
+    const effectiveToDate = toDate || defaultWeek.toDate;
 
     // 1. Fetch settings
     const settingsSnap = await db.collection("incentive_settings").doc("targets").get().catch(() => null);
@@ -3831,14 +3873,14 @@ const getIncentiveProgress = async (req, res) => {
     // 3. Aggregate Delivered Trays per agent across date range
     const agentDeliveredTrays = {}; // normalized name -> quantity
 
-    // A. From business_statistics_daily if available
+    // Query dailyStats and customers
     let dailyStatsQuery = db.collection("business_statistics_daily");
-    if (fromDate && toDate) {
-      dailyStatsQuery = dailyStatsQuery.where("__name__", ">=", fromDate).where("__name__", "<=", toDate);
-    } else if (fromDate) {
-      dailyStatsQuery = dailyStatsQuery.where("__name__", ">=", fromDate);
-    } else if (toDate) {
-      dailyStatsQuery = dailyStatsQuery.where("__name__", "<=", toDate);
+    if (effectiveFromDate && effectiveToDate) {
+      dailyStatsQuery = dailyStatsQuery.where("__name__", ">=", effectiveFromDate).where("__name__", "<=", effectiveToDate);
+    } else if (effectiveFromDate) {
+      dailyStatsQuery = dailyStatsQuery.where("__name__", ">=", effectiveFromDate);
+    } else if (effectiveToDate) {
+      dailyStatsQuery = dailyStatsQuery.where("__name__", "<=", effectiveToDate);
     }
 
     const [dailyStatsSnap, customersSnap] = await Promise.all([
@@ -3846,31 +3888,16 @@ const getIncentiveProgress = async (req, res) => {
       db.collection("customers").get().catch(() => ({ docs: [] })),
     ]);
 
-    // Track dates processed from daily stats
-    const processedDailyDates = new Set();
-    dailyStatsSnap.docs.forEach((doc) => {
-      processedDailyDates.add(doc.id);
-      const data = doc.data();
-      const agentSales = data.deliveryAnalytics?.agentWiseSales || {};
-      Object.entries(agentSales).forEach(([agent, qty]) => {
-        if (!agent) return;
-        const norm = agent.toLowerCase().trim();
-        agentDeliveredTrays[norm] = (agentDeliveredTrays[norm] || 0) + (Number(qty) || 0);
-      });
-    });
-
-    // B. From customers collection last8Days (for today or any dates not yet archived in business_statistics_daily)
+    // A. Priority 1: From customers collection last8Days (live source of truth for deliveries in recent 8 days)
+    const datesWithLiveCustomerData = new Set();
     customersSnap.docs.forEach((doc) => {
       const cData = doc.data();
       const last8Days = cData.last8Days || {};
 
       Object.entries(last8Days).forEach(([dateKey, entry]) => {
         // Only include if date is in requested range
-        if (fromDate && dateKey < fromDate) return;
-        if (toDate && dateKey > toDate) return;
-
-        // If this date is already aggregated from business_statistics_daily, skip to avoid double counting
-        if (processedDailyDates.has(dateKey)) return;
+        if (effectiveFromDate && dateKey < effectiveFromDate) return;
+        if (effectiveToDate && dateKey > effectiveToDate) return;
 
         const isDelivered =
           typeof entry === "string"
@@ -3878,6 +3905,7 @@ const getIncentiveProgress = async (req, res) => {
             : (entry?.status || "").toLowerCase() === "delivered";
 
         if (isDelivered) {
+          datesWithLiveCustomerData.add(dateKey);
           const agent = entry?.agentName || cData.agentName || "";
           if (agent) {
             const norm = agent.toLowerCase().trim();
@@ -3888,17 +3916,32 @@ const getIncentiveProgress = async (req, res) => {
       });
     });
 
-    // C. Also check loading_entries vs return_load_entries from inventory app if present
-    if (invDb && fromDate && toDate) {
+    // B. Priority 2: From business_statistics_daily for historical dates older than last8Days
+    dailyStatsSnap.docs.forEach((doc) => {
+      const dateKey = doc.id;
+      // Skip if we already aggregated live deliveries from customers collection for this date
+      if (datesWithLiveCustomerData.has(dateKey)) return;
+
+      const data = doc.data();
+      const agentSales = data.deliveryAnalytics?.agentWiseSales || {};
+      Object.entries(agentSales).forEach(([agent, qty]) => {
+        if (!agent) return;
+        const norm = agent.toLowerCase().trim();
+        agentDeliveredTrays[norm] = (agentDeliveredTrays[norm] || 0) + (Number(qty) || 0);
+      });
+    });
+
+    // C. Priority 3: Also check loading_entries vs return_load_entries from inventory app if present
+    if (invDb && effectiveFromDate && effectiveToDate) {
       try {
         let loadQ = invDb.collection("loading_entries");
         let retQ = invDb.collection("return_load_entries");
-        if (fromDate === toDate) {
-          loadQ = loadQ.where("dateKey", "==", fromDate);
-          retQ = retQ.where("dateKey", "==", fromDate);
+        if (effectiveFromDate === effectiveToDate) {
+          loadQ = loadQ.where("dateKey", "==", effectiveFromDate);
+          retQ = retQ.where("dateKey", "==", effectiveFromDate);
         } else {
-          loadQ = loadQ.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
-          retQ = retQ.where("dateKey", ">=", fromDate).where("dateKey", "<=", toDate);
+          loadQ = loadQ.where("dateKey", ">=", effectiveFromDate).where("dateKey", "<=", effectiveToDate);
+          retQ = retQ.where("dateKey", ">=", effectiveFromDate).where("dateKey", "<=", effectiveToDate);
         }
 
         const [loadSnap, retSnap] = await Promise.all([
@@ -3919,10 +3962,10 @@ const getIncentiveProgress = async (req, res) => {
           if (ag) invReturn[ag] = (invReturn[ag] || 0) + (Number(d.quantity) || 0);
         });
 
-        // If an agent had load - return > 0 and wasn't populated from customers, incorporate it
+        // Ensure net inventory delivered (load - return) matches or supplements if higher
         Object.keys(invLoad).forEach((ag) => {
           const nett = Math.max(0, (invLoad[ag] || 0) - (invReturn[ag] || 0));
-          if (nett > 0 && !agentDeliveredTrays[ag]) {
+          if (nett > (agentDeliveredTrays[ag] || 0)) {
             agentDeliveredTrays[ag] = nett;
           }
         });
@@ -4028,7 +4071,7 @@ const getIncentiveProgress = async (req, res) => {
       summary,
       agents: agentRows,
       settings,
-      dateRange: { fromDate, toDate },
+      dateRange: { fromDate: effectiveFromDate, toDate: effectiveToDate },
     });
   } catch (err) {
     console.error("getIncentiveProgress error:", err);

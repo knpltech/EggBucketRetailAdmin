@@ -48,18 +48,27 @@ function getDateKey(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+// Target cycle is fixed from Sunday to Saturday.
+// Start day Sunday, end day Saturday. Resets every Saturday at midnight.
 function getWeekRange(date = new Date()) {
   const d = new Date(date);
-  const day = d.getDay(); // 0 is Sunday, 1 is Monday...
-  // Monday start:
-  const diffToMonday = (day === 0 ? -6 : 1) - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diffToMonday);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  
+  // Resolve weekday in Indian Standard Time (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+  const dayStr = new Intl.DateTimeFormat("en-US", { timeZone: INDIA_TZ, weekday: "short" }).format(d);
+  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const day = weekdayMap[dayStr] ?? d.getDay();
+
+  // Sunday start (offset back by 'day' days)
+  const sunday = new Date(d);
+  sunday.setDate(d.getDate() - day);
+
+  // Saturday end (Sunday + 6 days)
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+
   return {
-    from: getDateKey(monday),
-    to: getDateKey(sunday),
+    from: getDateKey(sunday),
+    to: getDateKey(saturday),
   };
 }
 
@@ -974,13 +983,14 @@ export default function IncentiveManagement() {
               <button
                 type="button"
                 onClick={() => handlePresetChange("this_week")}
+                title="Target cycle: Sunday to Saturday (resets Saturday midnight)"
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                   preset === "this_week"
                     ? "bg-white font-bold text-gray-900 shadow-2xs"
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                This Week
+                This Week (Sun - Sat)
               </button>
               <button
                 type="button"
@@ -996,13 +1006,14 @@ export default function IncentiveManagement() {
               <button
                 type="button"
                 onClick={() => handlePresetChange("last_week")}
+                title="Previous cycle: Sunday to Saturday"
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                   preset === "last_week"
                     ? "bg-white font-bold text-gray-900 shadow-2xs"
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                Last Week
+                Last Week (Sun - Sat)
               </button>
               <button
                 type="button"
