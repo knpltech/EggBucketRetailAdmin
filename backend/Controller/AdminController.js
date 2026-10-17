@@ -3906,11 +3906,23 @@ const getIncentiveProgress = async (req, res) => {
 
         if (isDelivered) {
           datesWithLiveCustomerData.add(dateKey);
-          const agent = entry?.agentName || cData.agentName || "";
+          const entryObj = typeof entry === "string" ? {} : entry;
+          const agent =
+            entryObj?.agentName ||
+            (typeof entryObj?.deliveryMan === "object" ? entryObj?.deliveryMan?.name : entryObj?.deliveryMan) ||
+            entryObj?.deliveryAgent ||
+            cData.agentName ||
+            (typeof cData.deliveryMan === "object" ? cData.deliveryMan?.name : cData.deliveryMan) ||
+            "";
+          const agentId = entryObj?.agentId || entryObj?.uid || entryObj?.deliveryManId || cData.agentId || cData.uid || "";
+          const qty = Number(entryObj?.quantity ?? entryObj?.trays) || 0;
+
           if (agent) {
             const norm = agent.toLowerCase().trim();
-            const qty = Number(entry?.quantity || entry?.trays) || 0;
             agentDeliveredTrays[norm] = (agentDeliveredTrays[norm] || 0) + qty;
+          }
+          if (agentId) {
+            agentDeliveredTrays[agentId] = (agentDeliveredTrays[agentId] || 0) + qty;
           }
         }
       });
@@ -3931,49 +3943,6 @@ const getIncentiveProgress = async (req, res) => {
       });
     });
 
-    // C. Priority 3: Also check loading_entries vs return_load_entries from inventory app if present
-    if (invDb && effectiveFromDate && effectiveToDate) {
-      try {
-        let loadQ = invDb.collection("loading_entries");
-        let retQ = invDb.collection("return_load_entries");
-        if (effectiveFromDate === effectiveToDate) {
-          loadQ = loadQ.where("dateKey", "==", effectiveFromDate);
-          retQ = retQ.where("dateKey", "==", effectiveFromDate);
-        } else {
-          loadQ = loadQ.where("dateKey", ">=", effectiveFromDate).where("dateKey", "<=", effectiveToDate);
-          retQ = retQ.where("dateKey", ">=", effectiveFromDate).where("dateKey", "<=", effectiveToDate);
-        }
-
-        const [loadSnap, retSnap] = await Promise.all([
-          loadQ.get().catch(() => ({ docs: [] })),
-          retQ.get().catch(() => ({ docs: [] })),
-        ]);
-
-        const invLoad = {};
-        const invReturn = {};
-        loadSnap.docs.forEach((doc) => {
-          const d = doc.data();
-          const ag = (d.agentName || "").toLowerCase().trim();
-          if (ag) invLoad[ag] = (invLoad[ag] || 0) + (Number(d.quantity) || 0);
-        });
-        retSnap.docs.forEach((doc) => {
-          const d = doc.data();
-          const ag = (d.agentName || "").toLowerCase().trim();
-          if (ag) invReturn[ag] = (invReturn[ag] || 0) + (Number(d.quantity) || 0);
-        });
-
-        // Ensure net inventory delivered (load - return) matches or supplements if higher
-        Object.keys(invLoad).forEach((ag) => {
-          const nett = Math.max(0, (invLoad[ag] || 0) - (invReturn[ag] || 0));
-          if (nett > (agentDeliveredTrays[ag] || 0)) {
-            agentDeliveredTrays[ag] = nett;
-          }
-        });
-      } catch (e) {
-        console.warn("Inventory check skipped:", e?.message);
-      }
-    }
-
     // 4. Combine all personnel and calculate metrics
     let allPersonnel = [];
     if (!role || role === "all") {
@@ -3986,7 +3955,25 @@ const getIncentiveProgress = async (req, res) => {
 
     const agentRows = allPersonnel.map((agent) => {
       const norm = (agent.name || "").toLowerCase().trim();
-      const deliveredQty = agentDeliveredTrays[norm] || 0;
+      let deliveredQty = agentDeliveredTrays[norm] || 0;
+      if (!deliveredQty && agent.uid && agentDeliveredTrays[agent.uid]) {
+        deliveredQty = agentDeliveredTrays[agent.uid];
+      }
+      if (!deliveredQty && agent.id && agentDeliveredTrays[agent.id]) {
+        deliveredQty = agentDeliveredTrays[agent.id];
+      }
+      if (!deliveredQty) {
+        // Fallback: match by first name (e.g. "Tapas" vs "Tapas Singha")
+        const firstWord = norm.split(/\s+/)[0];
+        if (firstWord && firstWord.length > 2) {
+          for (const [key, qty] of Object.entries(agentDeliveredTrays)) {
+            if (key.split(/\s+/)[0] === firstWord) {
+              deliveredQty = qty;
+              break;
+            }
+          }
+        }
+      }
 
       const roleKey = agent.role === "sales" ? "sales" : "routes";
       const config = settings[roleKey] || DEFAULT_INCENTIVE_SETTINGS[roleKey];
