@@ -1,4 +1,4 @@
-import axios from "axios";
+﻿import axios from "axios";
 import { getFirestore } from "firebase-admin/firestore";
 import { signAuthToken } from "../utils/jwt.js";
 
@@ -36,7 +36,7 @@ const login = async (req, res) => {
   }
 };
 
-// Send Voice OTP via 2Factor.in for customer mobile app with strict rate limiting
+// Send Voice OTP via 2Factor.in for customer mobile app with strict persistent rate limiting
 const sendVoiceOtp = async (req, res) => {
   try {
     const { phone } = req.body || {};
@@ -63,7 +63,7 @@ const sendVoiceOtp = async (req, res) => {
       });
     }
 
-    // 2. Per-phone Rate Limits
+    // 2. Per-phone Rate Limits (In-Memory Check)
     const phoneHistory = phoneRequestHistory.get(cleanPhone) || [];
     const recent24h = phoneHistory.filter(t => now - t < 24 * 60 * 60 * 1000);
 
@@ -71,39 +71,100 @@ const sendVoiceOtp = async (req, res) => {
     const lastRequestTime = recent24h[recent24h.length - 1];
     if (lastRequestTime && now - lastRequestTime < 60 * 1000) {
       const waitSec = Math.ceil((60 * 1000 - (now - lastRequestTime)) / 1000);
-      return res.status(429).json({ success: false, message: "Please wait " + waitSec + " seconds before requesting another voice OTP call." });
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${waitSec} seconds before requesting another voice OTP call.`
+      });
     }
 
     // Rule B: OTP requests per phone: 3 per 15 minutes
     const recent15m = recent24h.filter(t => now - t < 15 * 60 * 1000);
     if (recent15m.length >= 3) {
-      return res.status(429).json({ success: false, message: "Too many OTP requests. Maximum 3 requests allowed per 15 minutes. Please wait before retrying." });
+      return res.status(429).json({
+        success: false,
+        message: "Too many OTP requests. Maximum 3 requests allowed per 15 minutes. Please wait before retrying."
+      });
     }
 
     // Rule C: OTP requests per phone: 5 per 24 hours
     if (recent24h.length >= 5) {
-      return res.status(429).json({ success: false, message: "Daily OTP limit reached (maximum 5 requests per 24 hours). Please try again tomorrow." });
+      return res.status(429).json({
+        success: false,
+        message: "Daily OTP limit reached (maximum 5 requests per 24 hours). Please try again tomorrow."
+      });
+    }
+
+    // 3. Persistent Firestore Rate Limit Check (Survives server restarts and cold boots)
+    let rateDocRef = null;
+    try {
+      const db = getFirestore();
+      rateDocRef = db.collection("OtpRateLimits").doc(cleanPhone);
+      const docSnap = await rateDocRef.get();
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        const fsLastTime = data.lastRequestTime || 0;
+        if (now - fsLastTime < 60 * 1000) {
+          const waitSec = Math.ceil((60 * 1000 - (now - fsLastTime)) / 1000);
+          return res.status(429).json({
+            success: false,
+            message: `Please wait ${waitSec} seconds before requesting another voice OTP call.`
+          });
+        }
+        const fsTimestamps = (data.timestamps || []).filter(t => now - t < 24 * 60 * 60 * 1000);
+        const fsRecent15m = fsTimestamps.filter(t => now - t < 15 * 60 * 1000);
+        if (fsRecent15m.length >= 3) {
+          return res.status(429).json({
+            success: false,
+            message: "Too many OTP requests. Maximum 3 requests allowed per 15 minutes. Please wait before retrying."
+          });
+        }
+        if (fsTimestamps.length >= 5) {
+          return res.status(429).json({
+            success: false,
+            message: "Daily OTP limit reached (maximum 5 requests per 24 hours). Please try again tomorrow."
+          });
+        }
+      }
+    } catch (fsErr) {
+      console.warn("[RateLimit] Firestore check failed, falling back to memory:", fsErr.message);
+    }
+
+    // CRITICAL: Record request timestamp BEFORE calling 2Factor
+    // This immediately blocks concurrent or quick repeated clicks within 60s
+    recent24h.push(now);
+    phoneRequestHistory.set(cleanPhone, recent24h);
+
+    recentIp1h.push(now);
+    ipRequestHistory.set(clientIp, recentIp1h);
+
+    if (rateDocRef) {
+      rateDocRef.set({
+        lastRequestTime: now,
+        lastIp: clientIp,
+        timestamps: [...recent24h]
+      }, { merge: true }).catch(e => console.warn("[RateLimit] Firestore write error:", e.message));
     }
 
     const apiKey = process.env.TWO_FACTOR_API_KEY;
     if (!apiKey) {
       console.error("TWO_FACTOR_API_KEY is not configured in .env");
-      return res.status(500).json({ success: false, message: "Voice OTP service not configured (missing TWO_FACTOR_API_KEY in backend .env)" });
+      return res.status(500).json({
+        success: false,
+        message: "Voice OTP service not configured (missing TWO_FACTOR_API_KEY in backend .env)"
+      });
     }
 
-    const twoFactorUrl = "https://2factor.in/API/V1/" + apiKey + "/VOICE/" + cleanPhone + "/AUTOGEN";
-    console.log("[2Factor] Initiating voice OTP call to +91" + cleanPhone + " from IP: " + clientIp + "...");
+    const twoFactorUrl = `https://2factor.in/API/V1/${apiKey}/VOICE/${cleanPhone}/AUTOGEN`;
+    console.log(`[2Factor] Initiating voice OTP call to +91${cleanPhone} from IP: ${clientIp}...`);
 
-    const response = await axios.get(twoFactorUrl, { timeout: 15000 });
+    const response = await axios.get(twoFactorUrl, { timeout: 25000 });
 
     if (response.data && response.data.Status === "Success") {
-      console.log("[2Factor] Voice OTP call triggered successfully. Session: " + response.data.Details);
+      console.log(`[2Factor] Voice OTP call triggered successfully. Session: ${response.data.Details}`);
 
-      recent24h.push(now);
-      phoneRequestHistory.set(cleanPhone, recent24h);
-
-      recentIp1h.push(now);
-      ipRequestHistory.set(clientIp, recentIp1h);
+      if (rateDocRef) {
+        rateDocRef.update({ lastSessionId: response.data.Details }).catch(() => {});
+      }
 
       return res.status(200).json({
         success: true,
@@ -155,17 +216,17 @@ const verifyVoiceOtp = async (req, res) => {
     }
 
     const cleanOtp = String(otp).trim();
-    const verifyUrl = "https://2factor.in/API/V1/" + apiKey + "/VOICE/VERIFY/" + sessionId + "/" + cleanOtp;
-    console.log("[2Factor] Verifying OTP (attempt " + attempts + "/5) for session: " + sessionId + "...");
+    const verifyUrl = `https://2factor.in/API/V1/${apiKey}/VOICE/VERIFY/${sessionId}/${cleanOtp}`;
+    console.log(`[2Factor] Verifying OTP (attempt ${attempts}/5) for session: ${sessionId}...`);
 
-    const response = await axios.get(verifyUrl, { timeout: 15000 });
+    const response = await axios.get(verifyUrl, { timeout: 20000 });
 
     if (
       response.data &&
       response.data.Status === "Success" &&
       (response.data.Details === "OTP Matched" || (typeof response.data.Details === "string" && response.data.Details.toLowerCase().includes("matched")))
     ) {
-      console.log("[2Factor] OTP matched successfully for session: " + sessionId);
+      console.log(`[2Factor] OTP matched successfully for session: ${sessionId}`);
       verifyAttempts.delete(sessionId);
       return res.status(200).json({
         success: true,
@@ -174,7 +235,7 @@ const verifyVoiceOtp = async (req, res) => {
     } else {
       console.warn("[2Factor] OTP verification failed:", response.data);
       const remaining = 5 - attempts;
-      const attemptNote = remaining > 0 ? (" (" + remaining + " attempt" + (remaining > 1 ? "s" : "") + " left)") : " (No attempts left. Please request a new OTP)";
+      const attemptNote = remaining > 0 ? ` (${remaining} attempt${remaining > 1 ? "s" : ""} left)` : " (No attempts left. Please request a new OTP)";
       return res.status(400).json({
         success: false,
         message: (response.data?.Details || "Invalid or expired OTP.") + attemptNote
@@ -182,7 +243,7 @@ const verifyVoiceOtp = async (req, res) => {
     }
   } catch (error) {
     const errDetails = error?.response?.data?.Details || error?.response?.data?.message || error.message;
-    console.error("[2Factor] Verification exception{", errDetails);
+    console.error("[2Factor] Verification exception:", errDetails);
     return res.status(400).json({
       success: false,
       message: errDetails || "OTP verification failed. Please try again."
