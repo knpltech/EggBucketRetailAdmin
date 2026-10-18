@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 
 import adminRouter from "./Routes/AdminRoutes.js";
+import { sendVoiceOtp, verifyVoiceOtp } from "./Controller/AuthController.js";
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
 import { startSkipDeliveryCron } from "./jobs/skipDeliveryCron.js";
 import "./jobs/businessAnalyticsCron.js";
@@ -66,6 +67,10 @@ app.get("/", (req, res) => {
 
 // Routes related to admin
 app.use("/api/admin", adminRouter);
+
+// Direct mobile app auth routes
+app.post("/api/auth/send-voice-otp", sendVoiceOtp);
+app.post("/api/auth/verify-voice-otp", verifyVoiceOtp);
 
 const port = env.port;
 app.listen(port, () => {

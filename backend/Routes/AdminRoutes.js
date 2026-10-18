@@ -6,7 +6,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // import login from AuthController
-import { login } from "../Controller/AuthController.js";
+import { login, sendVoiceOtp, verifyVoiceOtp } from "../Controller/AuthController.js";
 
 // import customer info functions from CustomerInfoController
 import {
@@ -103,6 +103,10 @@ import {
 
 // Customer routes
 router.route("/login").post(login);
+
+// Mobile App Voice OTP Routes
+router.route("/auth/send-voice-otp").post(sendVoiceOtp);
+router.route("/auth/verify-voice-otp").post(verifyVoiceOtp);
 router.use(authenticateToken);
 
 router.get("/user-info/stats", getUserInfoStats);
