@@ -34,7 +34,7 @@ const login = async (req, res) => {
 // Send Voice OTP via 2Factor.in for customer mobile app
 const sendVoiceOtp = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { phone } = req.body || {};
     if (!phone) {
       return res.status(400).json({ success: false, message: "Phone number is required" });
     }
@@ -88,7 +88,7 @@ const sendVoiceOtp = async (req, res) => {
 // Verify Voice OTP entered by customer
 const verifyVoiceOtp = async (req, res) => {
   try {
-    const { sessionId, otp } = req.body;
+    const { sessionId, otp } = req.body || {};
     if (!sessionId || !otp) {
       return res.status(400).json({ success: false, message: "Session ID and OTP are required" });
     }
