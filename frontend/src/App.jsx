@@ -7,6 +7,7 @@ import CustomerInfo from "./AdminPages/CustomerInfo";
 import AddDeliveryPartner from "./AdminPages/AddDeliveryPartner";
 import AddSalesPerson from "./AdminPages/AddSalesPerson";
 import AddCustomer from "./AdminPages/AddCustomer";
+import NewCustomers from "./AdminPages/NewCustomers";
 import PersonnelList from "./AdminPages/PersonnelList";
 import Customer from "./AdminPages/Customer";
 import Report from "./AdminPages/Report";
@@ -83,6 +84,7 @@ function App() {
           }
         />
         <Route path="customers" element={<CustomerInfo />} />
+        <Route path="new-customers" element={<NewCustomers />} />
         <Route path="add-delivery" element={<AddDeliveryPartner />} />
         <Route path="add-sales" element={<AddSalesPerson />} />
         <Route path="add-customer" element={<AddCustomer />} />
@@ -134,6 +136,7 @@ function App() {
       >
         <Route index element={<AboutSPage />} />
         <Route path="customers" element={<SupCustomerInfo />} />
+        <Route path="new-customers" element={<NewCustomers />} />
         <Route path="personnel" element={<SupPersonnelList />} />
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="penalty" element={<PenaltyManagement />} />

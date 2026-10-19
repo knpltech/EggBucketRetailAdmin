@@ -4070,6 +4070,334 @@ const getIncentiveProgress = async (req, res) => {
   }
 };
 
+// -------------------------------------------------------------
+// NEW CUSTOMER REGISTRATIONS (App Registration / Consent Collection)
+// -------------------------------------------------------------
 
+const getNewCustomers = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const { status, search } = req.query;
 
+    // Primary collection in Firestore is "New Customer"
+    const collectionsToCheck = ["New Customer", "new customer", "new cutomer"];
+    const seenIds = new Set();
+    const customers = [];
 
+    for (const colName of collectionsToCheck) {
+      try {
+        const snap = await db.collection(colName).get();
+        snap.forEach((doc) => {
+          if (seenIds.has(doc.id)) return;
+          seenIds.add(doc.id);
+
+          const data = doc.data() || {};
+
+          // Coordinates parsing
+          let lat = null;
+          let lng = null;
+          if (typeof data.location === "string") {
+            const latMatch = data.location.match(/Lat:\s*([-\d.]+)/i);
+            const lngMatch = data.location.match(/Lng:\s*([-\d.]+)/i);
+            if (latMatch) lat = parseFloat(latMatch[1]);
+            if (lngMatch) lng = parseFloat(lngMatch[1]);
+          } else if (data.latitude && data.longitude) {
+            lat = parseFloat(data.latitude);
+            lng = parseFloat(data.longitude);
+          } else if (data.lat && data.lng) {
+            lat = parseFloat(data.lat);
+            lng = parseFloat(data.lng);
+          }
+
+          // Creation time parsing
+          let createdAtMs = null;
+          let createdAtIso = null;
+          if (typeof data.createdAt === "number") {
+            createdAtMs = data.createdAt;
+            createdAtIso = new Date(data.createdAt).toISOString();
+          } else if (data.createdAt && typeof data.createdAt.toDate === "function") {
+            const d = data.createdAt.toDate();
+            createdAtMs = d.getTime();
+            createdAtIso = d.toISOString();
+          } else if (data.createdAt?._seconds) {
+            createdAtMs = data.createdAt._seconds * 1000;
+            createdAtIso = new Date(createdAtMs).toISOString();
+          } else if (typeof data.createdAt === "string") {
+            const d = new Date(data.createdAt);
+            if (!isNaN(d.getTime())) {
+              createdAtMs = d.getTime();
+              createdAtIso = d.toISOString();
+            }
+          }
+
+          // Consent parsing
+          const consentGiven =
+            data.consent_given === true ||
+            String(data.consent_given).toLowerCase() === "true";
+
+          const currentStatus = (data.status || "PENDING").toString().trim().toUpperCase();
+
+          customers.push({
+            id: doc.id,
+            name: data.name || "Unnamed Customer",
+            businessName: data.businessName || data.business || "N/A",
+            business: data.business || data.businessName || "N/A",
+            phone: data.phone || "",
+            location: data.location || (lat && lng ? `Lat: ${lat}, Lng: ${lng}` : "Location not provided"),
+            lat,
+            lng,
+            createdAt: createdAtMs,
+            createdAtIso,
+            status: currentStatus,
+            source: data.source || "App registration",
+            consent_given: consentGiven,
+            consent_type: data.consent_type || "service_calls",
+            consent_timestamp: data.consent_timestamp || null,
+            consent_text: data.consent_text || "",
+            notes: data.notes || "",
+            adminActionBy: data.adminActionBy || null,
+            updatedAt: data.updatedAt || null,
+            convertedCustomerId: data.convertedCustomerId || null,
+            collectionSource: colName,
+          });
+        });
+      } catch (colErr) {
+        console.warn(`Warning reading collection ${colName}:`, colErr.message);
+      }
+    }
+
+    // Sort by createdAt descending (newest first)
+    customers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    // Summary counters
+    const summary = {
+      total: customers.length,
+      pending: customers.filter((c) => c.status === "PENDING").length,
+      approved: customers.filter((c) => c.status === "APPROVED").length,
+      rejected: customers.filter((c) => c.status === "REJECTED").length,
+      contacted: customers.filter((c) => c.status === "CONTACTED").length,
+      consentGiven: customers.filter((c) => c.consent_given).length,
+    };
+
+    // Filter if requested
+    let filteredList = customers;
+    if (status && status !== "ALL") {
+      filteredList = filteredList.filter(
+        (c) => c.status.toUpperCase() === status.toUpperCase()
+      );
+    }
+    if (search && search.trim()) {
+      const q = search.toLowerCase().trim();
+      filteredList = filteredList.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.businessName.toLowerCase().includes(q) ||
+          c.phone.toLowerCase().includes(q) ||
+          c.id.toLowerCase().includes(q)
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      summary,
+      count: filteredList.length,
+      data: filteredList,
+    });
+  } catch (err) {
+    console.error("getNewCustomers error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch new customers",
+      error: err.message,
+    });
+  }
+};
+
+const updateNewCustomerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes, adminActionBy } = req.body;
+    const db = getFirestore();
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Customer ID is required" });
+    }
+
+    const collectionsToCheck = ["New Customer", "new customer", "new cutomer"];
+    let targetDocRef = null;
+
+    for (const colName of collectionsToCheck) {
+      const ref = db.collection(colName).doc(id);
+      const snap = await ref.get();
+      if (snap.exists) {
+        targetDocRef = ref;
+        break;
+      }
+    }
+
+    if (!targetDocRef) {
+      return res.status(404).json({ success: false, message: "Customer registration record not found" });
+    }
+
+    const updatePayload = {
+      updatedAt: Date.now(),
+    };
+    if (status) {
+      updatePayload.status = status.toString().trim().toUpperCase();
+    }
+    if (notes !== undefined) {
+      updatePayload.notes = notes;
+    }
+    if (adminActionBy) {
+      updatePayload.adminActionBy = adminActionBy;
+    }
+
+    await targetDocRef.update(updatePayload);
+
+    return res.status(200).json({
+      success: true,
+      message: "Registration updated successfully",
+      id,
+      updated: updatePayload,
+    });
+  } catch (err) {
+    console.error("updateNewCustomerStatus error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update registration status",
+      error: err.message,
+    });
+  }
+};
+
+const deleteNewCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getFirestore();
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Customer ID is required" });
+    }
+
+    const collectionsToCheck = ["New Customer", "new customer", "new cutomer"];
+    let deleted = false;
+
+    for (const colName of collectionsToCheck) {
+      const ref = db.collection(colName).doc(id);
+      const snap = await ref.get();
+      if (snap.exists) {
+        await ref.delete();
+        deleted = true;
+        break;
+      }
+    }
+
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Customer registration record not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Registration deleted successfully",
+      id,
+    });
+  } catch (err) {
+    console.error("deleteNewCustomer error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete registration",
+      error: err.message,
+    });
+  }
+};
+
+const convertNewCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { zone, route, potential, remarks, imageUrl } = req.body;
+    const db = getFirestore();
+
+    const collectionsToCheck = ["New Customer", "new customer", "new cutomer"];
+    let targetDocRef = null;
+    let newCustData = null;
+
+    for (const colName of collectionsToCheck) {
+      const ref = db.collection(colName).doc(id);
+      const snap = await ref.get();
+      if (snap.exists) {
+        targetDocRef = ref;
+        newCustData = snap.data();
+        break;
+      }
+    }
+
+    if (!targetDocRef || !newCustData) {
+      return res.status(404).json({ success: false, message: "New customer record not found" });
+    }
+
+    // Generate unique custid using globalcounter
+    let custid = `C${Date.now().toString().slice(-6)}`;
+    try {
+      const counterRef = db.collection("globalcounter").doc("customercounter");
+      const counterDoc = await counterRef.get();
+      const current = counterDoc.exists ? counterDoc.data().counter : 0;
+      custid = `C${current + 1}`;
+      await counterRef.set({ counter: current + 1 }, { merge: true });
+    } catch (cErr) {
+      console.warn("Counter generation error:", cErr.message);
+    }
+
+    // Add to active customers collection
+    const customerDocRef = db.collection("customers").doc();
+    const newCustomerDoc = {
+      name: newCustData.name || "",
+      phone: newCustData.phone || "",
+      business: newCustData.businessName || newCustData.business || "",
+      location: newCustData.location || "",
+      zone: zone || "UNASSIGNED",
+      route: route || "UNASSIGNED",
+      potential: potential || "T1",
+      remarks: remarks || `Converted from App Registration (${newCustData.source || "App"})`,
+      createdAt: Date.now(),
+      createdby: "App Registration (Approved by Admin)",
+      custid,
+      imageUrl: imageUrl || "",
+      consent_given: newCustData.consent_given ?? true,
+      consent_type: newCustData.consent_type || "service_calls",
+      consent_timestamp: newCustData.consent_timestamp || null,
+      source: newCustData.source || "App registration",
+    };
+
+    await customerDocRef.set(newCustomerDoc);
+
+    // Update the New Customer document
+    await targetDocRef.update({
+      status: "APPROVED",
+      convertedCustomerId: customerDocRef.id,
+      convertedAt: Date.now(),
+      updatedAt: Date.now(),
+      notes: remarks || "Approved and converted to active customer",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer registration approved and converted successfully!",
+      customerId: customerDocRef.id,
+      custid,
+    });
+  } catch (err) {
+    console.error("convertNewCustomer error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to convert new customer",
+      error: err.message,
+    });
+  }
+};
+
+export {
+  getNewCustomers,
+  updateNewCustomerStatus,
+  deleteNewCustomer,
+  convertNewCustomer,
+};

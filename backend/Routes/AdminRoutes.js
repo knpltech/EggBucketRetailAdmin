@@ -89,6 +89,10 @@ import {
   getIncentiveSettings,
   updateIncentiveSettings,
   getIncentiveProgress,
+  getNewCustomers,
+  updateNewCustomerStatus,
+  deleteNewCustomer,
+  convertNewCustomer,
 } from "../Controller/AdminController.js";
 
 
@@ -172,6 +176,13 @@ router.get("/agent-day-lock-status", getAgentDayLockStatus);
 router.get("/incentive-settings", getIncentiveSettings);
 router.post("/incentive-settings", updateIncentiveSettings);
 router.get("/incentive-progress", getIncentiveProgress);
+
+// New Customer Registrations (App Registration & Consent)
+router.get("/new-customers", getNewCustomers);
+router.put("/new-customers/:id/status", updateNewCustomerStatus);
+router.patch("/new-customers/:id/status", updateNewCustomerStatus);
+router.delete("/new-customers/:id", deleteNewCustomer);
+router.post("/new-customers/:id/convert", convertNewCustomer);
 
 
 // Delivery partner related routes

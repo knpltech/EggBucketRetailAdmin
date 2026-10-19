@@ -14,6 +14,7 @@ export default function SupervisorDashboard() {
   const navItems = [
     { label: "About", path: "/supervisor" },
     { label: "Customer Info", path: "/supervisor/customers" },
+    { label: "New Customers", path: "/supervisor/new-customers" },
     { label: "View Personnel", path: "/supervisor/personnel" },
     { label: "Collections", path: "/supervisor/collections" },
     { label: "Penalty Reports", path: "/supervisor/penalty" },

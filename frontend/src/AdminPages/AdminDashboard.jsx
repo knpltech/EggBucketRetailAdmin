@@ -22,6 +22,7 @@ import {
   FiAlertTriangle,
   FiZap,
   FiAward,
+  FiInbox,
 } from "react-icons/fi";
 
 export default function AdminDashboard() {
@@ -58,6 +59,7 @@ export default function AdminDashboard() {
   const navItems = [
     { label: "About", path: "/admin", icon: FiInfo },
     { label: "Customer Info", path: "/admin/customers", icon: FiUsers },
+    { label: "New Customers", path: "/admin/new-customers", icon: FiInbox, isNew: true },
     { label: "Add Delivery Partner", path: "/admin/add-delivery", icon: FiTruck },
     { label: "Add Sales Partner", path: "/admin/add-sales", icon: FiUserCheck },
     { label: "Add Customer", path: "/admin/add-customer", icon: FiUserPlus },
@@ -146,6 +148,11 @@ export default function AdminDashboard() {
                 {!isCollapsed && (
                   <>
                     <span className="flex-1 leading-6 truncate">{item.label}</span>
+                    {item.isNew && !isActive && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded-full border border-amber-500/30">
+                        NEW
+                      </span>
+                    )}
                     {isActive && (
                       <span className="w-2 h-2 bg-white rounded-full flex-shrink-0"></span>
                     )}

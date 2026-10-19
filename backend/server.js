@@ -47,7 +47,7 @@ app.use(
       // don't throw error (which becomes 500); just deny CORS so browser will block the request
       return callback(null, false);
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
