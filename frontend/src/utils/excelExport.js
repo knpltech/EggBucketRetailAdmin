@@ -4,7 +4,7 @@ import {
   getDateStringInTimeZone,
   computeDeliveryGap,
   computeCurrentCategory,
-} from './dummyAiSuggestionEngine';
+} from './aiSuggestionEngine';
 import { normalizePotential } from './customerMetrics';
 
 /**

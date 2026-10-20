@@ -507,15 +507,13 @@ export const LOGIC_1_PURCHASE_CADENCE = [
   "Alternate Day",
   "2 Alternate Day",
   "Weekly",
-  "FortNight",
-  "No Pattern",
 ];
 
 export const LOGIC_2_CUSTOMER_STATE = [
-  "Onboarding",
   "Active",
   "At Risk",
   "Inactive",
+  "On Call",
 ];
 
 export const LOGIC_3_PURCHASE_INTENT = [
@@ -524,9 +522,6 @@ export const LOGIC_3_PURCHASE_INTENT = [
   "Alternate Day",
   "2 Alternate Day",
   "Weekly",
-  "Fortnight",
-  "No Pattern",
-  "On Call",
 ];
 
 export const DEFAULT_LOGIC_1 = LOGIC_1_PURCHASE_CADENCE[0];
@@ -611,20 +606,40 @@ const evaluatePattern = (customer, pattern, logicLabel = "") => {
       };
     case "Everyday":
     case "Everyday (Always ON)":
-    case "Every Day Buyer":
-      return everyDayBuyer(customer);
+    case "Every Day Buyer": {
+      const res = everyDayBuyer(customer);
+      return {
+        ...res,
+        reason: `${logicLabel ? logicLabel + ": " : ""}Customer follows an Every Day buying pattern.`,
+      };
+    }
     case "Alternate Day":
-    case "Alternate Day Buyer":
-      return alternateDayBuyer(customer);
+    case "Alternate Day Buyer": {
+      const res = alternateDayBuyer(customer);
+      return {
+        ...res,
+        reason: `${logicLabel ? logicLabel + ": " : ""}${res.reason}`,
+      };
+    }
     case "2 Alternate Day":
-    case "2 Alterate Day":
-      return twoAlternateDayBuyer(customer);
+    case "2 Alterate Day": {
+      const res = twoAlternateDayBuyer(customer);
+      return {
+        ...res,
+        reason: `${logicLabel ? logicLabel + ": " : ""}${res.reason}`,
+      };
+    }
     case "Weekly":
     case "Weekly (Delivery Gap greater then G5)":
     case "Weekly ( Delivery Gap greater then G5)":
     case "Weekly (Delivery Gap greater than G5)":
-    case "Weekly (Delivery Gap > G5)":
-      return weeklyBuyer(customer);
+    case "Weekly (Delivery Gap > G5)": {
+      const res = weeklyBuyer(customer);
+      return {
+        ...res,
+        reason: `${logicLabel ? logicLabel + ": " : ""}${res.reason}`,
+      };
+    }
     case "For Night":
     case "Fort Night":
     case "FortNight":
@@ -771,7 +786,7 @@ const evaluatePattern = (customer, pattern, logicLabel = "") => {
   }
 };
 
-export const generateDummyAISuggestion = (
+export const generateAISuggestion = (
   customer,
   primaryPattern = DEFAULT_LOGIC_1,
   secondaryPattern = DEFAULT_LOGIC_2,
@@ -804,20 +819,20 @@ export const generateDummyAISuggestion = (
   };
 
   const primaryReason = formatReason("Purchase Cadence", primaryResult);
-  const secondaryReason = formatReason("Customer State", secondaryResult);
   const tertiaryReason = formatReason("Purchase Intent", tertiaryResult);
+  const secondaryReason = formatReason("Customer State", secondaryResult);
 
   if (isPrimaryOn && isSecondaryOn && isTertiaryOn) {
     return {
       suggestion: "TURN_ON_TODAY",
       confidence: Math.min(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
-      reason: `${primaryReason} | ${secondaryReason} | ${tertiaryReason}`,
+      reason: `${primaryReason} | ${tertiaryReason} | ${secondaryReason}`,
     };
   } else {
     const offLogics = [];
     if (!isPrimaryOn) offLogics.push(primaryReason);
-    if (!isSecondaryOn) offLogics.push(secondaryReason);
     if (!isTertiaryOn) offLogics.push(tertiaryReason);
+    if (!isSecondaryOn) offLogics.push(secondaryReason);
     return {
       suggestion: "TURN_OFF_TODAY",
       confidence: Math.max(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
@@ -825,3 +840,5 @@ export const generateDummyAISuggestion = (
     };
   }
 };
+
+export const generateDummyAISuggestion = generateAISuggestion;

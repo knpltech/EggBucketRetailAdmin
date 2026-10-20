@@ -1,5 +1,5 @@
 import React from "react";
-import DummyAISuggestionRow from "./DummyAISuggestionRow";
+import AISuggestionRow from "./AISuggestionRow";
 import {
   DEFAULT_LOGIC_1,
   DEFAULT_LOGIC_2,
@@ -8,9 +8,9 @@ import {
   LOGIC_2_CUSTOMER_STATE,
   LOGIC_3_PURCHASE_INTENT,
   resolveCleanPattern,
-} from "../utils/dummyAiSuggestionEngine";
+} from "../utils/aiSuggestionEngine";
 
-const DummyAISuggestionTable = ({
+const AISuggestionTable = ({
   data,
   loading,
   routes = [],
@@ -119,7 +119,7 @@ const DummyAISuggestionTable = ({
           </thead>
           <tbody>
             {data.map((item) => (
-              <DummyAISuggestionRow
+              <AISuggestionRow
                 key={item.customer.id}
                 customer={item.customer}
                 suggestionData={item.suggestion}
@@ -146,4 +146,4 @@ const DummyAISuggestionTable = ({
   );
 };
 
-export default DummyAISuggestionTable;
+export default AISuggestionTable;

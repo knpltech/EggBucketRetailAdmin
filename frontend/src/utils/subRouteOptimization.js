@@ -4,7 +4,7 @@ import {
   normalizeDeliveryGap,
   getDeliveryGapNumber,
   normalizePeakFrequency,
-} from "./dummyAiSuggestionEngine";
+} from "./aiSuggestionEngine";
 
 export const extractParentRoute = (routeName) => {
   if (!routeName) return "Other";
