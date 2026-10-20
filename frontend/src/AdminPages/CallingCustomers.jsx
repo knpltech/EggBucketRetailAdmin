@@ -8,7 +8,7 @@ import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
 } from "../utils/customerInfoClientCache";
-import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/dummyAiSuggestionEngine";
+import { getTodayEffectiveStatus as resolveTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 import {
   getName,
   getStatusColor,

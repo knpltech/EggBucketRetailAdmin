@@ -14,7 +14,7 @@ import {
   getLatestDeliveryStatus,
   getCustomerRemarkDisplay,
   getStatusBadgeColor,
-} from "../utils/dummyAiSuggestionEngine";
+} from "../utils/aiSuggestionEngine";
 import {
   getDateStringInTimeZone,
   getPeakFrequencyNumber,
@@ -159,7 +159,7 @@ const WeeklySchedulePopover = ({
   );
 };
 
-const DummyAISuggestionRow = ({
+const AISuggestionRow = ({
   customer,
   suggestionData,
   routes = [],
@@ -487,4 +487,4 @@ const DummyAISuggestionRow = ({
   );
 };
 
-export default React.memo(DummyAISuggestionRow);
+export default React.memo(AISuggestionRow);
