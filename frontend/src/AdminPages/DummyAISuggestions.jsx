@@ -10,7 +10,7 @@ import {
   getPeakFrequencyNumber,
   getTodayEffectiveStatus,
   resolvePeakFrequency,
-  generateAISuggestion,
+  generateDummyAISuggestion,
   BUYING_PATTERNS,
   LOGIC_1_PURCHASE_CADENCE,
   LOGIC_2_CUSTOMER_STATE,
@@ -21,7 +21,7 @@ import {
   resolveCleanPattern,
   getLatestDeliveryStatus,
   getCustomerRemarkDisplay,
-} from "../utils/aiSuggestionEngine";
+} from "../utils/dummyAiSuggestionEngine";
 import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
@@ -30,14 +30,14 @@ import {
   getPotentialNumber,
 } from "../utils/customerMetrics";
 import { exportToExcel } from "../utils/excelExport";
-import AISuggestionTable from "../components/AISuggestionTable";
+import DummyAISuggestionTable from "../components/DummyAISuggestionTable";
 
 
 
 const compareByName = (a, b) =>
   (a.customer.name || "").localeCompare(b.customer.name || "");
 
-const AISuggestions = () => {
+const DummyAISuggestions = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -346,7 +346,7 @@ const AISuggestions = () => {
             updates.push({
               id: c.id,
               purchaseCadence: localCadence[c.id] || c.purchaseCadence || "Learning",
-              customerState: localSecondary[c.id] || c.customerState || "Active",
+              customerState: localSecondary[c.id] || c.customerState || "Onboarding",
               purchaseIntent: localTertiary[c.id] || c.purchaseIntent || "Unknown",
             });
           }
@@ -433,7 +433,7 @@ const AISuggestions = () => {
 
       return {
         ...item,
-        suggestion: generateAISuggestion(item.customer, customerPattern, secondaryPattern, tertiaryPattern),
+        suggestion: generateDummyAISuggestion(item.customer, customerPattern, secondaryPattern, tertiaryPattern),
       };
     });
 
@@ -1202,7 +1202,7 @@ const AISuggestions = () => {
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible">
-        <AISuggestionTable
+        <DummyAISuggestionTable
           data={currentData}
           loading={loading}
           routes={routes}
@@ -1254,4 +1254,4 @@ const AISuggestions = () => {
   );
 };
 
-export default AISuggestions;
+export default DummyAISuggestions;

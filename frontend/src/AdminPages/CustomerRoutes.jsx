@@ -12,7 +12,7 @@ import {
   getDeliveryGapNumber,
   computeCurrentCategory,
   normalizePeakFrequency,
-} from "../utils/aiSuggestionEngine";
+} from "../utils/dummyAiSuggestionEngine";
 
 const extractParentRoute = (routeName) => {
   if (!routeName) return "Other";

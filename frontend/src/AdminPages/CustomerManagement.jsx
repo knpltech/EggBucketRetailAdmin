@@ -18,7 +18,7 @@ import {
   DEFAULT_LOGIC_3,
   resolveCleanPattern,
   getTodayEffectiveStatus as resolveTodayEffectiveStatus,
-} from "../utils/aiSuggestionEngine";
+} from "../utils/dummyAiSuggestionEngine";
 import {
   getDateStringInTimeZone,
   getPeakFrequencyNumber,

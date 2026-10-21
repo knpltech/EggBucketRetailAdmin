@@ -12,7 +12,7 @@ import PersonnelList from "./AdminPages/PersonnelList";
 import Customer from "./AdminPages/Customer";
 import Report from "./AdminPages/Report";
 import CustomerRetention from "./AdminPages/CustomerRetention";
-import AISuggestions from "./AdminPages/AISuggestions";
+import DummyAISuggestions from "./AdminPages/DummyAISuggestions";
 import CollectionSummary from "./AdminPages/CollectionSummary";
 import PenaltyManagement from "./AdminPages/PenaltyManagement";
 import AdvanceManagement from "./AdminPages/AdvanceManagement";
@@ -92,8 +92,7 @@ function App() {
         <Route path="customer-info/:id" element={<Customer />} />
         <Route path="report" element={<Report />} />
         <Route path="customer-retention" element={<CustomerRetention />} />
-        <Route path="ai-suggestions" element={<AISuggestions />} />
-        <Route path="dummy-ai-suggestions" element={<AISuggestions />} />
+        <Route path="dummy-ai-suggestions" element={<DummyAISuggestions />} />
         <Route path="collections" element={<CollectionSummary />} />
         <Route path="penalty" element={<PenaltyManagement />} />
         <Route path="advance" element={<AdvanceManagement />} />

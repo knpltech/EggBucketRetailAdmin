@@ -66,7 +66,7 @@ export default function AdminDashboard() {
     { label: "View Personnel", path: "/admin/personnel", icon: FiUser },
     { label: "Report", path: "/admin/report", icon: FiFileText },
     { label: "Customer Retention", path: "/admin/customer-retention", icon: FiRefreshCw },
-    { label: "AI Suggestions", path: "/admin/ai-suggestions", icon: FiCompass },
+    { label: "Dummy AI Suggestions", path: "/admin/dummy-ai-suggestions", icon: FiCompass },
     { label: "Collections", path: "/admin/collections", icon: FiDollarSign },
     { label: "Penalty Reports", path: "/admin/penalty", icon: FiAlertTriangle },
     { label: "Advance", path: "/admin/advance", icon: FiZap },

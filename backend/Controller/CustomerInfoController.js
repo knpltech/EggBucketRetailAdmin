@@ -158,7 +158,7 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
 
   // AI Evaluation Logics
   const purchaseCadence = String(customerData.purchaseCadence || customerData.pattern || "Learning").trim();
-  const customerState = String(customerData.customerState || "Active").trim();
+  const customerState = String(customerData.customerState || "Onboarding").trim();
   const purchaseIntent = String(customerData.purchaseIntent || "Unknown").trim();
 
   // Build update object — only include fields that need saving

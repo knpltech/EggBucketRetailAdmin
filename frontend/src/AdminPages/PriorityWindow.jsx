@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo } from "../utils/customerInfoClientCache";
-import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
+import { getTodayEffectiveStatus } from "../utils/dummyAiSuggestionEngine";
 import {
   FiPlus, FiEdit2, FiTrash2, FiX, FiMapPin, FiUsers, FiUserCheck, FiTarget,
   FiCalendar, FiCheck, FiAlertCircle, FiChevronRight, FiChevronLeft, FiClock,
