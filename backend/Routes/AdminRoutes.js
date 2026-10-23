@@ -93,6 +93,8 @@ import {
   updateNewCustomerStatus,
   deleteNewCustomer,
   convertNewCustomer,
+  getManualPriorityCustomers,
+  clearManualPriorityCustomer,
 } from "../Controller/AdminController.js";
 
 
@@ -183,6 +185,10 @@ router.put("/new-customers/:id/status", updateNewCustomerStatus);
 router.patch("/new-customers/:id/status", updateNewCustomerStatus);
 router.delete("/new-customers/:id", deleteNewCustomer);
 router.post("/new-customers/:id/convert", convertNewCustomer);
+
+// Manual Priority Customers (from "customers" collection with manual_priority: true)
+router.get("/manual-priority-customers", getManualPriorityCustomers);
+router.put("/manual-priority-customers/:id/clear", clearManualPriorityCustomer);
 
 
 // Delivery partner related routes

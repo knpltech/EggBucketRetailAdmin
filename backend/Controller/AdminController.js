@@ -4395,9 +4395,199 @@ const convertNewCustomer = async (req, res) => {
   }
 };
 
+// -------------------------------------------------------------
+// MANUAL PRIORITY CUSTOMERS (from "customers" collection where manual_priority: true)
+// -------------------------------------------------------------
+
+const getManualPriorityCustomers = async (req, res) => {
+  try {
+    const db = getFirestore();
+    const { search } = req.query;
+
+    const seenIds = new Set();
+    const list = [];
+
+    // Query customers with manual_priority == true (boolean)
+    // and also check string "true" in case it was stored as string
+    const queries = [
+      db.collection("customers").where("manual_priority", "==", true).get(),
+      db.collection("customers").where("manual_priority", "==", "true").get(),
+      db.collection("customer").where("manual_priority", "==", true).get().catch(() => ({ docs: [] })),
+    ];
+
+    const snapshots = await Promise.all(queries);
+
+    snapshots.forEach((snap) => {
+      if (!snap || !snap.docs) return;
+      snap.docs.forEach((doc) => {
+        if (seenIds.has(doc.id)) return;
+        seenIds.add(doc.id);
+
+        const data = doc.data() || {};
+
+        // Parse coordinates if available
+        let lat = null;
+        let lng = null;
+        if (typeof data.location === "string") {
+          const latMatch = data.location.match(/Lat:\s*([-\d.]+)/i);
+          const lngMatch = data.location.match(/Lng:\s*([-\d.]+)/i);
+          if (latMatch) lat = parseFloat(latMatch[1]);
+          if (lngMatch) lng = parseFloat(lngMatch[1]);
+        } else if (data.latitude && data.longitude) {
+          lat = parseFloat(data.latitude);
+          lng = parseFloat(data.longitude);
+        } else if (data.lat && data.lng) {
+          lat = parseFloat(data.lat);
+          lng = parseFloat(data.lng);
+        }
+
+        // Time of request parsing
+        const rawTime =
+          data.timeOfRequest ??
+          data.time_of_request ??
+          data.requestTime ??
+          data.request_time ??
+          data.manual_priority_time ??
+          data.manualPriorityTime ??
+          data.updatedAt ??
+          data.last8DaysUpdatedAt ??
+          data.createdAt;
+
+        let timeOfRequestMs = null;
+        let timeOfRequestIso = null;
+        let timeOfRequestFormatted = "N/A";
+
+        if (rawTime) {
+          let dateObj = null;
+          if (typeof rawTime === "number") {
+            dateObj = new Date(rawTime < 1e12 ? rawTime * 1000 : rawTime);
+          } else if (rawTime && typeof rawTime.toDate === "function") {
+            dateObj = rawTime.toDate();
+          } else if (rawTime?._seconds || rawTime?.seconds) {
+            const sec = rawTime._seconds ?? rawTime.seconds;
+            const nano = rawTime._nanoseconds ?? rawTime.nanoseconds ?? 0;
+            dateObj = new Date(sec * 1000 + Math.floor(nano / 1e6));
+          } else if (typeof rawTime === "string") {
+            dateObj = new Date(rawTime);
+          }
+
+          if (dateObj && !isNaN(dateObj.getTime())) {
+            timeOfRequestMs = dateObj.getTime();
+            timeOfRequestIso = dateObj.toISOString();
+            try {
+              timeOfRequestFormatted = new Intl.DateTimeFormat("en-IN", {
+                timeZone: "Asia/Kolkata",
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              }).format(dateObj);
+            } catch {
+              timeOfRequestFormatted = dateObj.toLocaleString("en-IN");
+            }
+          }
+        }
+
+        const name = data.name || "N/A";
+        const businessName = data.business || data.businessName || "N/A";
+        const location =
+          data.location ||
+          (lat && lng ? `Lat: ${lat}, Lng: ${lng}` : "Location not provided");
+
+        list.push({
+          id: doc.id,
+          name,
+          businessName,
+          business: businessName,
+          location,
+          lat,
+          lng,
+          timeOfRequest: timeOfRequestFormatted,
+          timeOfRequestMs,
+          timeOfRequestIso,
+          phone: data.phone || "",
+          custid: data.custid || "",
+          route: data.route || "",
+          zone: data.zone || "",
+          manual_priority: true,
+        });
+      });
+    });
+
+    // Sort newest first
+    list.sort((a, b) => (b.timeOfRequestMs || 0) - (a.timeOfRequestMs || 0));
+
+    let filtered = list;
+    if (search && search.trim()) {
+      const q = search.toLowerCase().trim();
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.businessName.toLowerCase().includes(q) ||
+          c.location.toLowerCase().includes(q) ||
+          c.timeOfRequest.toLowerCase().includes(q)
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: filtered.length,
+      data: filtered,
+    });
+  } catch (err) {
+    console.error("getManualPriorityCustomers error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch manual priority customers",
+      error: err.message,
+    });
+  }
+};
+
+const clearManualPriorityCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getFirestore();
+    const docRef = db.collection("customers").doc(id);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      const altRef = db.collection("customer").doc(id);
+      const altSnap = await altRef.get();
+      if (!altSnap.exists) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
+      await altRef.update({
+        manual_priority: false,
+        manual_priority_cleared_at: Date.now(),
+      });
+      return res.status(200).json({ success: true, message: "Manual priority cleared" });
+    }
+
+    await docRef.update({
+      manual_priority: false,
+      manual_priority_cleared_at: Date.now(),
+    });
+
+    return res.status(200).json({ success: true, message: "Manual priority cleared" });
+  } catch (err) {
+    console.error("clearManualPriorityCustomer error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to clear manual priority",
+      error: err.message,
+    });
+  }
+};
+
 export {
   getNewCustomers,
   updateNewCustomerStatus,
   deleteNewCustomer,
   convertNewCustomer,
+  getManualPriorityCustomers,
+  clearManualPriorityCustomer,
 };
+

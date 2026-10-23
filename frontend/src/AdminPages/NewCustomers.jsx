@@ -38,6 +38,7 @@ import {
   Store,
   Layers,
   HelpCircle,
+  Zap,
 } from "lucide-react";
 
 const INDIA_TZ = "Asia/Kolkata";
@@ -132,6 +133,10 @@ export default function NewCustomers() {
   const [toDate, setToDate] = useState("");
   const [viewMode, setViewMode] = useState("table"); // "table" or "grid"
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState("NEW_CUSTOMERS"); // "NEW_CUSTOMERS" | "MANUAL_PRIORITY"
+  const [manualPriorityCustomers, setManualPriorityCustomers] = useState([]);
+  const [manualPriorityLoading, setManualPriorityLoading] = useState(false);
+  const [manualPrioritySearch, setManualPrioritySearch] = useState("");
 
   // Modals state
   const [selectedCustomer, setSelectedCustomer] = useState(null); // Detail modal
@@ -227,19 +232,41 @@ export default function NewCustomers() {
     }
   }, []);
 
+  // Fetch manual priority customers from "customers" collection
+  const fetchManualPriorityCustomers = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) setManualPriorityLoading(true);
+      try {
+        const res = await axios.get(`${ADMIN_PATH}/manual-priority-customers`, {
+          headers: getAuthHeader(),
+        });
+        if (res.data?.success) {
+          setManualPriorityCustomers(res.data.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to load manual priority customers:", err);
+      } finally {
+        if (isManualRefresh) setManualPriorityLoading(false);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     fetchNewCustomers();
     fetchZonesAndRoutes();
-  }, [fetchNewCustomers, fetchZonesAndRoutes]);
+    fetchManualPriorityCustomers(true);
+  }, [fetchNewCustomers, fetchZonesAndRoutes, fetchManualPriorityCustomers]);
 
   // Auto refresh interval (every 30 seconds if toggled on)
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       fetchNewCustomers();
+      fetchManualPriorityCustomers();
     }, 30000);
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchNewCustomers]);
+  }, [autoRefresh, fetchNewCustomers, fetchManualPriorityCustomers]);
 
   // Update Status handler
   const handleUpdateStatus = async (customer, newStatus, customNotes = null) => {
@@ -465,6 +492,46 @@ export default function NewCustomers() {
     showToast("Exported to Excel successfully!");
   };
 
+  // Filtered manual priority list
+  const filteredManualPriority = useMemo(() => {
+    if (!manualPrioritySearch.trim()) return manualPriorityCustomers;
+    const q = manualPrioritySearch.toLowerCase().trim();
+    return manualPriorityCustomers.filter(
+      (c) =>
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.businessName && c.businessName.toLowerCase().includes(q)) ||
+        (c.location && c.location.toLowerCase().includes(q)) ||
+        (c.timeOfRequest && c.timeOfRequest.toLowerCase().includes(q))
+    );
+  }, [manualPriorityCustomers, manualPrioritySearch]);
+
+  // Export manual priority customers to Excel (Name, Business Name, Location, Time of Request)
+  const exportManualPriorityToExcel = () => {
+    try {
+      const exportData = filteredManualPriority.map((c) => ({
+        "Name": c.name || "N/A",
+        "Business Name": c.businessName || "N/A",
+        "Location": c.location || "N/A",
+        "Time of Request": c.timeOfRequest || "N/A",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      ws["!cols"] = [
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 40 },
+        { wch: 25 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Priority_Customers");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      XLSX.writeFile(wb, `Priority_Customers_${timestamp}.xlsx`);
+      showToast("Exported priority customers to Excel!");
+    } catch (e) {
+      showToast("Failed to export Excel file", "error");
+    }
+  };
+
   // Status badge styler
   const renderStatusBadge = (status) => {
     const s = String(status || "PENDING").toUpperCase();
@@ -521,7 +588,64 @@ export default function NewCustomers() {
         </div>
       )}
 
-      {/* Top Header Card */}
+      {/* Primary Tab Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-gray-200 p-2 rounded-2xl shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("NEW_CUSTOMERS")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeMainTab === "NEW_CUSTOMERS"
+                ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
+                : "bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200/70"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>New Customer Registrations</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                activeMainTab === "NEW_CUSTOMERS"
+                  ? "bg-white/20 text-white"
+                  : "bg-blue-100 text-blue-700"
+              }`}
+            >
+              {customers.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("MANUAL_PRIORITY")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeMainTab === "MANUAL_PRIORITY"
+                ? "bg-amber-500 text-white shadow-sm shadow-amber-500/25"
+                : "bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200/70"
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>Priority Customers (manual_priority: true)</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                activeMainTab === "MANUAL_PRIORITY"
+                  ? "bg-white/20 text-white"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {manualPriorityCustomers.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-xs text-gray-400 font-medium px-2">
+          {activeMainTab === "NEW_CUSTOMERS"
+            ? "Firebase: New Customer collection"
+            : "Firebase: customers collection (manual_priority : true)"}
+        </div>
+      </div>
+
+      {activeMainTab === "NEW_CUSTOMERS" ? (
+        <>
+          {/* Top Header Card */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
@@ -1315,6 +1439,293 @@ export default function NewCustomers() {
               </div>
             );
           })}
+        </div>
+      )}
+        </>
+      ) : (
+        <div className="space-y-5">
+          {/* Top Header Card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-amber-500/20">
+                  <Zap className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+                      Priority Customers
+                    </h1>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-amber-500" />
+                      manual_priority : true
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                      Collection: customers
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-500 font-medium mt-1">
+                    Customers present in the customer collection with active manual priority delivery requests.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
+                {/* Auto refresh toggle */}
+                <button
+                  type="button"
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                    autoRefresh
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
+                      : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                  }`}
+                  title="Automatically refresh every 30 seconds"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
+                    }`}
+                  />
+                  Auto-Sync {autoRefresh ? "ON" : "OFF"}
+                </button>
+
+                {/* Refresh Button */}
+                <button
+                  type="button"
+                  onClick={() => fetchManualPriorityCustomers(true)}
+                  disabled={manualPriorityLoading}
+                  className="p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-gray-700 transition cursor-pointer shadow-2xs disabled:opacity-50"
+                  title="Refresh priority customers"
+                >
+                  <RefreshCw
+                    className={`w-4 h-4 ${
+                      manualPriorityLoading ? "animate-spin text-amber-600" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Export to Excel */}
+                <button
+                  type="button"
+                  onClick={exportManualPriorityToExcel}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm shadow-emerald-600/20 active:scale-95"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export Excel</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Counter Banner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-100">
+              <div className="bg-gradient-to-br from-amber-50/70 to-amber-50/20 border border-amber-200/60 rounded-xl p-4 flex items-center gap-3.5">
+                <div className="h-10 w-10 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Total Priority Requests
+                  </p>
+                  <p className="text-2xl font-bold text-amber-900 mt-0.5">
+                    {manualPriorityCustomers.length}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-blue-50/70 to-blue-50/20 border border-blue-200/60 rounded-xl p-4 flex items-center gap-3.5">
+                <div className="h-10 w-10 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Distinct Businesses
+                  </p>
+                  <p className="text-2xl font-bold text-blue-900 mt-0.5">
+                    {new Set(manualPriorityCustomers.map((c) => c.businessName || c.business)).size}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-indigo-50/70 to-indigo-50/20 border border-indigo-200/60 rounded-xl p-4 flex items-center gap-3.5">
+                <div className="h-10 w-10 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Latest Request
+                  </p>
+                  <p className="text-sm font-bold text-indigo-900 mt-0.5 truncate">
+                    {manualPriorityCustomers[0]?.timeOfRequest || "None"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search Toolbar */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Filter by Name, Business Name, Location, Time..."
+                value={manualPrioritySearch}
+                onChange={(e) => setManualPrioritySearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition placeholder:text-gray-400"
+              />
+              {manualPrioritySearch && (
+                <button
+                  type="button"
+                  onClick={() => setManualPrioritySearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <span className="text-xs font-semibold text-gray-500 self-center">
+              Showing <strong className="text-gray-800">{filteredManualPriority.length}</strong> of {manualPriorityCustomers.length} Priority Requests
+            </span>
+          </div>
+
+          {/* Manual Priority Table - Displays ONLY: Name, Business Name, Location, Time of Request */}
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            {manualPriorityLoading && manualPriorityCustomers.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <RefreshCw className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
+                <p className="text-sm font-bold text-gray-700">Loading priority customers...</p>
+                <p className="text-xs text-gray-400">Querying customer collection for manual_priority: true</p>
+              </div>
+            ) : filteredManualPriority.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center border border-amber-100">
+                  <Zap className="w-7 h-7" />
+                </div>
+                <p className="text-base font-bold text-gray-800">
+                  {manualPrioritySearch ? "No matching priority requests" : "No Manual Priority Customers"}
+                </p>
+                <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                  {manualPrioritySearch
+                    ? "Try clearing the search filter."
+                    : "Currently, no customer document in the customer collection has manual_priority: true."}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/90 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="py-4 px-6 w-1/4">Name</th>
+                      <th className="py-4 px-6 w-1/4">Business Name</th>
+                      <th className="py-4 px-6 w-1/3">Location</th>
+                      <th className="py-4 px-6 w-1/6">Time of Request</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm">
+                    {filteredManualPriority.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="hover:bg-amber-50/40 transition-colors group"
+                      >
+                        {/* 1. Name */}
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-10 h-10 rounded-xl font-black flex items-center justify-center text-xs shrink-0 shadow-xs ${getAvatarColor(
+                                c.name
+                              )}`}
+                            >
+                              {getInitials(c.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-gray-900 text-sm truncate">
+                                  {c.name}
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                                  <Zap className="w-3 h-3 text-amber-600 fill-amber-500" />
+                                  Priority
+                                </span>
+                              </div>
+                              {c.custid && (
+                                <p className="text-xs text-gray-400 font-mono mt-0.5">
+                                  {c.custid}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. Business Name */}
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
+                            <span className="font-semibold text-gray-800">
+                              {c.businessName}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 3. Location */}
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                            <span className="text-gray-700 font-medium text-xs sm:text-sm">
+                              {c.location}
+                            </span>
+                            {c.location && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(c.location, "Location", `loc-${c.id}`)}
+                                className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition cursor-pointer"
+                                title="Copy Location"
+                              >
+                                {copiedId === `loc-${c.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                            {c.lat && c.lng && (
+                              <a
+                                href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition cursor-pointer"
+                                title="Open in Google Maps"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 4. Time of Request */}
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-indigo-500 shrink-0" />
+                            <div>
+                              <p className="font-bold text-gray-800 text-xs sm:text-sm whitespace-nowrap">
+                                {c.timeOfRequest}
+                              </p>
+                              {c.timeOfRequestMs && (
+                                <p className="text-[11px] text-gray-400 font-medium whitespace-nowrap">
+                                  {getRelativeTime(c.timeOfRequestMs)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
