@@ -39,9 +39,61 @@ import {
   Layers,
   HelpCircle,
   Zap,
+  Truck,
+  User,
+  CheckCircle,
 } from "lucide-react";
 
 const INDIA_TZ = "Asia/Kolkata";
+
+function getTodayDateKey(d = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: INDIA_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(d);
+
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch (e) {}
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getFirstDayOfWeekKey(d = new Date()) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  return getTodayDateKey(date);
+}
+
+function getFirstDayOfMonthKey(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+function getFirstDayOfPrevMonthKey(d = new Date()) {
+  const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const year = prev.getFullYear();
+  const month = String(prev.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+function getLastDayOfPrevMonthKey(d = new Date()) {
+  const last = new Date(d.getFullYear(), d.getMonth(), 0);
+  const year = last.getFullYear();
+  const month = String(last.getMonth() + 1).padStart(2, "0");
+  const day = String(last.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 // Format date helper in Asia/Kolkata
 const formatDateIST = (dateVal) => {
@@ -133,10 +185,15 @@ export default function NewCustomers() {
   const [toDate, setToDate] = useState("");
   const [viewMode, setViewMode] = useState("table"); // "table" or "grid"
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState("NEW_CUSTOMERS"); // "NEW_CUSTOMERS" | "MANUAL_PRIORITY"
+  const [activeMainTab, setActiveMainTab] = useState("ROUTES_APP"); // "ROUTES_APP" | "SALES_APP"
   const [manualPriorityCustomers, setManualPriorityCustomers] = useState([]);
   const [manualPriorityLoading, setManualPriorityLoading] = useState(false);
   const [manualPrioritySearch, setManualPrioritySearch] = useState("");
+  const [deliveryPartners, setDeliveryPartners] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState("__all__");
+  const [priorityAttendanceFilter, setPriorityAttendanceFilter] = useState("ALL"); // ALL, ATTENDED, DELIVERED, CHECKED, PENDING
+  const [deletePriorityModalCustomer, setDeletePriorityModalCustomer] = useState(null);
+  const [clearingPriority, setClearingPriority] = useState(false);
 
   // Modals state
   const [selectedCustomer, setSelectedCustomer] = useState(null); // Detail modal
@@ -183,6 +240,28 @@ export default function NewCustomers() {
       setTimeout(() => setCopiedId(null), 2000);
     }
     showToast(`${label} copied to clipboard!`);
+  };
+
+  // Handle Preset Change
+  const handlePresetChange = (preset) => {
+    setDatePreset(preset);
+    if (preset === "today") {
+      const today = getTodayDateKey();
+      setFromDate(today);
+      setToDate(today);
+    } else if (preset === "this_week") {
+      setFromDate(getFirstDayOfWeekKey());
+      setToDate(getTodayDateKey());
+    } else if (preset === "this_month") {
+      setFromDate(getFirstDayOfMonthKey());
+      setToDate(getTodayDateKey());
+    } else if (preset === "last_month") {
+      setFromDate(getFirstDayOfPrevMonthKey());
+      setToDate(getLastDayOfPrevMonthKey());
+    } else if (preset === "all") {
+      setFromDate("");
+      setToDate("");
+    }
   };
 
   // Fetch all new customers
@@ -232,6 +311,20 @@ export default function NewCustomers() {
     }
   }, []);
 
+  // Fetch delivery partners for filter dropdown
+  const fetchDeliveryPartners = useCallback(async () => {
+    try {
+      const res = await axios.get(`${ADMIN_PATH}/del-partners`, {
+        headers: getAuthHeader(),
+      });
+      if (Array.isArray(res.data)) {
+        setDeliveryPartners(res.data);
+      }
+    } catch (e) {
+      console.warn("Could not fetch delivery partners:", e);
+    }
+  }, []);
+
   // Fetch manual priority customers from "customers" collection
   const fetchManualPriorityCustomers = useCallback(
     async (isManualRefresh = false) => {
@@ -252,11 +345,41 @@ export default function NewCustomers() {
     []
   );
 
+  // Delete / Clear manual priority customer
+  const handleConfirmClearPriority = async () => {
+    if (!deletePriorityModalCustomer) return;
+    setClearingPriority(true);
+    try {
+      const res = await axios.delete(
+        `${ADMIN_PATH}/manual-priority-customers/${deletePriorityModalCustomer.id}`,
+        { headers: getAuthHeader() }
+      );
+      if (res.data?.success) {
+        showToast(`Priority request cleared for ${deletePriorityModalCustomer.name}`);
+        setManualPriorityCustomers((prev) =>
+          prev.filter((c) => c.id !== deletePriorityModalCustomer.id)
+        );
+        setDeletePriorityModalCustomer(null);
+      } else {
+        showToast(res.data?.message || "Failed to clear priority", "error");
+      }
+    } catch (err) {
+      console.error("Failed to clear priority:", err);
+      showToast(
+        err.response?.data?.message || "Failed to clear priority",
+        "error"
+      );
+    } finally {
+      setClearingPriority(false);
+    }
+  };
+
   useEffect(() => {
     fetchNewCustomers();
     fetchZonesAndRoutes();
     fetchManualPriorityCustomers(true);
-  }, [fetchNewCustomers, fetchZonesAndRoutes, fetchManualPriorityCustomers]);
+    fetchDeliveryPartners();
+  }, [fetchNewCustomers, fetchZonesAndRoutes, fetchManualPriorityCustomers, fetchDeliveryPartners]);
 
   // Auto refresh interval (every 30 seconds if toggled on)
   useEffect(() => {
@@ -267,6 +390,12 @@ export default function NewCustomers() {
     }, 30000);
     return () => clearInterval(interval);
   }, [autoRefresh, fetchNewCustomers, fetchManualPriorityCustomers]);
+
+  const handleRefreshAll = () => {
+    fetchNewCustomers(true);
+    fetchManualPriorityCustomers(true);
+    fetchDeliveryPartners();
+  };
 
   // Update Status handler
   const handleUpdateStatus = async (customer, newStatus, customNotes = null) => {
@@ -390,10 +519,18 @@ export default function NewCustomers() {
 
   // Open Convert Modal
   const openConvertModal = (customer) => {
+    const defaultRoute =
+      routesList.find(
+        (r) =>
+          r === "R001N-Onboarding Customers" ||
+          r.includes("R001N") ||
+          r.toLowerCase().includes("onboarding")
+      ) || "R001N-Onboarding Customers";
+
     setConvertingCustomer(customer);
     setConvertForm({
       zone: zonesList[0] || "UNASSIGNED",
-      route: routesList[0] || "UNASSIGNED",
+      route: defaultRoute,
       potential: "T1",
       remarks: `Converted from App Registration (${customer.source || "App"})`,
     });
@@ -494,33 +631,103 @@ export default function NewCustomers() {
 
   // Filtered manual priority list
   const filteredManualPriority = useMemo(() => {
-    if (!manualPrioritySearch.trim()) return manualPriorityCustomers;
-    const q = manualPrioritySearch.toLowerCase().trim();
-    return manualPriorityCustomers.filter(
-      (c) =>
-        (c.name && c.name.toLowerCase().includes(q)) ||
-        (c.businessName && c.businessName.toLowerCase().includes(q)) ||
-        (c.location && c.location.toLowerCase().includes(q)) ||
-        (c.timeOfRequest && c.timeOfRequest.toLowerCase().includes(q))
-    );
-  }, [manualPriorityCustomers, manualPrioritySearch]);
+    return manualPriorityCustomers.filter((c) => {
+      // 1. Search Query
+      if (manualPrioritySearch.trim()) {
+        const q = manualPrioritySearch.toLowerCase().trim();
+        const matchesName = c.name && c.name.toLowerCase().includes(q);
+        const matchesBusiness = (c.businessName || c.business) && (c.businessName || c.business).toLowerCase().includes(q);
+        const matchesLocation = c.location && c.location.toLowerCase().includes(q);
+        const matchesTime = c.timeOfRequest && c.timeOfRequest.toLowerCase().includes(q);
+        const matchesPhone = c.phone && c.phone.toLowerCase().includes(q);
+        const matchesCustId = c.custid && c.custid.toLowerCase().includes(q);
+        const matchesAgent = c.attendedAgent && c.attendedAgent.toLowerCase().includes(q);
+        const matchesReason = c.attendedReason && c.attendedReason.toLowerCase().includes(q);
+        const matchesRoute = c.route && c.route.toLowerCase().includes(q);
+        if (
+          !matchesName &&
+          !matchesBusiness &&
+          !matchesLocation &&
+          !matchesTime &&
+          !matchesPhone &&
+          !matchesCustId &&
+          !matchesAgent &&
+          !matchesReason &&
+          !matchesRoute
+        ) {
+          return false;
+        }
+      }
 
-  // Export manual priority customers to Excel (Name, Business Name, Location, Time of Request)
+      // 2. Selected Delivery Agent Filter
+      if (selectedAgent !== "__all__" && selectedAgent !== "all") {
+        const aLower = selectedAgent.toLowerCase().trim();
+        const matchesAgent =
+          (c.attendedAgent && c.attendedAgent.toLowerCase().includes(aLower)) ||
+          (c.route && c.route.toLowerCase().includes(aLower));
+        if (!matchesAgent) return false;
+      }
+
+      // 3. Attendance Status Filter
+      if (priorityAttendanceFilter !== "ALL") {
+        if (priorityAttendanceFilter === "ATTENDED" && !c.attended) return false;
+        if (priorityAttendanceFilter === "DELIVERED" && c.attendedType !== "DELIVERED") return false;
+        if (priorityAttendanceFilter === "CHECKED" && c.attendedType !== "CHECKED") return false;
+        if (priorityAttendanceFilter === "PENDING" && c.attended) return false;
+      }
+
+      // 4. Date Filter
+      if (datePreset !== "all" && fromDate && toDate) {
+        const itemDate =
+          c.requestDateKey ||
+          (c.timeOfRequestIso ? c.timeOfRequestIso.slice(0, 10) : "");
+        if (itemDate) {
+          if (itemDate < fromDate || itemDate > toDate) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    manualPriorityCustomers,
+    manualPrioritySearch,
+    selectedAgent,
+    priorityAttendanceFilter,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
+  // Export manual priority customers to Excel (Name, Business Name, Location, Time of Request, Attendance)
   const exportManualPriorityToExcel = () => {
     try {
-      const exportData = filteredManualPriority.map((c) => ({
+      const exportData = filteredManualPriority.map((c, idx) => ({
+        "SL No": idx + 1,
         "Name": c.name || "N/A",
-        "Business Name": c.businessName || "N/A",
+        "Cust ID": c.custid || "N/A",
+        "Business Name": c.businessName || c.business || "N/A",
         "Location": c.location || "N/A",
         "Time of Request": c.timeOfRequest || "N/A",
+        "Attendance Status": c.attendedStatus || (c.attended ? "Attended" : "Pending"),
+        "Attended Date": c.attendedDate || "N/A",
+        "Attended By Agent": c.attendedAgent || "N/A",
+        "Delivered Trays / Check Reason": c.attendedQuantity
+          ? `${c.attendedQuantity} trays`
+          : c.attendedReason || "N/A",
       }));
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       ws["!cols"] = [
+        { wch: 8 },
         { wch: 25 },
+        { wch: 12 },
         { wch: 25 },
-        { wch: 40 },
-        { wch: 25 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 28 },
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Priority_Customers");
@@ -588,442 +795,839 @@ export default function NewCustomers() {
         </div>
       )}
 
-      {/* Primary Tab Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-gray-200 p-2 rounded-2xl shadow-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveMainTab("NEW_CUSTOMERS")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-              activeMainTab === "NEW_CUSTOMERS"
-                ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
-                : "bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200/70"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>New Customer Registrations</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-black ${
-                activeMainTab === "NEW_CUSTOMERS"
-                  ? "bg-white/20 text-white"
-                  : "bg-blue-100 text-blue-700"
-              }`}
-            >
-              {customers.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab("MANUAL_PRIORITY")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-              activeMainTab === "MANUAL_PRIORITY"
-                ? "bg-amber-500 text-white shadow-sm shadow-amber-500/25"
-                : "bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200/70"
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span>Priority Customers (manual_priority: true)</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-black ${
-                activeMainTab === "MANUAL_PRIORITY"
-                  ? "bg-white/20 text-white"
-                  : "bg-amber-100 text-amber-800"
-              }`}
-            >
-              {manualPriorityCustomers.length}
-            </span>
-          </button>
-        </div>
-
-        <div className="text-xs text-gray-400 font-medium px-2">
-          {activeMainTab === "NEW_CUSTOMERS"
-            ? "Firebase: New Customer collection"
-            : "Firebase: customers collection (manual_priority : true)"}
-        </div>
-      </div>
-
-      {activeMainTab === "NEW_CUSTOMERS" ? (
-        <>
-          {/* Top Header Card */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+      {/* ========================================================================= */}
+      {/* 1. TOP HEADER & CONTROLS CARD (Advance Management style - Image 1)       */}
+      {/* ========================================================================= */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-blue-500/20">
-              <Sparkles className="h-6 w-6" />
+            <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-amber-500/20">
+              <Zap className="h-6 w-6 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                  New Customer Registrations
+                  App Orders
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                  Firebase: New Customer
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                  {activeMainTab === "ROUTES_APP"
+                    ? "Routes App (Delivery)"
+                    : "Sales App Registrations"}
                 </span>
-                {summary.pending > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
-                    <Clock className="w-3 h-3" />
-                    {summary.pending} Action Needed
-                  </span>
-                )}
               </div>
-              <p className="text-xs sm:text-sm text-gray-500 font-medium mt-1">
-                Real-time review of app registrations, user consent audits, and seamless customer onboarding.
-              </p>
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
-            {/* Auto refresh toggle */}
-            <button
-              type="button"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
-                autoRefresh
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
-                  : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-              }`}
-              title="Automatically refresh every 30 seconds"
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
-                }`}
-              />
-              Auto-Sync {autoRefresh ? "ON" : "OFF"}
-            </button>
+          {/* Right column: Date Presets, Custom Range, Refresh, Auto-Sync & Export */}
+          <div className="flex flex-col items-start lg:items-end justify-end gap-2.5">
+            <div className="flex flex-wrap items-center justify-start lg:justify-end gap-2">
+              {/* Date presets pill container */}
+              <div className="inline-flex items-center gap-0.5 bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs font-semibold">
+                {[
+                  { key: "today", label: "Today" },
+                  { key: "this_week", label: "This Week" },
+                  { key: "this_month", label: "This Month" },
+                  { key: "last_month", label: "Last Month" },
+                  { key: "all", label: "All Time" },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => handlePresetChange(item.key)}
+                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer text-xs ${
+                      datePreset === item.key
+                        ? "bg-amber-600 text-white font-bold shadow-xs"
+                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-200/70"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
 
-            {/* Refresh Button */}
-            <button
-              type="button"
-              onClick={() => fetchNewCustomers(true)}
-              disabled={refreshing}
-              className="p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-gray-700 transition cursor-pointer shadow-2xs disabled:opacity-50"
-              title="Refresh registrations"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`}
-              />
-            </button>
+              {/* Date Range Input */}
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs text-gray-700">
+                <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                <span className="font-semibold text-gray-500">From:</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setDatePreset("custom");
+                  }}
+                  className="bg-transparent border-none outline-none text-xs font-semibold text-gray-800 cursor-pointer"
+                />
+                <span className="text-gray-400">•</span>
+                <span className="font-semibold text-gray-500">To:</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setDatePreset("custom");
+                  }}
+                  className="bg-transparent border-none outline-none text-xs font-semibold text-gray-800 cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={handleRefreshAll}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs transition cursor-pointer"
+                >
+                  Apply
+                </button>
+              </div>
 
-            {/* Export to Excel */}
-            <button
-              type="button"
-              onClick={exportToExcel}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm shadow-emerald-600/20 active:scale-95"
-            >
-              <Download className="w-4 h-4" />
-              <span>Export Excel</span>
-            </button>
+              {/* Refresh button */}
+              <button
+                type="button"
+                onClick={handleRefreshAll}
+                disabled={refreshing || manualPriorityLoading}
+                className="p-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-gray-700 transition cursor-pointer shadow-2xs disabled:opacity-50"
+                title="Refresh All"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${
+                    refreshing || manualPriorityLoading ? "animate-spin text-amber-600" : ""
+                  }`}
+                />
+              </button>
+
+              {/* Export Excel */}
+              <button
+                type="button"
+                onClick={activeMainTab === "ROUTES_APP" ? exportManualPriorityToExcel : exportToExcel}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export Excel</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 4 Summary Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-100">
-          {/* Card 1: Total */}
-          <div className="bg-gradient-to-br from-blue-50/60 to-blue-50/20 border border-blue-100 rounded-xl p-4 flex items-center gap-3.5">
-            <div className="h-10 w-10 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Total Registrations
-              </p>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">
-                {summary.total}
-              </p>
-            </div>
+        {/* Row 2: Filter Delivery Agent & Search Row (Exact Image 1 layout) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-600 flex items-center gap-1.5 uppercase tracking-wide shrink-0">
+              <User className="w-4 h-4 text-amber-600" />
+              FILTER DELIVERY AGENT:
+            </label>
+            <select
+              value={selectedAgent}
+              onChange={(e) => setSelectedAgent(e.target.value)}
+              className="px-3 py-1.5 bg-amber-50/60 hover:bg-amber-50 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer min-w-[220px]"
+            >
+              <option value="__all__">All Delivery Agents ({deliveryPartners.length})</option>
+              {deliveryPartners.map((agent) => (
+                <option key={agent.id || agent.name} value={agent.name}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Card 2: Pending */}
-          <div
-            onClick={() => setStatusFilter("PENDING")}
-            className={`border rounded-xl p-4 flex items-center gap-3.5 transition cursor-pointer ${
-              statusFilter === "PENDING"
-                ? "bg-amber-100/70 border-amber-300 ring-2 ring-amber-400"
-                : "bg-gradient-to-br from-amber-50/60 to-amber-50/20 border-amber-100 hover:border-amber-300"
-            }`}
-          >
-            <div className="h-10 w-10 rounded-lg bg-amber-600/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Pending Review
-              </p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xl sm:text-2xl font-bold text-amber-900">
-                  {summary.pending}
-                </span>
-                {summary.pending > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Approved */}
-          <div
-            onClick={() => setStatusFilter("APPROVED")}
-            className={`border rounded-xl p-4 flex items-center gap-3.5 transition cursor-pointer ${
-              statusFilter === "APPROVED"
-                ? "bg-emerald-100/70 border-emerald-300 ring-2 ring-emerald-400"
-                : "bg-gradient-to-br from-emerald-50/60 to-emerald-50/20 border-emerald-100 hover:border-emerald-300"
-            }`}
-          >
-            <div className="h-10 w-10 rounded-lg bg-emerald-600/10 text-emerald-600 flex items-center justify-center font-bold shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Approved
-              </p>
-              <p className="text-xl sm:text-2xl font-bold text-emerald-900 mt-0.5">
-                {summary.approved}
-              </p>
-            </div>
-          </div>
-
-          {/* Card 4: Consent Compliance */}
-          <div
-            onClick={() => setConsentFilter(consentFilter === "GIVEN" ? "ALL" : "GIVEN")}
-            className={`border rounded-xl p-4 flex items-center gap-3.5 transition cursor-pointer ${
-              consentFilter === "GIVEN"
-                ? "bg-indigo-100/70 border-indigo-300 ring-2 ring-indigo-400"
-                : "bg-gradient-to-br from-indigo-50/60 to-indigo-50/20 border-indigo-100 hover:border-indigo-300"
-            }`}
-          >
-            <div className="h-10 w-10 rounded-lg bg-indigo-600/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Consent Verified
-              </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-xl sm:text-2xl font-bold text-indigo-900">
-                  {summary.consentGiven}
-                </span>
-                <span className="text-xs font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">
-                  {summary.total > 0
-                    ? `${Math.round((summary.consentGiven / summary.total) * 100)}%`
-                    : "100%"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Control Toolbar: Search, Filters, View Modes */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3.5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[260px]">
+          <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by Customer Name, Shop/Business, Phone, Doc ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition placeholder:text-gray-400"
+              placeholder={
+                activeMainTab === "ROUTES_APP"
+                  ? "Search agent, outlet, remarks, or customer..."
+                  : "Search customer name, shop/business, phone, doc ID..."
+              }
+              value={activeMainTab === "ROUTES_APP" ? manualPrioritySearch : searchQuery}
+              onChange={(e) =>
+                activeMainTab === "ROUTES_APP"
+                  ? setManualPrioritySearch(e.target.value)
+                  : setSearchQuery(e.target.value)
+              }
+              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition placeholder:text-gray-400"
             />
-            {searchQuery && (
+            {(activeMainTab === "ROUTES_APP" ? manualPrioritySearch : searchQuery) && (
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
+                onClick={() =>
+                  activeMainTab === "ROUTES_APP"
+                    ? setManualPrioritySearch("")
+                    : setSearchQuery("")
+                }
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
-
-          {/* Right Toolbar items: Date Presets & View Mode */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Date filter presets */}
-            <div className="inline-flex items-center p-1 rounded-xl bg-gray-100 border border-gray-200 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => {
-                  setDatePreset("all");
-                  setFromDate("");
-                  setToDate("");
-                }}
-                className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                  datePreset === "all"
-                    ? "bg-white text-gray-900 shadow-xs font-bold"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                All Time
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDatePreset("today");
-                  const today = new Date().toISOString().slice(0, 10);
-                  setFromDate(today);
-                  setToDate(today);
-                }}
-                className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                  datePreset === "today"
-                    ? "bg-white text-gray-900 shadow-xs font-bold"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDatePreset("custom");
-                }}
-                className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                  datePreset === "custom"
-                    ? "bg-white text-gray-900 shadow-xs font-bold"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                Custom
-              </button>
-            </div>
-
-            {/* Custom Date Pickers (if chosen) */}
-            {datePreset === "custom" && (
-              <div className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs">
-                <CalendarDays className="w-3.5 h-3.5 text-gray-400" />
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="bg-transparent border-none outline-none text-xs font-medium text-gray-700"
-                />
-                <span className="text-gray-400">to</span>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="bg-transparent border-none outline-none text-xs font-medium text-gray-700"
-                />
-              </div>
-            )}
-
-            {/* View Mode Toggle */}
-            <div className="inline-flex items-center p-1 rounded-xl bg-gray-100 border border-gray-200 gap-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                className={`p-1.5 rounded-lg transition cursor-pointer ${
-                  viewMode === "table"
-                    ? "bg-white text-blue-600 shadow-xs"
-                    : "text-gray-500 hover:text-gray-900"
-                }`}
-                title="Table view"
-              >
-                <TableIcon className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("grid")}
-                className={`p-1.5 rounded-lg transition cursor-pointer ${
-                  viewMode === "grid"
-                    ? "bg-white text-blue-600 shadow-xs"
-                    : "text-gray-500 hover:text-gray-900"
-                }`}
-                title="Grid / Cards view"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Filter Pills row: Status Tabs + Consent Filter */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-gray-100">
-          {/* Status Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
-            <span className="text-gray-400 mr-1 text-[11px] uppercase tracking-wider font-bold">
-              Status:
-            </span>
-            {[
-              { id: "ALL", label: "All", count: summary.total },
-              { id: "PENDING", label: "Pending", count: summary.pending },
-              { id: "APPROVED", label: "Approved", count: summary.approved },
-              { id: "CONTACTED", label: "Contacted", count: summary.contacted },
-              { id: "REJECTED", label: "Rejected", count: summary.rejected },
-            ].map((tab) => {
-              const active = statusFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                    active
-                      ? "bg-gray-900 text-white font-bold shadow-xs"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900"
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  <span
-                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
-                      active
-                        ? "bg-gray-800 text-gray-200"
-                        : "bg-gray-200 text-gray-600"
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Consent filter pills */}
-          <div className="flex items-center gap-1.5 text-xs font-semibold">
-            <span className="text-gray-400 mr-1 text-[11px] uppercase tracking-wider font-bold">
-              Consent:
-            </span>
-            <button
-              type="button"
-              onClick={() => setConsentFilter("ALL")}
-              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                consentFilter === "ALL"
-                  ? "bg-blue-600 text-white font-bold"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setConsentFilter("GIVEN")}
-              className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                consentFilter === "GIVEN"
-                  ? "bg-emerald-600 text-white font-bold"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Verified
-            </button>
-            <button
-              type="button"
-              onClick={() => setConsentFilter("NOT_GIVEN")}
-              className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                consentFilter === "NOT_GIVEN"
-                  ? "bg-rose-600 text-white font-bold"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              Not Given
-            </button>
-          </div>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 2. APP SWITCHER TABS (Exact Image 3 style)                                */}
+      {/* ========================================================================= */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex p-1 bg-gray-100 rounded-xl border border-gray-200 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("ROUTES_APP")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeMainTab === "ROUTES_APP"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Truck className="w-4 h-4 text-amber-600" />
+            <span>Routes App (Delivery)</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+                activeMainTab === "ROUTES_APP"
+                  ? "bg-amber-100 text-amber-900"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              {filteredManualPriority.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("SALES_APP")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeMainTab === "SALES_APP"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <UserCheck className="w-4 h-4 text-blue-600" />
+            <span>Sales App</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+                activeMainTab === "SALES_APP"
+                  ? "bg-blue-100 text-blue-900"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              {filteredCustomers.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-xs text-gray-400 font-medium px-2 hidden sm:block">
+          {activeMainTab === "ROUTES_APP"
+            ? "Firebase: customers collection (manual_priority : true)"
+            : "Firebase: New Customer collection"}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 3. TAB 1: ROUTES APP (DELIVERY) — EXISTING CUSTOMERS MANUAL PRIORITY     */}
+      {/* ========================================================================= */}
+      {activeMainTab === "ROUTES_APP" ? (
+        <div className="space-y-5">
+          {/* Quick Counter Banner for Priority Customers */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex items-center gap-3.5">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Total Requests
+                </p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">
+                  {filteredManualPriority.length}
+                </p>
+              </div>
+            </div>
+
+            <div
+              onClick={() =>
+                setPriorityAttendanceFilter(
+                  priorityAttendanceFilter === "DELIVERED" ? "ALL" : "DELIVERED"
+                )
+              }
+              className={`border rounded-2xl p-4 shadow-sm flex items-center gap-3.5 transition cursor-pointer ${
+                priorityAttendanceFilter === "DELIVERED"
+                  ? "bg-emerald-50 border-emerald-300 ring-2 ring-emerald-400"
+                  : "bg-white border-gray-200 hover:border-emerald-300"
+              }`}
+            >
+              <div className="h-10 w-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Delivered
+                </p>
+                <p className="text-xl sm:text-2xl font-bold text-emerald-900 mt-0.5">
+                  {
+                    filteredManualPriority.filter(
+                      (c) => c.attendedType === "DELIVERED"
+                    ).length
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div
+              onClick={() =>
+                setPriorityAttendanceFilter(
+                  priorityAttendanceFilter === "CHECKED" ? "ALL" : "CHECKED"
+                )
+              }
+              className={`border rounded-2xl p-4 shadow-sm flex items-center gap-3.5 transition cursor-pointer ${
+                priorityAttendanceFilter === "CHECKED"
+                  ? "bg-amber-50 border-amber-300 ring-2 ring-amber-400"
+                  : "bg-white border-gray-200 hover:border-amber-300"
+              }`}
+            >
+              <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Checked / Reached
+                </p>
+                <p className="text-xl sm:text-2xl font-bold text-amber-900 mt-0.5">
+                  {
+                    filteredManualPriority.filter(
+                      (c) => c.attendedType === "CHECKED"
+                    ).length
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div
+              onClick={() =>
+                setPriorityAttendanceFilter(
+                  priorityAttendanceFilter === "PENDING" ? "ALL" : "PENDING"
+                )
+              }
+              className={`border rounded-2xl p-4 shadow-sm flex items-center gap-3.5 transition cursor-pointer ${
+                priorityAttendanceFilter === "PENDING"
+                  ? "bg-blue-50 border-blue-300 ring-2 ring-blue-400"
+                  : "bg-white border-gray-200 hover:border-blue-300"
+              }`}
+            >
+              <div className="h-10 w-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Pending Delivery
+                </p>
+                <p className="text-xl sm:text-2xl font-bold text-blue-900 mt-0.5">
+                  {filteredManualPriority.filter((c) => !c.attended).length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Attendance Filter Toolbar */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="font-bold text-gray-500 mr-1 uppercase text-[11px] tracking-wide">
+                Attendance:
+              </span>
+              {[
+                { key: "ALL", label: "All", count: manualPriorityCustomers.length },
+                {
+                  key: "ATTENDED",
+                  label: "Attended",
+                  count: manualPriorityCustomers.filter((c) => c.attended).length,
+                },
+                {
+                  key: "DELIVERED",
+                  label: "Delivered",
+                  count: manualPriorityCustomers.filter(
+                    (c) => c.attendedType === "DELIVERED"
+                  ).length,
+                },
+                {
+                  key: "CHECKED",
+                  label: "Checked",
+                  count: manualPriorityCustomers.filter(
+                    (c) => c.attendedType === "CHECKED"
+                  ).length,
+                },
+                {
+                  key: "PENDING",
+                  label: "Pending",
+                  count: manualPriorityCustomers.filter((c) => !c.attended).length,
+                },
+              ].map((btn) => (
+                <button
+                  key={btn.key}
+                  type="button"
+                  onClick={() => setPriorityAttendanceFilter(btn.key)}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    priorityAttendanceFilter === btn.key
+                      ? "bg-amber-500 text-white shadow-xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  <span>{btn.label}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                      priorityAttendanceFilter === btn.key
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-200 text-gray-700"
+                    }`}
+                  >
+                    {btn.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <span className="text-xs font-semibold text-gray-500 self-center">
+              Showing <strong className="text-gray-800">{filteredManualPriority.length}</strong> of{" "}
+              {manualPriorityCustomers.length} Priority Requests
+            </span>
+          </div>
+
+          {/* Priority Customers Table */}
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            {manualPriorityLoading && manualPriorityCustomers.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <RefreshCw className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
+                <p className="text-sm font-bold text-gray-700">Loading priority customers...</p>
+                <p className="text-xs text-gray-400">Querying customer collection for manual_priority: true</p>
+              </div>
+            ) : filteredManualPriority.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center border border-amber-100">
+                  <Zap className="w-7 h-7" />
+                </div>
+                <p className="text-base font-bold text-gray-800">
+                  {manualPrioritySearch || priorityAttendanceFilter !== "ALL"
+                    ? "No matching priority requests"
+                    : "No Manual Priority Customers"}
+                </p>
+                <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                  {manualPrioritySearch || priorityAttendanceFilter !== "ALL"
+                    ? "Try clearing the search or attendance filter."
+                    : "Currently, no customer document in the customer collection has manual_priority: true."}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/90 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="py-4 px-5">Customer Name</th>
+                      <th className="py-4 px-5">Business Name</th>
+                      <th className="py-4 px-5">Location</th>
+                      <th className="py-4 px-5">Time of Request</th>
+                      <th className="py-4 px-5">Delivery Attendance</th>
+                      <th className="py-4 px-5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm">
+                    {filteredManualPriority.map((c) => (
+                      <tr key={c.id} className="hover:bg-amber-50/30 transition-colors group">
+                        {/* 1. Name */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-10 h-10 rounded-xl font-black flex items-center justify-center text-xs shrink-0 shadow-xs ${getAvatarColor(
+                                c.name
+                              )}`}
+                            >
+                              {getInitials(c.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-gray-900 text-sm truncate">
+                                  {c.name}
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                                  <Zap className="w-3 h-3 text-amber-600 fill-amber-500" />
+                                  Priority
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                {c.custid && (
+                                  <span className="text-xs text-gray-400 font-mono">
+                                    {c.custid}
+                                  </span>
+                                )}
+                                {c.route && (
+                                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded-md">
+                                    {c.route}
+                                  </span>
+                                )}
+                                {c.phone && (
+                                  <div className="flex items-center gap-1 text-[11px] text-gray-400">
+                                    <Phone className="w-3 h-3 text-gray-400" />
+                                    <span>{c.phone}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. Business Name */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
+                            <span className="font-semibold text-gray-800">
+                              {c.businessName}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 3. Location */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                            <span
+                              className="text-gray-700 font-medium text-xs sm:text-sm truncate max-w-[200px]"
+                              title={c.location}
+                            >
+                              {c.location}
+                            </span>
+                            {c.location && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(c.location, "Location", `loc-${c.id}`)}
+                                className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition cursor-pointer"
+                                title="Copy Location"
+                              >
+                                {copiedId === `loc-${c.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                            {c.lat && c.lng && (
+                              <a
+                                href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition cursor-pointer"
+                                title="Open in Google Maps"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 4. Time of Request */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-indigo-500 shrink-0" />
+                            <div>
+                              <p className="font-bold text-gray-800 text-xs sm:text-sm whitespace-nowrap">
+                                {c.timeOfRequest}
+                              </p>
+                              {c.timeOfRequestMs && (
+                                <p className="text-[11px] text-gray-400 font-medium whitespace-nowrap">
+                                  {getRelativeTime(c.timeOfRequestMs)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 5. Delivery Attendance (Reflects whether delivered or checked) */}
+                        <td className="py-4 px-5">
+                          {c.attended && c.attendedType === "DELIVERED" ? (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Delivered</span>
+                                {c.attendedQuantity && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-emerald-200/60 text-emerald-800 text-[10px] font-black">
+                                    {c.attendedQuantity} trays
+                                  </span>
+                                )}
+                              </span>
+                              <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1 flex-wrap">
+                                {c.attendedAgent && (
+                                  <span className="font-semibold text-gray-700">by {c.attendedAgent}</span>
+                                )}
+                                {c.attendedDate && <span>• {c.attendedDate}</span>}
+                              </div>
+                            </div>
+                          ) : c.attended && c.attendedType === "CHECKED" ? (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs">
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Checked</span>
+                                {c.attendedReason && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-amber-200/60 text-amber-900 text-[10px] font-black">
+                                    {c.attendedReason}
+                                  </span>
+                                )}
+                              </span>
+                              <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1 flex-wrap">
+                                {c.attendedAgent && (
+                                  <span className="font-semibold text-gray-700">by {c.attendedAgent}</span>
+                                )}
+                                {c.attendedDate && <span>• {c.attendedDate}</span>}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+                                <Clock className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                                <span>Pending Delivery</span>
+                              </span>
+                              <div className="text-[11px] text-gray-400 font-medium">
+                                Awaiting route agent
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 6. Actions (Delete button appears when attended) */}
+                        <td className="py-4 px-5 text-right">
+                          {c.attended ? (
+                            <button
+                              type="button"
+                              onClick={() => setDeletePriorityModalCustomer(c)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs active:scale-95"
+                              title="Delete / Clear Priority Request"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeletePriorityModalCustomer(c)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-medium transition cursor-pointer"
+                              title="Cancel Priority Request"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Cancel</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* ========================================================================= */
+        /* 4. TAB 2: SALES APP — NEW CUSTOMER ONBOARDING REGISTRATIONS              */
+        /* ========================================================================= */
+        <div className="space-y-5">
+          {/* 4 Summary Stat Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            {/* Card 1: Total */}
+            <div className="bg-gradient-to-br from-blue-50/60 to-blue-50/20 border border-blue-100 rounded-xl p-4 flex items-center gap-3.5">
+              <div className="h-10 w-10 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Total Registrations
+                </p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">
+                  {summary.total}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 2: Pending */}
+            <div
+              onClick={() => setStatusFilter("PENDING")}
+              className={`border rounded-xl p-4 flex items-center gap-3.5 transition cursor-pointer ${
+                statusFilter === "PENDING"
+                  ? "bg-amber-100/70 border-amber-300 ring-2 ring-amber-400"
+                  : "bg-gradient-to-br from-amber-50/60 to-amber-50/20 border-amber-100 hover:border-amber-300"
+              }`}
+            >
+              <div className="h-10 w-10 rounded-lg bg-amber-600/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Pending Review
+                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xl sm:text-2xl font-bold text-amber-900">
+                    {summary.pending}
+                  </span>
+                  {summary.pending > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Approved */}
+            <div
+              onClick={() => setStatusFilter("APPROVED")}
+              className={`border rounded-xl p-4 flex items-center gap-3.5 transition cursor-pointer ${
+                statusFilter === "APPROVED"
+                  ? "bg-emerald-100/70 border-emerald-300 ring-2 ring-emerald-400"
+                  : "bg-gradient-to-br from-emerald-50/60 to-emerald-50/20 border-emerald-100 hover:border-emerald-300"
+              }`}
+            >
+              <div className="h-10 w-10 rounded-lg bg-emerald-600/10 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Approved
+                </p>
+                <p className="text-xl sm:text-2xl font-bold text-emerald-900 mt-0.5">
+                  {summary.approved}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 4: Consent Compliance */}
+            <div
+              onClick={() => setConsentFilter(consentFilter === "GIVEN" ? "ALL" : "GIVEN")}
+              className={`border rounded-xl p-4 flex items-center gap-3.5 transition cursor-pointer ${
+                consentFilter === "GIVEN"
+                  ? "bg-indigo-100/70 border-indigo-300 ring-2 ring-indigo-400"
+                  : "bg-gradient-to-br from-indigo-50/60 to-indigo-50/20 border-indigo-100 hover:border-indigo-300"
+              }`}
+            >
+              <div className="h-10 w-10 rounded-lg bg-indigo-600/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Consent Verified
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-xl sm:text-2xl font-bold text-indigo-900">
+                    {summary.consentGiven}
+                  </span>
+                  <span className="text-xs font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">
+                    {summary.total > 0
+                      ? `${Math.round((summary.consentGiven / summary.total) * 100)}%`
+                      : "100%"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Filters Toolbar */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Status filter chips */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-bold text-gray-500 mr-1 uppercase tracking-wider">
+                  Status:
+                </span>
+                {[
+                  { key: "ALL", label: "All", count: customers.length },
+                  { key: "PENDING", label: "Pending", count: summary.pending },
+                  { key: "APPROVED", label: "Approved", count: summary.approved },
+                  { key: "CONTACTED", label: "Contacted", count: summary.contacted },
+                  { key: "REJECTED", label: "Rejected", count: summary.rejected },
+                ].map((btn) => (
+                  <button
+                    key={btn.key}
+                    type="button"
+                    onClick={() => setStatusFilter(btn.key)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      statusFilter === btn.key
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <span>{btn.label}</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                        statusFilter === btn.key
+                          ? "bg-white/20 text-white"
+                          : "bg-gray-200 text-gray-700"
+                      }`}
+                    >
+                      {btn.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Legal Consent filter & View Mode */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs font-semibold">
+                  <span className="text-gray-500 text-[11px] px-1 font-bold">Consent:</span>
+                  <button
+                    type="button"
+                    onClick={() => setConsentFilter("ALL")}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
+                      consentFilter === "ALL"
+                        ? "bg-blue-600 text-white font-bold"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConsentFilter("GIVEN")}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      consentFilter === "GIVEN"
+                        ? "bg-emerald-600 text-white font-bold"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    Verified
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConsentFilter("NOT_GIVEN")}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      consentFilter === "NOT_GIVEN"
+                        ? "bg-rose-600 text-white font-bold"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    <ShieldAlert className="w-3 h-3" />
+                    Not Given
+                  </button>
+                </div>
+
+                {/* View Mode Toggle */}
+                <div className="inline-flex items-center p-1 rounded-xl bg-gray-100 border border-gray-200 gap-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("table")}
+                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                      viewMode === "table"
+                        ? "bg-white text-blue-600 shadow-xs"
+                        : "text-gray-500 hover:text-gray-800"
+                    }`}
+                    title="Table View"
+                  >
+                    <TableIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("grid")}
+                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                      viewMode === "grid"
+                        ? "bg-white text-blue-600 shadow-xs"
+                        : "text-gray-500 hover:text-gray-800"
+                    }`}
+                    title="Grid Cards View"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
       {/* Main Content Area: Loading / Empty / Table / Grid */}
       {loading ? (
@@ -1441,291 +2045,6 @@ export default function NewCustomers() {
           })}
         </div>
       )}
-        </>
-      ) : (
-        <div className="space-y-5">
-          {/* Top Header Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-amber-500/20">
-                  <Zap className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                      Priority Customers
-                    </h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-                      <Zap className="w-3 h-3 text-amber-500" />
-                      manual_priority : true
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                      Collection: customers
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-gray-500 font-medium mt-1">
-                    Customers present in the customer collection with active manual priority delivery requests.
-                  </p>
-                </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
-                {/* Auto refresh toggle */}
-                <button
-                  type="button"
-                  onClick={() => setAutoRefresh(!autoRefresh)}
-                  className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
-                    autoRefresh
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
-                      : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-                  }`}
-                  title="Automatically refresh every 30 seconds"
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
-                    }`}
-                  />
-                  Auto-Sync {autoRefresh ? "ON" : "OFF"}
-                </button>
-
-                {/* Refresh Button */}
-                <button
-                  type="button"
-                  onClick={() => fetchManualPriorityCustomers(true)}
-                  disabled={manualPriorityLoading}
-                  className="p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-gray-700 transition cursor-pointer shadow-2xs disabled:opacity-50"
-                  title="Refresh priority customers"
-                >
-                  <RefreshCw
-                    className={`w-4 h-4 ${
-                      manualPriorityLoading ? "animate-spin text-amber-600" : ""
-                    }`}
-                  />
-                </button>
-
-                {/* Export to Excel */}
-                <button
-                  type="button"
-                  onClick={exportManualPriorityToExcel}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm shadow-emerald-600/20 active:scale-95"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Export Excel</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Counter Banner */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-100">
-              <div className="bg-gradient-to-br from-amber-50/70 to-amber-50/20 border border-amber-200/60 rounded-xl p-4 flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
-                  <Zap className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Total Priority Requests
-                  </p>
-                  <p className="text-2xl font-bold text-amber-900 mt-0.5">
-                    {manualPriorityCustomers.length}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-50/70 to-blue-50/20 border border-blue-200/60 rounded-xl p-4 flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold shrink-0">
-                  <Building2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Distinct Businesses
-                  </p>
-                  <p className="text-2xl font-bold text-blue-900 mt-0.5">
-                    {new Set(manualPriorityCustomers.map((c) => c.businessName || c.business)).size}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-indigo-50/70 to-indigo-50/20 border border-indigo-200/60 rounded-xl p-4 flex items-center gap-3.5">
-                <div className="h-10 w-10 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Latest Request
-                  </p>
-                  <p className="text-sm font-bold text-indigo-900 mt-0.5 truncate">
-                    {manualPriorityCustomers[0]?.timeOfRequest || "None"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Search Toolbar */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Filter by Name, Business Name, Location, Time..."
-                value={manualPrioritySearch}
-                onChange={(e) => setManualPrioritySearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition placeholder:text-gray-400"
-              />
-              {manualPrioritySearch && (
-                <button
-                  type="button"
-                  onClick={() => setManualPrioritySearch("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            <span className="text-xs font-semibold text-gray-500 self-center">
-              Showing <strong className="text-gray-800">{filteredManualPriority.length}</strong> of {manualPriorityCustomers.length} Priority Requests
-            </span>
-          </div>
-
-          {/* Manual Priority Table - Displays ONLY: Name, Business Name, Location, Time of Request */}
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-            {manualPriorityLoading && manualPriorityCustomers.length === 0 ? (
-              <div className="p-16 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-                <p className="text-sm font-bold text-gray-700">Loading priority customers...</p>
-                <p className="text-xs text-gray-400">Querying customer collection for manual_priority: true</p>
-              </div>
-            ) : filteredManualPriority.length === 0 ? (
-              <div className="p-16 text-center space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center border border-amber-100">
-                  <Zap className="w-7 h-7" />
-                </div>
-                <p className="text-base font-bold text-gray-800">
-                  {manualPrioritySearch ? "No matching priority requests" : "No Manual Priority Customers"}
-                </p>
-                <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                  {manualPrioritySearch
-                    ? "Try clearing the search filter."
-                    : "Currently, no customer document in the customer collection has manual_priority: true."}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50/90 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                      <th className="py-4 px-6 w-1/4">Name</th>
-                      <th className="py-4 px-6 w-1/4">Business Name</th>
-                      <th className="py-4 px-6 w-1/3">Location</th>
-                      <th className="py-4 px-6 w-1/6">Time of Request</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-sm">
-                    {filteredManualPriority.map((c) => (
-                      <tr
-                        key={c.id}
-                        className="hover:bg-amber-50/40 transition-colors group"
-                      >
-                        {/* 1. Name */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`w-10 h-10 rounded-xl font-black flex items-center justify-center text-xs shrink-0 shadow-xs ${getAvatarColor(
-                                c.name
-                              )}`}
-                            >
-                              {getInitials(c.name)}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-gray-900 text-sm truncate">
-                                  {c.name}
-                                </span>
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
-                                  <Zap className="w-3 h-3 text-amber-600 fill-amber-500" />
-                                  Priority
-                                </span>
-                              </div>
-                              {c.custid && (
-                                <p className="text-xs text-gray-400 font-mono mt-0.5">
-                                  {c.custid}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 2. Business Name */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
-                            <span className="font-semibold text-gray-800">
-                              {c.businessName}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* 3. Location */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
-                            <span className="text-gray-700 font-medium text-xs sm:text-sm">
-                              {c.location}
-                            </span>
-                            {c.location && (
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(c.location, "Location", `loc-${c.id}`)}
-                                className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition cursor-pointer"
-                                title="Copy Location"
-                              >
-                                {copiedId === `loc-${c.id}` ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            )}
-                            {c.lat && c.lng && (
-                              <a
-                                href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition cursor-pointer"
-                                title="Open in Google Maps"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 4. Time of Request */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-indigo-500 shrink-0" />
-                            <div>
-                              <p className="font-bold text-gray-800 text-xs sm:text-sm whitespace-nowrap">
-                                {c.timeOfRequest}
-                              </p>
-                              {c.timeOfRequestMs && (
-                                <p className="text-[11px] text-gray-400 font-medium whitespace-nowrap">
-                                  {getRelativeTime(c.timeOfRequestMs)}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -2103,12 +2422,17 @@ export default function NewCustomers() {
                   }
                   className="w-full h-10 bg-white border border-gray-300 rounded-xl px-3 font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-emerald-500"
                 >
+                  <option value="R001N-Onboarding Customers">
+                    R001N-Onboarding Customers (Default)
+                  </option>
                   <option value="UNASSIGNED">UNASSIGNED</option>
-                  {routesList.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
+                  {routesList
+                    .filter((r) => r !== "R001N-Onboarding Customers")
+                    .map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -2216,6 +2540,102 @@ export default function NewCustomers() {
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 )}
                 <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: DELETE / CLEAR MANUAL PRIORITY CONFIRMATION MODAL               */}
+      {/* ========================================================================= */}
+      {deletePriorityModalCustomer && (
+        <div className="fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900">
+                  {deletePriorityModalCustomer.attended
+                    ? "Delete Priority Request?"
+                    : "Cancel Priority Request?"}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  This will remove the manual priority flag (<code className="text-amber-700 bg-amber-50 px-1 py-0.5 rounded font-mono">manual_priority: false</code>) for{" "}
+                  <strong className="text-gray-900">{deletePriorityModalCustomer.name}</strong>.
+                </p>
+              </div>
+            </div>
+
+            {/* Attendance Status Info Banner */}
+            <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500 font-semibold">Attendance Status:</span>
+                {deletePriorityModalCustomer.attended ? (
+                  deletePriorityModalCustomer.attendedType === "DELIVERED" ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Delivered ({deletePriorityModalCustomer.attendedQuantity || 0} Trays)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      Checked {deletePriorityModalCustomer.attendedReason && `(${deletePriorityModalCustomer.attendedReason})`}
+                    </span>
+                  )
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                    Pending Delivery
+                  </span>
+                )}
+              </div>
+
+              {deletePriorityModalCustomer.attendedAgent && (
+                <div className="flex items-center justify-between text-[11px] text-gray-600 pt-1 border-t border-gray-200/60">
+                  <span>Delivery Agent:</span>
+                  <span className="font-bold text-gray-800">{deletePriorityModalCustomer.attendedAgent}</span>
+                </div>
+              )}
+
+              {deletePriorityModalCustomer.attendedDate && (
+                <div className="flex items-center justify-between text-[11px] text-gray-600">
+                  <span>Attendance Date:</span>
+                  <span className="font-semibold text-gray-800">{deletePriorityModalCustomer.attendedDate}</span>
+                </div>
+              )}
+
+              {deletePriorityModalCustomer.businessName && (
+                <div className="flex items-center justify-between text-[11px] text-gray-600">
+                  <span>Shop / Business:</span>
+                  <span className="font-semibold text-gray-800">{deletePriorityModalCustomer.businessName}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletePriorityModalCustomer(null)}
+                disabled={clearingPriority}
+                className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClearPriority}
+                disabled={clearingPriority}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-rose-600/20 disabled:opacity-50 cursor-pointer active:scale-95"
+              >
+                {clearingPriority ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                <span>Confirm Delete</span>
               </button>
             </div>
           </div>

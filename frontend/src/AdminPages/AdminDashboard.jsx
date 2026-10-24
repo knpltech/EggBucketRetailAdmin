@@ -59,7 +59,7 @@ export default function AdminDashboard() {
   const navItems = [
     { label: "About", path: "/admin", icon: FiInfo },
     { label: "Customer Info", path: "/admin/customers", icon: FiUsers },
-    { label: "New Customers", path: "/admin/new-customers", icon: FiInbox, isNew: true },
+    { label: "App Orders", path: "/admin/new-customers", icon: FiInbox },
     { label: "Add Delivery Partner", path: "/admin/add-delivery", icon: FiTruck },
     { label: "Add Sales Partner", path: "/admin/add-sales", icon: FiUserCheck },
     { label: "Add Customer", path: "/admin/add-customer", icon: FiUserPlus },

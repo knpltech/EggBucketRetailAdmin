@@ -189,6 +189,7 @@ router.post("/new-customers/:id/convert", convertNewCustomer);
 // Manual Priority Customers (from "customers" collection with manual_priority: true)
 router.get("/manual-priority-customers", getManualPriorityCustomers);
 router.put("/manual-priority-customers/:id/clear", clearManualPriorityCustomer);
+router.delete("/manual-priority-customers/:id", clearManualPriorityCustomer);
 
 
 // Delivery partner related routes

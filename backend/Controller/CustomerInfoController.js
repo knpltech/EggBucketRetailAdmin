@@ -1156,6 +1156,7 @@ const addCustomer = async (req, res) => {
       custid,
       location,
       zone: "UNASSIGNED",
+      route: "R001N-Onboarding Customers",
       potential: "T1",
       remarks: "",
     });

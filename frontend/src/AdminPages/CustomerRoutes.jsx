@@ -179,7 +179,7 @@ export default function CustomerRoutes() {
 
     // Process customers
     customers.forEach(customer => {
-      const route = customer.route;
+      const route = customer.route || (routeMap["R001N-Onboarding Customers"] ? "R001N-Onboarding Customers" : null);
       if (route && routeMap[route]) {
         routeMap[route].totalCustomers += 1;
 

@@ -4355,7 +4355,7 @@ const convertNewCustomer = async (req, res) => {
       business: newCustData.businessName || newCustData.business || "",
       location: newCustData.location || "",
       zone: zone || "UNASSIGNED",
-      route: route || "UNASSIGNED",
+      route: (route && route !== "UNASSIGNED") ? route : "R001N-Onboarding Customers",
       potential: potential || "T1",
       remarks: remarks || `Converted from App Registration (${newCustData.source || "App"})`,
       createdAt: Date.now(),
@@ -4402,10 +4402,10 @@ const convertNewCustomer = async (req, res) => {
 const getManualPriorityCustomers = async (req, res) => {
   try {
     const db = getFirestore();
-    const { search } = req.query;
+    const { search, fromDate, toDate, agent } = req.query;
 
     const seenIds = new Set();
-    const list = [];
+    const docList = [];
 
     // Query customers with manual_priority == true (boolean)
     // and also check string "true" in case it was stored as string
@@ -4422,7 +4422,14 @@ const getManualPriorityCustomers = async (req, res) => {
       snap.docs.forEach((doc) => {
         if (seenIds.has(doc.id)) return;
         seenIds.add(doc.id);
+        docList.push(doc);
+      });
+    });
 
+    const todayDateKey = getTodayDateString();
+
+    const list = await Promise.all(
+      docList.map(async (doc) => {
         const data = doc.data() || {};
 
         // Parse coordinates if available
@@ -4449,6 +4456,7 @@ const getManualPriorityCustomers = async (req, res) => {
           data.request_time ??
           data.manual_priority_time ??
           data.manualPriorityTime ??
+          data.todayOverride?.date ??
           data.updatedAt ??
           data.last8DaysUpdatedAt ??
           data.createdAt;
@@ -4456,6 +4464,7 @@ const getManualPriorityCustomers = async (req, res) => {
         let timeOfRequestMs = null;
         let timeOfRequestIso = null;
         let timeOfRequestFormatted = "N/A";
+        let requestDateKey = null;
 
         if (rawTime) {
           let dateObj = null;
@@ -4484,8 +4493,130 @@ const getManualPriorityCustomers = async (req, res) => {
                 minute: "2-digit",
                 hour12: true,
               }).format(dateObj);
+
+              const parts = new Intl.DateTimeFormat("en-CA", {
+                timeZone: "Asia/Kolkata",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).formatToParts(dateObj);
+              const y = parts.find((p) => p.type === "year")?.value;
+              const mo = parts.find((p) => p.type === "month")?.value;
+              const da = parts.find((p) => p.type === "day")?.value;
+              if (y && mo && da) requestDateKey = `${y}-${mo}-${da}`;
             } catch {
               timeOfRequestFormatted = dateObj.toLocaleString("en-IN");
+            }
+          }
+        }
+
+        if (!requestDateKey && data.todayOverride?.date) {
+          requestDateKey = String(data.todayOverride.date).trim();
+        }
+        if (!requestDateKey) {
+          requestDateKey = todayDateKey;
+        }
+
+        // Check if customer was attended (delivered or checked) on request date or today
+        const last8 = data.last8Days || {};
+        const targetDates = Array.from(new Set([requestDateKey, todayDateKey].filter(Boolean)));
+
+        let attended = false;
+        let attendedType = "PENDING"; // "DELIVERED" | "CHECKED" | "PENDING"
+        let attendedStatus = "Pending";
+        let attendedDate = null;
+        let attendedAgent = null;
+        let attendedQuantity = null;
+        let attendedAmount = null;
+        let attendedReason = null;
+        let attendedTime = null;
+
+        // 1. Check last8Days on target dates
+        for (const dKey of targetDates) {
+          const entry = last8[dKey];
+          if (!entry) continue;
+
+          const statusStr = String(
+            typeof entry === "string" ? entry : entry.status || entry.type || ""
+          ).toLowerCase().trim();
+
+          const qty = Number(entry.quantity ?? entry.traysDelivered ?? 0);
+
+          if (statusStr === "delivered" || qty > 0) {
+            attended = true;
+            attendedType = "DELIVERED";
+            attendedStatus = "Delivered";
+            attendedDate = dKey;
+            attendedAgent = entry.agentName || null;
+            attendedQuantity = qty > 0 ? qty : null;
+            attendedAmount = entry.totalAmount ?? null;
+            break;
+          }
+
+          const isChecked =
+            statusStr === "reached" ||
+            statusStr === "checked" ||
+            Boolean(entry.reason) ||
+            Boolean(entry.checkReason) ||
+            ["price_mismatch", "shop_closed", "stock_available", "other_vendor", "confirmed_tomorrow"].includes(statusStr);
+
+          if (isChecked) {
+            attended = true;
+            attendedType = "CHECKED";
+            attendedStatus = "Checked";
+            attendedDate = dKey;
+            attendedAgent = entry.agentName || null;
+            attendedReason = entry.reason || entry.checkReason || "Store Checked";
+            break;
+          }
+        }
+
+        // 2. Check todayOverride if still not resolved
+        if (!attended && data.todayOverride) {
+          const ovStatus = String(data.todayOverride.status || "").toLowerCase().trim();
+          if (ovStatus === "delivered") {
+            attended = true;
+            attendedType = "DELIVERED";
+            attendedStatus = "Delivered";
+            attendedDate = data.todayOverride.date || todayDateKey;
+          } else if (ovStatus === "reached" || ovStatus === "checked") {
+            attended = true;
+            attendedType = "CHECKED";
+            attendedStatus = "Checked";
+            attendedDate = data.todayOverride.date || todayDateKey;
+          }
+        }
+
+        // 3. Check deliveries subcollection fallback for target dates
+        if (!attended) {
+          for (const dKey of targetDates) {
+            try {
+              const delDoc = await doc.ref.collection("deliveries").doc(dKey).get();
+              if (delDoc.exists) {
+                const delData = delDoc.data() || {};
+                const st = String(delData.status || delData.type || "").toLowerCase().trim();
+                const q = Number(delData.quantity ?? delData.traysDelivered ?? 0);
+                if (st === "delivered" || q > 0) {
+                  attended = true;
+                  attendedType = "DELIVERED";
+                  attendedStatus = "Delivered";
+                  attendedDate = dKey;
+                  attendedAgent = delData.agentName || null;
+                  attendedQuantity = q > 0 ? q : null;
+                  attendedAmount = delData.totalAmount ?? null;
+                  break;
+                } else if (st === "reached" || st === "checked" || delData.reason) {
+                  attended = true;
+                  attendedType = "CHECKED";
+                  attendedStatus = "Checked";
+                  attendedDate = dKey;
+                  attendedAgent = delData.agentName || null;
+                  attendedReason = delData.reason || "Store Checked";
+                  break;
+                }
+              }
+            } catch (delErr) {
+              // Ignore subcollection read errors
             }
           }
         }
@@ -4496,7 +4627,7 @@ const getManualPriorityCustomers = async (req, res) => {
           data.location ||
           (lat && lng ? `Lat: ${lat}, Lng: ${lng}` : "Location not provided");
 
-        list.push({
+        return {
           id: doc.id,
           name,
           businessName,
@@ -4507,27 +4638,59 @@ const getManualPriorityCustomers = async (req, res) => {
           timeOfRequest: timeOfRequestFormatted,
           timeOfRequestMs,
           timeOfRequestIso,
+          requestDateKey,
           phone: data.phone || "",
           custid: data.custid || "",
           route: data.route || "",
           zone: data.zone || "",
           manual_priority: true,
-        });
-      });
-    });
+          attended,
+          attendedType,
+          attendedStatus,
+          attendedDate,
+          attendedAgent,
+          attendedQuantity,
+          attendedAmount,
+          attendedReason,
+        };
+      })
+    );
 
     // Sort newest first
     list.sort((a, b) => (b.timeOfRequestMs || 0) - (a.timeOfRequestMs || 0));
 
     let filtered = list;
+
+    // Optional query filtering
     if (search && search.trim()) {
       const q = search.toLowerCase().trim();
       filtered = filtered.filter(
         (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.businessName.toLowerCase().includes(q) ||
-          c.location.toLowerCase().includes(q) ||
-          c.timeOfRequest.toLowerCase().includes(q)
+          (c.name && c.name.toLowerCase().includes(q)) ||
+          (c.businessName && c.businessName.toLowerCase().includes(q)) ||
+          (c.location && c.location.toLowerCase().includes(q)) ||
+          (c.phone && c.phone.toLowerCase().includes(q)) ||
+          (c.custid && c.custid.toLowerCase().includes(q)) ||
+          (c.attendedAgent && c.attendedAgent.toLowerCase().includes(q)) ||
+          (c.attendedReason && c.attendedReason.toLowerCase().includes(q)) ||
+          (c.timeOfRequest && c.timeOfRequest.toLowerCase().includes(q))
+      );
+    }
+
+    if (fromDate && toDate) {
+      filtered = filtered.filter((c) => {
+        const itemDate = c.requestDateKey || (c.timeOfRequestIso ? c.timeOfRequestIso.slice(0, 10) : "");
+        if (!itemDate) return true;
+        return itemDate >= fromDate && itemDate <= toDate;
+      });
+    }
+
+    if (agent && agent !== "__all__" && agent !== "all") {
+      const aLower = agent.toLowerCase().trim();
+      filtered = filtered.filter(
+        (c) =>
+          (c.attendedAgent && c.attendedAgent.toLowerCase().includes(aLower)) ||
+          (c.route && c.route.toLowerCase().includes(aLower))
       );
     }
 
@@ -4563,6 +4726,10 @@ const clearManualPriorityCustomer = async (req, res) => {
         manual_priority: false,
         manual_priority_cleared_at: Date.now(),
       });
+      try {
+        cache.del(`customer:${id}`);
+        cache.del("userInfo");
+      } catch (cErr) {}
       return res.status(200).json({ success: true, message: "Manual priority cleared" });
     }
 
@@ -4570,6 +4737,11 @@ const clearManualPriorityCustomer = async (req, res) => {
       manual_priority: false,
       manual_priority_cleared_at: Date.now(),
     });
+
+    try {
+      cache.del(`customer:${id}`);
+      cache.del("userInfo");
+    } catch (cErr) {}
 
     return res.status(200).json({ success: true, message: "Manual priority cleared" });
   } catch (err) {
@@ -4581,6 +4753,7 @@ const clearManualPriorityCustomer = async (req, res) => {
     });
   }
 };
+
 
 export {
   getNewCustomers,
