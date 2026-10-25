@@ -132,8 +132,41 @@ const resolvePeakFrequency = (customerData = {}) => {
   return savedPeak || "D0";
 };
 
-const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = []) => {
-  const customerData = doc.data();
+const getDefaultOnboardingRoute = async (db) => {
+  const cacheKey = "default:onboarding:route";
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  let resolvedRoute = "R001N-Onboarding Customers (Everyone)";
+  try {
+    const snap = await db.collection("routes").get();
+    let found = null;
+    snap.forEach((doc) => {
+      const name = doc.data()?.name || "";
+      if (name === "R001N-Onboarding Customers" || name === "R001N-Onboarding Customers (Everyone)") {
+        found = name;
+      } else if (!found && (name.includes("R001N") || name.toLowerCase().includes("onboarding"))) {
+        found = name;
+      }
+    });
+    if (found) {
+      resolvedRoute = found;
+    }
+  } catch (err) {
+    console.warn("Failed to resolve default onboarding route:", err);
+  }
+
+  cache.set(cacheKey, resolvedRoute, 1800);
+  return resolvedRoute;
+};
+
+const buildCustomerInfoPayload = (
+  doc,
+  peakUpdates = [],
+  customerTypeUpdates = [],
+  defaultOnboardingRoute = "R001N-Onboarding Customers (Everyone)"
+) => {
+  const customerData = doc.data() || {};
   const peakFrequency = resolvePeakFrequency(customerData);
   const savedPeakFreq = normalizePeakFrequency(
     customerData?.Peak_Frequency ||
@@ -161,8 +194,16 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   const customerState = String(customerData.customerState || "Active").trim();
   const purchaseIntent = String(customerData.purchaseIntent || "Unknown").trim();
 
+  // Default route to onboarding route if unassigned or missing
+  const currentRoute = (customerData.route || "").trim();
+  const isUnassignedRoute = !currentRoute || currentRoute === "UNASSIGNED";
+  const route = isUnassignedRoute ? defaultOnboardingRoute : currentRoute;
+
   // Build update object — only include fields that need saving
   const updateFields = {};
+  if (isUnassignedRoute && defaultOnboardingRoute) {
+    updateFields.route = defaultOnboardingRoute;
+  }
   if (hasAnyDeliveries && peakFrequency && peakFrequency !== savedPeakFreq) {
     updateFields.Peak_Frequency = peakFrequency;
   }
@@ -224,6 +265,7 @@ const buildCustomerInfoPayload = (doc, peakUpdates = [], customerTypeUpdates = [
   return {
     id: doc.id,
     ...customerData,
+    route,
     deliveryGap,
     purchaseCadence,
     customerState,
@@ -616,12 +658,13 @@ const userInfo = async (req, res) => {
           query = query.orderBy("name", "asc");
         }
 
+        const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
         const snapshot = await query.offset(offset).limit(limit).get();
 
         const peakUpdates = [];
         const customerTypeUpdates = [];
         const customers = snapshot.docs.map((doc) =>
-          buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates),
+          buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates, defaultOnboardingRoute),
         );
         await commitPeakUpdates(db, peakUpdates);
         await commitCustomerTypeUpdates(db, customerTypeUpdates);
@@ -667,6 +710,7 @@ const userInfo = async (req, res) => {
         }
       }
 
+      const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
       const snapshot = await query.get();
       const docs = snapshot.docs;
       const hasNextPage = docs.length > limit;
@@ -675,7 +719,7 @@ const userInfo = async (req, res) => {
       const peakUpdates = [];
       const customerTypeUpdates = [];
       const customers = pageDocs.map((doc) =>
-        buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates),
+        buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates, defaultOnboardingRoute),
       );
       await commitPeakUpdates(db, peakUpdates);
       await commitCustomerTypeUpdates(db, customerTypeUpdates);
@@ -714,11 +758,12 @@ const userInfo = async (req, res) => {
       return res.status(200).json(cachedCustomers);
     }
 
+    const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
     const customersSnapshot = await db.collection("customers").get();
     const peakUpdates = [];
     const customerTypeUpdates = [];
     const customers = customersSnapshot.docs.map((doc) =>
-      buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates),
+      buildCustomerInfoPayload(doc, peakUpdates, customerTypeUpdates, defaultOnboardingRoute),
     );
     await commitPeakUpdates(db, peakUpdates);
     await commitCustomerTypeUpdates(db, customerTypeUpdates);
@@ -781,9 +826,13 @@ const specificUser = async (req, res) => {
     }
 
     const data = userDoc.data() || {};
+    const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
+    const currentRoute = (data.route || "").trim();
+    const route = (!currentRoute || currentRoute === "UNASSIGNED") ? defaultOnboardingRoute : currentRoute;
     const payload = {
       id: userDoc.id,
       ...data,
+      route,
     };
 
     await cache.setAsync(cacheKey, payload, 120);
@@ -1144,6 +1193,7 @@ const addCustomer = async (req, res) => {
       expires: "03-01-2500",
     });
 
+    const defaultRoute = await getDefaultOnboardingRoute(db);
     const newDocRef = db.collection("customers").doc();
 
     await newDocRef.set({
@@ -1156,7 +1206,7 @@ const addCustomer = async (req, res) => {
       custid,
       location,
       zone: "UNASSIGNED",
-      route: "R001N-Onboarding Customers",
+      route: defaultRoute,
       potential: "T1",
       remarks: "",
     });
@@ -1372,4 +1422,5 @@ export {
   adjustActiveCount,
   invalidateActiveCountCache,
   computePeakPotentialNumber,
+  getDefaultOnboardingRoute,
 };

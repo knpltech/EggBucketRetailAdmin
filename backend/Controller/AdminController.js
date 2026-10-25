@@ -10,6 +10,7 @@ import { signAuthToken } from "../utils/jwt.js";
 import {
   adjustActiveCount,
   invalidateActiveCountCache,
+  getDefaultOnboardingRoute,
 } from "./CustomerInfoController.js";
 import {
   computePeakFrequency30Days,
@@ -4347,6 +4348,8 @@ const convertNewCustomer = async (req, res) => {
       console.warn("Counter generation error:", cErr.message);
     }
 
+    const defaultRoute = await getDefaultOnboardingRoute(db);
+
     // Add to active customers collection
     const customerDocRef = db.collection("customers").doc();
     const newCustomerDoc = {
@@ -4355,7 +4358,7 @@ const convertNewCustomer = async (req, res) => {
       business: newCustData.businessName || newCustData.business || "",
       location: newCustData.location || "",
       zone: zone || "UNASSIGNED",
-      route: (route && route !== "UNASSIGNED") ? route : "R001N-Onboarding Customers",
+      route: (route && route !== "UNASSIGNED") ? route : defaultRoute,
       potential: potential || "T1",
       remarks: remarks || `Converted from App Registration (${newCustData.source || "App"})`,
       createdAt: Date.now(),

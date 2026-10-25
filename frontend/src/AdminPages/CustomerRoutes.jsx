@@ -177,9 +177,19 @@ export default function CustomerRoutes() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
+    const onboardingRouteKey =
+      Object.keys(routeMap).find(
+        (r) =>
+          r === "R001N-Onboarding Customers" ||
+          r === "R001N-Onboarding Customers (Everyone)" ||
+          r.includes("R001N") ||
+          r.toLowerCase().includes("onboarding")
+      ) || "R001N-Onboarding Customers (Everyone)";
+    const defaultRouteFallback = routeMap[onboardingRouteKey] ? onboardingRouteKey : null;
+
     // Process customers
     customers.forEach(customer => {
-      const route = customer.route || (routeMap["R001N-Onboarding Customers"] ? "R001N-Onboarding Customers" : null);
+      const route = customer.route || defaultRouteFallback;
       if (route && routeMap[route]) {
         routeMap[route].totalCustomers += 1;
 

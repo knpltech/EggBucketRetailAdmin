@@ -523,9 +523,10 @@ export default function NewCustomers() {
       routesList.find(
         (r) =>
           r === "R001N-Onboarding Customers" ||
+          r === "R001N-Onboarding Customers (Everyone)" ||
           r.includes("R001N") ||
           r.toLowerCase().includes("onboarding")
-      ) || "R001N-Onboarding Customers";
+      ) || "R001N-Onboarding Customers (Everyone)";
 
     setConvertingCustomer(customer);
     setConvertForm({
@@ -2422,12 +2423,12 @@ export default function NewCustomers() {
                   }
                   className="w-full h-10 bg-white border border-gray-300 rounded-xl px-3 font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="R001N-Onboarding Customers">
-                    R001N-Onboarding Customers (Default)
+                  <option value={convertForm.route || "R001N-Onboarding Customers (Everyone)"}>
+                    {convertForm.route || "R001N-Onboarding Customers (Everyone)"} (Default)
                   </option>
                   <option value="UNASSIGNED">UNASSIGNED</option>
                   {routesList
-                    .filter((r) => r !== "R001N-Onboarding Customers")
+                    .filter((r) => r !== (convertForm.route || "R001N-Onboarding Customers (Everyone)"))
                     .map((r) => (
                       <option key={r} value={r}>
                         {r}
