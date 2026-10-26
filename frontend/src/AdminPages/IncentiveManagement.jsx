@@ -537,17 +537,21 @@ export default function IncentiveManagement() {
             </label>
 
             {/* App Switcher Tabs: Routes vs Sales */}
-            <div className="inline-flex p-1 bg-gray-100 rounded-xl border border-gray-200">
+            <div className="inline-flex p-1 bg-gray-100 rounded-xl border border-gray-200 shadow-2xs">
               <button
                 type="button"
                 onClick={() => setActiveConfigTab("routes")}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
                   activeConfigTab === "routes"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
+                    ? "bg-orange-500 text-white shadow-sm ring-1 ring-orange-600/30"
+                    : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/60"
                 }`}
               >
-                <Truck className="w-4 h-4 text-amber-600" />
+                <Truck
+                  className={`w-4 h-4 ${
+                    activeConfigTab === "routes" ? "text-white" : "text-amber-600"
+                  }`}
+                />
                 <span>Routes App (Delivery)</span>
               </button>
               <button
@@ -555,11 +559,15 @@ export default function IncentiveManagement() {
                 onClick={() => setActiveConfigTab("sales")}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
                   activeConfigTab === "sales"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
+                    ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/30"
+                    : "text-gray-600 hover:text-blue-600 hover:bg-blue-50/60"
                 }`}
               >
-                <UserCheck className="w-4 h-4 text-blue-600" />
+                <UserCheck
+                  className={`w-4 h-4 ${
+                    activeConfigTab === "sales" ? "text-white" : "text-blue-600"
+                  }`}
+                />
                 <span>Sales App</span>
               </button>
             </div>

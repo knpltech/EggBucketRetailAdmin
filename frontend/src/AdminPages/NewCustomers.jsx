@@ -195,6 +195,25 @@ export default function NewCustomers() {
   const [deletePriorityModalCustomer, setDeletePriorityModalCustomer] = useState(null);
   const [clearingPriority, setClearingPriority] = useState(false);
 
+  // Front-end dismissed row IDs (removed only from front end view, persisted in localStorage, no database changes)
+  const [dismissedPriorityIds, setDismissedPriorityIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem("egg_dismissed_priority_ids");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const [dismissedSalesIds, setDismissedSalesIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem("egg_dismissed_sales_ids");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
   // Modals state
   const [selectedCustomer, setSelectedCustomer] = useState(null); // Detail modal
   const [convertingCustomer, setConvertingCustomer] = useState(null); // Convert modal
@@ -344,6 +363,98 @@ export default function NewCustomers() {
     },
     []
   );
+
+  // Front-end removal of priority row (as soon as button clicked, removed only from front end, no data changed)
+  const handleRemovePriorityRow = (id, name) => {
+    setDismissedPriorityIds((prev) => {
+      const updated = new Set(prev);
+      updated.add(id);
+      try {
+        localStorage.setItem(
+          "egg_dismissed_priority_ids",
+          JSON.stringify(Array.from(updated))
+        );
+      } catch (e) {
+        console.warn("Could not save to localStorage:", e);
+      }
+      return updated;
+    });
+    showToast(`Removed ${name || "customer"} from view (no changes to data)`);
+  };
+
+  // Restore dismissed priority rows
+  const handleRestorePriorityRows = () => {
+    setDismissedPriorityIds(new Set());
+    try {
+      localStorage.removeItem("egg_dismissed_priority_ids");
+    } catch (e) {}
+    showToast("Restored all hidden priority rows");
+  };
+
+  // Front-end removal of sales customer registration row (no changes to database)
+  const handleRemoveSalesRow = (id, name) => {
+    setDismissedSalesIds((prev) => {
+      const updated = new Set(prev);
+      updated.add(id);
+      try {
+        localStorage.setItem(
+          "egg_dismissed_sales_ids",
+          JSON.stringify(Array.from(updated))
+        );
+      } catch (e) {
+        console.warn("Could not save to localStorage:", e);
+      }
+      return updated;
+    });
+    if (selectedCustomer?.id === id) {
+      setSelectedCustomer(null);
+    }
+    showToast(`Removed ${name || "registration"} from view (no changes to data)`);
+  };
+
+  // Restore dismissed sales rows
+  const handleRestoreSalesRows = () => {
+    setDismissedSalesIds(new Set());
+    try {
+      localStorage.removeItem("egg_dismissed_sales_ids");
+    } catch (e) {}
+    showToast("Restored all hidden sales rows");
+  };
+
+  // Auto remove customer details only from this page after customer query is addressed (delivered or checked) after 30 days
+  const isAddressedOlderThan30Days = useCallback((customer) => {
+    if (!customer) return false;
+    const isAddressed =
+      Boolean(customer.attended) ||
+      customer.attendedType === "DELIVERED" ||
+      customer.attendedType === "CHECKED" ||
+      customer.attendedStatus === "Delivered" ||
+      customer.attendedStatus === "Checked";
+
+    if (!isAddressed) return false;
+
+    let addressedTime = null;
+    if (customer.attendedDate) {
+      const d = new Date(customer.attendedDate);
+      if (!isNaN(d.getTime())) {
+        addressedTime = d.getTime();
+      }
+    }
+    if (!addressedTime && customer.timeOfRequestMs) {
+      addressedTime = customer.timeOfRequestMs;
+    }
+    if (!addressedTime && customer.requestDateKey) {
+      const d = new Date(customer.requestDateKey);
+      if (!isNaN(d.getTime())) {
+        addressedTime = d.getTime();
+      }
+    }
+
+    if (!addressedTime) return false;
+
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    return Date.now() - addressedTime > THIRTY_DAYS_MS;
+  }, []);
 
   // Delete / Clear manual priority customer
   const handleConfirmClearPriority = async () => {
@@ -547,6 +658,11 @@ export default function NewCustomers() {
   // Filtered customers calculation
   const filteredCustomers = useMemo(() => {
     return customers.filter((item) => {
+      // 0. Exclude front-end dismissed rows (no changes to database)
+      if (dismissedSalesIds.has(item.id)) {
+        return false;
+      }
+
       // 1. Status Filter
       if (statusFilter !== "ALL" && item.status !== statusFilter) {
         return false;
@@ -630,9 +746,18 @@ export default function NewCustomers() {
     showToast("Exported to Excel successfully!");
   };
 
+  // Active priority customers for this page (auto-removes queries addressed > 30 days & front-end deleted rows)
+  const activePriorityCustomers = useMemo(() => {
+    return manualPriorityCustomers.filter((c) => {
+      if (dismissedPriorityIds.has(c.id)) return false;
+      if (isAddressedOlderThan30Days(c)) return false;
+      return true;
+    });
+  }, [manualPriorityCustomers, dismissedPriorityIds, isAddressedOlderThan30Days]);
+
   // Filtered manual priority list
   const filteredManualPriority = useMemo(() => {
-    return manualPriorityCustomers.filter((c) => {
+    return activePriorityCustomers.filter((c) => {
       // 1. Search Query
       if (manualPrioritySearch.trim()) {
         const q = manualPrioritySearch.toLowerCase().trim();
@@ -669,7 +794,7 @@ export default function NewCustomers() {
         if (!matchesAgent) return false;
       }
 
-      // 3. Attendance Status Filter
+      // 3. Customer Status Filter
       if (priorityAttendanceFilter !== "ALL") {
         if (priorityAttendanceFilter === "ATTENDED" && !c.attended) return false;
         if (priorityAttendanceFilter === "DELIVERED" && c.attendedType !== "DELIVERED") return false;
@@ -690,7 +815,7 @@ export default function NewCustomers() {
       return true;
     });
   }, [
-    manualPriorityCustomers,
+    activePriorityCustomers,
     manualPrioritySearch,
     selectedAgent,
     priorityAttendanceFilter,
@@ -699,7 +824,7 @@ export default function NewCustomers() {
     toDate,
   ]);
 
-  // Export manual priority customers to Excel (Name, Business Name, Location, Time of Request, Attendance)
+  // Export manual priority customers to Excel (Name, Business Name, Location, Time of Request, Customer Status)
   const exportManualPriorityToExcel = () => {
     try {
       const exportData = filteredManualPriority.map((c, idx) => ({
@@ -709,8 +834,8 @@ export default function NewCustomers() {
         "Business Name": c.businessName || c.business || "N/A",
         "Location": c.location || "N/A",
         "Time of Request": c.timeOfRequest || "N/A",
-        "Attendance Status": c.attendedStatus || (c.attended ? "Attended" : "Pending"),
-        "Attended Date": c.attendedDate || "N/A",
+        "Customer Status": c.attendedStatus || (c.attended ? "Attended" : "Pending"),
+        "Status Date": c.attendedDate || "N/A",
         "Attended By Agent": c.attendedAgent || "N/A",
         "Delivered Trays / Check Reason": c.attendedQuantity
           ? `${c.attendedQuantity} trays`
@@ -973,16 +1098,20 @@ export default function NewCustomers() {
             onClick={() => setActiveMainTab("ROUTES_APP")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
               activeMainTab === "ROUTES_APP"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-600 hover:text-gray-900"
+                ? "bg-orange-500 text-white shadow-sm ring-1 ring-orange-600/30"
+                : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/60"
             }`}
           >
-            <Truck className="w-4 h-4 text-amber-600" />
+            <Truck
+              className={`w-4 h-4 ${
+                activeMainTab === "ROUTES_APP" ? "text-white" : "text-amber-600"
+              }`}
+            />
             <span>Routes App (Delivery)</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
                 activeMainTab === "ROUTES_APP"
-                  ? "bg-amber-100 text-amber-900"
+                  ? "bg-white text-orange-600 shadow-2xs"
                   : "bg-gray-200 text-gray-700"
               }`}
             >
@@ -995,16 +1124,20 @@ export default function NewCustomers() {
             onClick={() => setActiveMainTab("SALES_APP")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
               activeMainTab === "SALES_APP"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-600 hover:text-gray-900"
+                ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/30"
+                : "text-gray-600 hover:text-blue-600 hover:bg-blue-50/60"
             }`}
           >
-            <UserCheck className="w-4 h-4 text-blue-600" />
+            <UserCheck
+              className={`w-4 h-4 ${
+                activeMainTab === "SALES_APP" ? "text-white" : "text-blue-600"
+              }`}
+            />
             <span>Sales App</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
                 activeMainTab === "SALES_APP"
-                  ? "bg-blue-100 text-blue-900"
+                  ? "bg-white text-blue-600 shadow-2xs"
                   : "bg-gray-200 text-gray-700"
               }`}
             >
@@ -1125,37 +1258,37 @@ export default function NewCustomers() {
             </div>
           </div>
 
-          {/* Quick Attendance Filter Toolbar */}
+          {/* Quick Customer Status Filter Toolbar */}
           <div className="bg-white border border-gray-200 rounded-2xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="font-bold text-gray-500 mr-1 uppercase text-[11px] tracking-wide">
-                Attendance:
+                Customer Status:
               </span>
               {[
-                { key: "ALL", label: "All", count: manualPriorityCustomers.length },
+                { key: "ALL", label: "All", count: activePriorityCustomers.length },
                 {
                   key: "ATTENDED",
                   label: "Attended",
-                  count: manualPriorityCustomers.filter((c) => c.attended).length,
+                  count: activePriorityCustomers.filter((c) => c.attended).length,
                 },
                 {
                   key: "DELIVERED",
                   label: "Delivered",
-                  count: manualPriorityCustomers.filter(
+                  count: activePriorityCustomers.filter(
                     (c) => c.attendedType === "DELIVERED"
                   ).length,
                 },
                 {
                   key: "CHECKED",
                   label: "Checked",
-                  count: manualPriorityCustomers.filter(
+                  count: activePriorityCustomers.filter(
                     (c) => c.attendedType === "CHECKED"
                   ).length,
                 },
                 {
                   key: "PENDING",
                   label: "Pending",
-                  count: manualPriorityCustomers.filter((c) => !c.attended).length,
+                  count: activePriorityCustomers.filter((c) => !c.attended).length,
                 },
               ].map((btn) => (
                 <button
@@ -1182,10 +1315,23 @@ export default function NewCustomers() {
               ))}
             </div>
 
-            <span className="text-xs font-semibold text-gray-500 self-center">
-              Showing <strong className="text-gray-800">{filteredManualPriority.length}</strong> of{" "}
-              {manualPriorityCustomers.length} Priority Requests
-            </span>
+            <div className="flex items-center gap-3">
+              {dismissedPriorityIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRestorePriorityRows}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                  title="Restore rows removed from this page"
+                >
+                  <RefreshCw className="w-3 h-3 text-amber-600" />
+                  <span>Restore ({dismissedPriorityIds.size} hidden)</span>
+                </button>
+              )}
+              <span className="text-xs font-semibold text-gray-500 self-center">
+                Showing <strong className="text-gray-800">{filteredManualPriority.length}</strong> of{" "}
+                {activePriorityCustomers.length} Requests
+              </span>
+            </div>
           </div>
 
           {/* Priority Customers Table */}
@@ -1221,7 +1367,7 @@ export default function NewCustomers() {
                       <th className="py-4 px-5">Business Name</th>
                       <th className="py-4 px-5">Location</th>
                       <th className="py-4 px-5">Time of Request</th>
-                      <th className="py-4 px-5">Delivery Attendance</th>
+                      <th className="py-4 px-5">Customer Status</th>
                       <th className="py-4 px-5 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1387,28 +1533,17 @@ export default function NewCustomers() {
                         </td>
 
                         {/* 6. Actions (Delete button appears when attended) */}
+                        {/* 6. Actions (Delete button immediately removes row from front end, no changes to data) */}
                         <td className="py-4 px-5 text-right">
-                          {c.attended ? (
-                            <button
-                              type="button"
-                              onClick={() => setDeletePriorityModalCustomer(c)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs active:scale-95"
-                              title="Delete / Clear Priority Request"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Delete</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setDeletePriorityModalCustomer(c)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-medium transition cursor-pointer"
-                              title="Cancel Priority Request"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Cancel</span>
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePriorityRow(c.id, c.name)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs active:scale-95"
+                            title="Delete row (removes from this page, no changes to data)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1871,12 +2006,12 @@ export default function NewCustomers() {
                             <UserCheck className="w-4 h-4" />
                           </button>
 
-                          {/* Delete registration */}
+                          {/* Delete registration (removes from front end, no changes to data) */}
                           <button
                             type="button"
-                            onClick={() => setDeleteConfirmCustomer(cust)}
-                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Delete Registration Record"
+                            onClick={() => handleRemoveSalesRow(cust.id, cust.name || cust.shopName)}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            title="Delete row (removes from this page, no changes to data)"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -2312,11 +2447,12 @@ export default function NewCustomers() {
             <div className="p-4 bg-gray-100 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => setDeleteConfirmCustomer(selectedCustomer)}
+                onClick={() => handleRemoveSalesRow(selectedCustomer.id, selectedCustomer.name || selectedCustomer.shopName)}
                 className="px-3.5 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                title="Remove row from view (no changes to data)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Record</span>
+                <span>Delete (Remove from View)</span>
               </button>
 
               <div className="flex items-center gap-2">

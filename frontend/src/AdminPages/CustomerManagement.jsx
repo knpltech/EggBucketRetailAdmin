@@ -48,7 +48,7 @@ import {
 // TABS
 const TABS = [
   "ALL",
-  "PRIME CUSTOMER",
+  "RESIDENTIAL CUSTOMER",
   "ONBOARDING",
   "CALLING CUSTOMER",
   "D0",
@@ -69,63 +69,16 @@ const TABS = [
   "F7",
 ];
 
-// ─── Prime Customer Helpers ───────────────────────────────────────────────
+// ─── Residential Customer Helper ─────────────────────────────────────────────
 
 /**
- * Determine Prime Customer type based on Peak_Potential
- * Prime Customer: Peak_Potential >= T10 (i.e., >= 10 trays)
- * Regular Customer: Peak_Potential < T10 (i.e., < 10 trays)
+ * Determine if a customer is a Residential Customer
+ * Formula: Customer whose Business Type is Residential Customers
  */
-function getPrimeCustomerType(customer = {}) {
-  if (!customer || typeof customer !== "object") return "REGULAR";
-
-  // 1. Direct check if customerType is already set by DB
-  const storedType = String(customer.customerType || "").trim().toUpperCase();
-  if (storedType === "PRIME") return "PRIME";
-  if (storedType === "REGULAR") return "REGULAR";
-
-  // 2. Read directly from DB Peak_Potential field
-  const pot = customer.Peak_Potential;
-  if (pot) {
-    const num = Number(String(pot).replace(/\D/g, ""));
-    if (Number.isFinite(num) && num > 0) {
-      return num >= 10 ? "PRIME" : "REGULAR";
-    }
-  }
-
-  // 3. Fallback to computing from last8Days if document is missing peak potential
-  const peakNum = computePeakPotentialNumber(customer.last8Days);
-  if (peakNum > 0) {
-    return peakNum >= 10 ? "PRIME" : "REGULAR";
-  }
-
-  return "REGULAR";
-}
-
-/**
- * Sync Prime Customer status for a single customer
- * Calculates Peak_Potential, determines if PRIME or REGULAR, and compares with stored value
- * Returns: { customerType, needsUpdate, peakPotential }
- */
-function syncPrimeCustomer(customer = {}) {
-  if (!customer || typeof customer !== "object") {
-    return { customerType: "REGULAR", needsUpdate: false };
-  }
-
-  const calculatedType = getPrimeCustomerType(customer);
-
-  const storedType = String(customer.customerType || "").trim().toUpperCase();
-  const normalizedStoredType =
-    storedType === "PRIME" || storedType === "REGULAR" ? storedType : null;
-
-  const needsUpdate =
-    normalizedStoredType === null || normalizedStoredType !== calculatedType;
-
-  return {
-    customerType: calculatedType,
-    needsUpdate,
-    peakPotential: computePeakPotentialNumber(customer.last8Days),
-  };
+export function isResidentialCustomer(customer = {}) {
+  if (!customer || typeof customer !== "object") return false;
+  const bt = String(customer.businessType || "").trim().toLowerCase();
+  return bt.includes("residential") || bt.includes("residencial");
 }
 
 export default function CustomerManagement() {
@@ -219,52 +172,6 @@ export default function CustomerManagement() {
       deliveredCount: getDeliveredCountForCustomer(c),
     }));
 
-  // ─── Helper: Sync Prime Customer status for all customers ─────────────────
-  const syncAllPrimeCustomers = async (customersList) => {
-    // Sync Prime Customer status in batch for better performance
-    // This avoids making individual API calls for each customer
-    const customersToUpdate = customersList
-      .map((customer) => {
-        const syncResult = syncPrimeCustomer(customer);
-        if (syncResult.needsUpdate) {
-          return {
-            id: customer.id,
-            customerType: syncResult.customerType,
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
-
-    // Update Firestore for all customers that need syncing
-    // Using batch updates to minimize API calls
-    if (customersToUpdate.length > 0) {
-      // Batch updates: group in chunks of 50 to avoid timeout
-      for (let i = 0; i < customersToUpdate.length; i += 50) {
-        const batch = customersToUpdate.slice(i, i + 50);
-        try {
-          await Promise.all(
-            batch.map((update) =>
-              axios.post(`${ADMIN_PATH}/customer/status`, {
-                id: update.id,
-                customerType: update.customerType,
-              })
-            )
-          );
-          // Update local state with synced customerType
-          setCustomers((prev) =>
-            prev.map((c) => {
-              const update = customersToUpdate.find((u) => u.id === c.id);
-              return update ? { ...c, customerType: update.customerType } : c;
-            })
-          );
-        } catch (err) {
-          console.error("Error syncing Prime Customer status:", err);
-        }
-      }
-    }
-  };
-
   // ─── Initial load: all customers ──────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -282,10 +189,6 @@ export default function CustomerManagement() {
 
         const normalizedRows = normaliseRows(rows);
         setCustomers(normalizedRows);
-
-        // Sync Prime Customer status for all customers
-        // This ensures Firestore is kept in sync with Peak_Potential
-        await syncAllPrimeCustomers(normalizedRows);
 
         // Fetch category peak potentials for today's weekday
         try {
@@ -426,10 +329,8 @@ export default function CustomerManagement() {
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-    if (activeTab === "PRIME CUSTOMER") {
-      list = list.filter((c) => {
-        return getPrimeCustomerType(c) === "PRIME";
-      });
+    if (activeTab === "RESIDENTIAL CUSTOMER") {
+      list = list.filter((c) => isResidentialCustomer(c));
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
       const now = Date.now();
@@ -744,10 +645,8 @@ export default function CustomerManagement() {
       return count;
     };
 
-    if (activeTab === "PRIME CUSTOMER") {
-      list = list.filter((c) => {
-        return getPrimeCustomerType(c) === "PRIME";
-      });
+    if (activeTab === "RESIDENTIAL CUSTOMER") {
+      list = list.filter((c) => isResidentialCustomer(c));
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
       const yesterday = Date.now() - 24 * 60 * 60 * 1000;
@@ -921,8 +820,8 @@ export default function CustomerManagement() {
     }
 
     let key = "ALL";
-    if (activeTab === "PRIME CUSTOMER") {
-      key = "PRIME";
+    if (activeTab === "RESIDENTIAL CUSTOMER") {
+      key = "RESIDENTIAL";
     } else if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
     } else if (activeTab === "CALLING CUSTOMER") {
@@ -1212,8 +1111,8 @@ export default function CustomerManagement() {
         Risk_Factor: getRiskFactorLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, PRIME CUSTOMER, ONBOARDING, CALLING CUSTOMER and F0-F7 tabs
-      if (activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) {
+      // Add Current_Category for ALL, RESIDENTIAL CUSTOMER, ONBOARDING, CALLING CUSTOMER and F0-F7 tabs
+      if (activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData["Purchase Cadence"] = resolveCleanPattern(c.purchaseCadence || c.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
@@ -1667,7 +1566,7 @@ export default function CustomerManagement() {
               <th className="px-2 py-3 whitespace-nowrap">Frequency Gap</th>
               <th className="px-2 py-3 whitespace-nowrap">Risk_Factor</th>
               <th className="px-2 py-3">Delivery_Gap</th>
-              {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
+              {(activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
                 <th className="px-2 py-3">Current Category</th>
               )}
               <th className="px-2 py-3">Status</th>
@@ -1959,7 +1858,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                {(activeTab === "ALL" || activeTab === "PRIME CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
+                {(activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
                   <td className="px-2 py-3">
                     <span
                       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"

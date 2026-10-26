@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { FiEdit2 } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
+import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 import {
   getDateStringInTimeZone,
   normalizePeakFrequency,
@@ -282,6 +283,9 @@ const CustomerRow = React.memo(({
   editingRouteId,
   setEditingRouteId,
   assignRoute,
+  toggleTodayDelivery,
+  updatingTodayId,
+  todayDate,
 }) => {
   const currentCategory = customer.currentCategory || "-";
   const currentCatNum = getCurrentCategoryNumber(currentCategory);
@@ -310,32 +314,105 @@ const CustomerRow = React.memo(({
     <tr className="border-t hover:bg-slate-50">
       <td className="px-2 py-2 font-semibold text-slate-900 text-xs">{customer.name}</td>
       <td className="px-2 py-2 text-slate-700 text-xs">{customer.zone}</td>
+
+      {/* Route Column with Edit Option */}
+      <td className="px-2 py-2 text-slate-700 text-xs">
+        {!customer.route || customer.route === "UNASSIGNED" ? (
+          <select
+            value=""
+            disabled={assigningRouteId === customer.id}
+            onChange={(e) => assignRoute(customer.id, e.target.value)}
+            className="border rounded px-2 py-1 w-28 text-xs bg-white text-gray-900 border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="">Assign Route</option>
+            {routes.map((r) => {
+              const rName = typeof r === "string" ? r : r?.name;
+              if (!rName) return null;
+              return (
+                <option key={rName} value={rName}>
+                  {rName}
+                </option>
+              );
+            })}
+          </select>
+        ) : editingRouteId === customer.id ? (
+          <select
+            autoFocus
+            defaultValue={customer.route}
+            disabled={assigningRouteId === customer.id}
+            onBlur={() => setEditingRouteId(null)}
+            onChange={async (e) => {
+              await assignRoute(customer.id, e.target.value);
+              setEditingRouteId(null);
+            }}
+            className="border rounded px-2 py-1 w-28 text-xs bg-white text-gray-900 border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          >
+            {routes.map((r) => {
+              const rName = typeof r === "string" ? r : r?.name;
+              if (!rName) return null;
+              return (
+                <option key={rName} value={rName}>
+                  {rName}
+                </option>
+              );
+            })}
+          </select>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className="truncate max-w-[120px]" title={customer.route}>{customer.route}</span>
+            <button
+              type="button"
+              onClick={() => setEditingRouteId(customer.id)}
+              className="p-1 text-gray-400 hover:text-blue-600 rounded transition cursor-pointer"
+              title="Edit Route"
+            >
+              <FiEdit2 className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </td>
+
       <td className="px-2 py-2 text-slate-700 text-xs whitespace-nowrap">{formatDeliveryTime(customer.deliveryTime)}</td>
       <td className="px-2 py-2 text-slate-700 text-xs truncate max-w-[80px]">{customer.deliveryAgent}</td>
+
+      {/* Today Override Toggle (ON / OFF) */}
       <td className="px-2 py-2 text-center align-middle">
-        <span
-          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
-          style={{ backgroundColor: getPotentialColor(peakPotential) }}
-        >
-          {peakPotential}
-        </span>
+        {(() => {
+          const effective = getTodayEffectiveStatus(customer, todayDate);
+          const isOn = effective === "ON";
+          const isUpdating = updatingTodayId === customer.id;
+
+          return (
+            <div className="flex items-center justify-center gap-1.5">
+              <label
+                className={`relative inline-flex items-center ${
+                  isUpdating ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                }`}
+                title={`todayOverride status: ${isOn ? "ON" : "OFF"}`}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={isOn}
+                  disabled={isUpdating}
+                  onChange={() => toggleTodayDelivery(customer)}
+                  aria-label={isOn ? "Today: ON" : "Today: OFF"}
+                />
+                <div className="w-10 h-5 bg-gray-300 rounded-full peer peer-checked:bg-green-600 transition-colors" />
+                <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5 shadow-xs" />
+              </label>
+              <span
+                className={`text-[10px] font-bold ${
+                  isOn ? "text-green-700" : "text-gray-500"
+                }`}
+              >
+                {isOn ? "ON" : "OFF"}
+              </span>
+            </div>
+          );
+        })()}
       </td>
-      <td className="px-2 py-2 text-center align-middle">
-        <span
-          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
-          style={{ backgroundColor: getPeakFrequencyColor(peakFrequency) }}
-        >
-          {peakFrequency}
-        </span>
-      </td>
-      <td className="px-2 py-2 text-center align-middle">
-        <span
-          className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
-          style={{ backgroundColor: getFrequencyGapColor(frequencyGap) }}
-        >
-          {frequencyGap}
-        </span>
-      </td>
+
       <td className="px-2 py-2 text-center align-middle">
         <span
           className="inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm"
@@ -440,6 +517,74 @@ const CustomerRetention = () => {
   const [routes, setRoutes] = useState([]);
   const [assigningRouteId, setAssigningRouteId] = useState(null);
   const [editingRouteId, setEditingRouteId] = useState(null);
+  const [updatingTodayId, setUpdatingTodayId] = useState(null);
+  const todayDate = getTodayDate();
+
+  const toggleTodayDelivery = async (customer) => {
+    if (!customer?.id || updatingTodayId === customer.id) return;
+
+    const current = getTodayEffectiveStatus(customer, todayDate);
+    const nextStatus = current === "ON" ? "OFF" : "ON";
+    const previousOverride = customer.todayOverride;
+    const optimisticOverride = {
+      date: todayDate,
+      status: nextStatus,
+      type: "MANUAL",
+    };
+
+    // Optimistic UI update
+    setCustomers((prev) =>
+      prev.map((row) =>
+        row.id === customer.id
+          ? { ...row, todayOverride: optimisticOverride }
+          : row
+      )
+    );
+
+    // Update memory cache
+    Object.keys(cacheRef.current).forEach((k) => {
+      if (cacheRef.current[k]?.customers) {
+        cacheRef.current[k].customers = cacheRef.current[k].customers.map((c) =>
+          c.id === customer.id ? { ...c, todayOverride: optimisticOverride } : c
+        );
+      }
+    });
+
+    try {
+      setUpdatingTodayId(customer.id);
+      const res = await axios.post(`${ADMIN_PATH}/customer/toggle-delivery`, {
+        id: customer.id,
+        status: nextStatus,
+      });
+      const saved = res?.data?.todayOverride;
+      if (saved?.date && saved?.status) {
+        setCustomers((prev) =>
+          prev.map((row) =>
+            row.id === customer.id ? { ...row, todayOverride: saved } : row
+          )
+        );
+        Object.keys(cacheRef.current).forEach((k) => {
+          if (cacheRef.current[k]?.customers) {
+            cacheRef.current[k].customers = cacheRef.current[k].customers.map((c) =>
+              c.id === customer.id ? { ...c, todayOverride: saved } : c
+            );
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Today delivery toggle error:", err);
+      // Revert optimistic update
+      setCustomers((prev) =>
+        prev.map((row) =>
+          row.id === customer.id
+            ? { ...row, todayOverride: previousOverride }
+            : row
+        )
+      );
+    } finally {
+      setUpdatingTodayId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchRoutes = async () => {
@@ -1070,11 +1215,10 @@ const CustomerRetention = () => {
             <tr>
               <th className="px-2 py-2 text-left text-xs font-semibold">Name</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Zone</th>
+              <th className="px-2 py-2 text-left text-xs font-semibold">Route</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
-              <th className="px-2 py-2 text-center text-xs font-semibold">Peak_Potential</th>
-              <th className="px-2 py-2 text-center text-xs font-semibold">Peak_Frequency</th>
-              <th className="px-2 py-2 text-center text-xs font-semibold">Frequency Gap</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold">Today Delivery (ON/OFF)</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Risk_Factor</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Delivery_Gap</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Current Category</th>
@@ -1097,7 +1241,7 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={9 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -1114,11 +1258,14 @@ const CustomerRetention = () => {
                   editingRouteId={editingRouteId}
                   setEditingRouteId={setEditingRouteId}
                   assignRoute={assignRoute}
+                  toggleTodayDelivery={toggleTodayDelivery}
+                  updatingTodayId={updatingTodayId}
+                  todayDate={todayDate}
                 />
               ))
             ) : (
               <tr>
-                <td colSpan={10 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={9 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>
