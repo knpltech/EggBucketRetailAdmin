@@ -22,6 +22,8 @@ import {
   getPeakFrequencyColor,
   computePeakPotential,
   normalizeRetentionRemark,
+  buildAgentInitialsMap,
+  getAgentInitials,
 } from "../utils/customerMetrics";
 
 const CATEGORY_OPTIONS = [
@@ -190,6 +192,7 @@ const getStatusFromDelivery = (delivery) => {
       category: "",
       categoryLabel: "",
       reason: "",
+      agentName: "",
     };
   }
 
@@ -201,6 +204,7 @@ const getStatusFromDelivery = (delivery) => {
     .toLowerCase();
   const reason = String(delivery.checkReason || delivery.reason || "")
     .trim();
+  const agentName = String(delivery.agentName || delivery.agent || delivery.deliveryAgent || "").trim();
   const normalizedReason = reason.toLowerCase().replace(/\s+/g, "_");
   const checkedCategories = [
     "stock_available",
@@ -230,6 +234,7 @@ const getStatusFromDelivery = (delivery) => {
       categoryLabel: "Stock Available",
       reason: "Stock Available",
       traysDelivered: getDeliveredTrayCount(delivery),
+      agentName,
     };
   }
 
@@ -261,6 +266,7 @@ const getStatusFromDelivery = (delivery) => {
       category: finalCategory,
       categoryLabel: finalCategoryLabel,
       reason: reason || delivery.reason || finalCategoryLabel,
+      agentName,
     };
   }
 
@@ -270,6 +276,7 @@ const getStatusFromDelivery = (delivery) => {
     category: "",
     categoryLabel: "",
     reason: "",
+    agentName: "",
   };
 };
 
@@ -286,6 +293,8 @@ const CustomerRow = React.memo(({
   toggleTodayDelivery,
   updatingTodayId,
   todayDate,
+  agentInitialsMap = {},
+  selectedDate,
 }) => {
   const currentCategory = customer.currentCategory || "-";
   const currentCatNum = getCurrentCategoryNumber(currentCategory);
@@ -373,7 +382,6 @@ const CustomerRow = React.memo(({
       </td>
 
       <td className="px-2 py-2 text-slate-700 text-xs whitespace-nowrap">{formatDeliveryTime(customer.deliveryTime)}</td>
-      <td className="px-2 py-2 text-slate-700 text-xs truncate max-w-[80px]">{customer.deliveryAgent}</td>
 
       {/* Today Override Toggle (ON / OFF) */}
       <td className="px-2 py-2 text-center align-middle">
@@ -440,17 +448,23 @@ const CustomerRow = React.memo(({
       {dates.map((date) => {
         const status = customer.days?.[date] || { key: "pending", label: "PENDING" };
         const remark = getStatusRemark(status);
+        const dayAgent = (status.key === "delivered" || status.key === "checked")
+          ? (status.agentName || customer.last8Days?.[date]?.agentName || (date === selectedDate ? customer.deliveryAgent : ""))
+          : "";
         return (
           <td key={date} className="px-1 py-2 text-center align-middle">
             <div className="flex flex-col items-center justify-start h-[40px]">
               <button
                 type="button"
                 className={`mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 ${getStatusClasses(status.key)}`}
-                title={status.label}
+                title={dayAgent ? `${status.label} (Marked by: ${dayAgent})` : status.label}
               >
                 {status.label.toUpperCase()}
               </button>
-              <div className="h-[14px] mt-0.5 text-[10px] font-medium text-slate-700 leading-tight text-center" title={remark}>
+              <div
+                className="h-[14px] mt-0.5 text-[10px] font-medium text-slate-700 leading-tight text-center"
+                title={dayAgent ? `${remark || status.label} (Marked by: ${dayAgent})` : remark}
+              >
                 {remark || ""}
               </div>
             </div>
@@ -464,12 +478,37 @@ const CustomerRow = React.memo(({
             type="button"
             onClick={() => onReset(customer)}
             disabled={resettingId === customer.id}
-            className="mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 bg-[#FF3B30] text-white shadow hover:opacity-90 disabled:opacity-50"
+            className="mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 bg-[#FF3B30] text-white shadow hover:opacity-90 disabled:opacity-50 cursor-pointer"
             title="Reset to pending"
           >
             {resettingId === customer.id ? ".." : "R"}
           </button>
         </div>
+      </td>
+
+      {/* Delivery Agent Column at the End (Initials only with collision resolution, empty for pending) */}
+      <td className="px-2 py-2 text-center align-middle">
+        {(() => {
+          const effectiveDate = selectedDate || todayDate;
+          const statusEntry = customer.days?.[effectiveDate] || { key: "pending" };
+          const isDeliveredOrChecked = statusEntry.key === "delivered" || statusEntry.key === "checked";
+          const rawAgent = isDeliveredOrChecked
+            ? (statusEntry.agentName || customer.last8Days?.[effectiveDate]?.agentName || customer.deliveryAgent || "")
+            : "";
+          const agentName = (rawAgent && rawAgent !== "-") ? rawAgent : "";
+          const initials = agentName ? getAgentInitials(agentName, agentInitialsMap) : "";
+
+          if (!initials) return null;
+
+          return (
+            <div
+              className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px] mx-auto shadow-xs"
+              title={agentName}
+            >
+              {initials}
+            </div>
+          );
+        })()}
       </td>
     </tr>
   );
@@ -813,6 +852,26 @@ const CustomerRetention = () => {
     setCurrentPage(1);
   };
 
+  const agentInitialsMap = React.useMemo(() => {
+    const names = [];
+    if (Array.isArray(computedAgentStats)) {
+      computedAgentStats.forEach((a) => {
+        if (a.name && a.name !== "all") names.push(a.name);
+      });
+    }
+    if (Array.isArray(customers)) {
+      customers.forEach((c) => {
+        if (c.deliveryAgent && c.deliveryAgent !== "-") names.push(c.deliveryAgent);
+        if (c.days) {
+          Object.values(c.days).forEach((d) => {
+            if (d?.agentName) names.push(d.agentName);
+          });
+        }
+      });
+    }
+    return buildAgentInitialsMap(names);
+  }, [computedAgentStats, customers]);
+
   const handleAgentChange = (e) => {
     setSelectedAgent(e.target.value);
     setCurrentPage(1);
@@ -825,75 +884,86 @@ const CustomerRetention = () => {
       );
       if (!confirmed) return;
 
+      if (!customer?.id) {
+        alert("Customer ID is missing");
+        return;
+      }
+
+      const prevCustomers = customers;
+      const prevCounts = counts;
+
+      // 1. Instantly update UI optimistically without waiting for server
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (c.id !== customer.id) return c;
+          const updatedDays = { ...(c.days || {}) };
+          updatedDays[selectedDate] = {
+            key: "pending",
+            label: "Pending",
+            category: "",
+            categoryLabel: "-",
+            reason: "",
+            agentName: "",
+          };
+          const updatedLast8Days = { ...(c.last8Days || {}) };
+          delete updatedLast8Days[selectedDate];
+
+          return {
+            ...c,
+            deliveryAgent: selectedDate === todayDate ? "" : c.deliveryAgent,
+            todayCategory: selectedDate === todayDate ? "" : c.todayCategory,
+            todayCategoryLabel: selectedDate === todayDate ? "-" : c.todayCategoryLabel,
+            todayReason: selectedDate === todayDate ? "" : c.todayReason,
+            days: updatedDays,
+            last8Days: updatedLast8Days,
+          };
+        }),
+      );
+
+      // Optimistically decrement count for checked category
+      if (customer.todayCategory && selectedDate === todayDate) {
+        setCounts((prev) => ({
+          ...prev,
+          all: Math.max(0, (prev.all || 0) - 1),
+          [customer.todayCategory]: Math.max(0, (prev[customer.todayCategory] || 0) - 1),
+        }));
+      }
+
+      // Invalidate memory cache so subsequent manual loads fetch fresh
+      Object.keys(cacheRef.current).forEach((key) => {
+        if (key.startsWith("retention:")) {
+          delete cacheRef.current[key];
+        }
+      });
+
       try {
         setResettingId(customer.id);
-
-        // Verify customer has required ID
-        if (!customer.id) {
-          throw new Error("Customer ID is missing");
-        }
-
         const resetPayload = {
           customerId: customer.id,
           date: selectedDate,
         };
 
-        console.log("Reset payload:", resetPayload);
-
-        let resetSuccess = false;
-
-        // Try the primary endpoint first
+        // Try primary endpoint first
         try {
-          const res = await axios.post(
+          await axios.post(
             `${ADMIN_PATH}/customer-retention/reset`,
             resetPayload,
           );
-          console.log("Reset response:", res.data);
-          resetSuccess = true;
         } catch (primaryError) {
-          console.error("Primary endpoint failed:", primaryError);
-
-          // Only try fallback if it's a 404
           if (primaryError?.response?.status === 404) {
-            console.log("Trying fallback endpoint...");
-            try {
-              const res = await axios.post(
-                `${ADMIN_PATH}/customer/retention/reset`,
-                resetPayload,
-              );
-              console.log("Fallback reset response:", res.data);
-              resetSuccess = true;
-            } catch (fallbackError) {
-              console.error("Fallback endpoint also failed:", fallbackError);
-              throw fallbackError;
-            }
+            await axios.post(
+              `${ADMIN_PATH}/customer/retention/reset`,
+              resetPayload,
+            );
           } else {
             throw primaryError;
           }
         }
-
-        if (resetSuccess) {
-          // Clear all retention caches to force fresh data on next load
-          Object.keys(cacheRef.current).forEach((key) => {
-            if (key.startsWith("retention:")) {
-              delete cacheRef.current[key];
-            }
-          });
-
-          // Refetch without loader
-          await fetchRetentionCustomers({
-            date: selectedDate,
-            page: currentPage,
-            category: selectedCategory,
-            sort: sortBy,
-            agent: selectedAgent,
-            showLoader: false,
-          });
-
-          alert("Customer reset successfully!");
-        }
       } catch (err) {
         console.error("Reset error details:", err);
+        // Rollback state on error
+        setCustomers(prevCustomers);
+        setCounts(prevCounts);
         const errorMessage =
           err?.response?.data?.message ||
           err?.message ||
@@ -903,7 +973,7 @@ const CustomerRetention = () => {
         setResettingId("");
       }
     },
-    [selectedDate, currentPage, selectedCategory, sortBy, selectedAgent, fetchRetentionCustomers],
+    [selectedDate, todayDate, customers, counts],
   );
 
   const downloadRetentionExcel = async () => {
@@ -1217,7 +1287,6 @@ const CustomerRetention = () => {
               <th className="px-2 py-2 text-left text-xs font-semibold">Zone</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Route</th>
               <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Time</th>
-              <th className="px-2 py-2 text-left text-xs font-semibold">Delivery Agent</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Today Delivery (ON/OFF)</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Risk_Factor</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Delivery_Gap</th>
@@ -1235,13 +1304,14 @@ const CustomerRetention = () => {
                 );
               })}
               <th className="px-2 py-2 text-center text-xs font-semibold">Reset</th>
+              <th className="px-2 py-2 text-center text-xs font-semibold whitespace-nowrap">Delivery Agent</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={8 + dates.length + 2} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -1261,11 +1331,13 @@ const CustomerRetention = () => {
                   toggleTodayDelivery={toggleTodayDelivery}
                   updatingTodayId={updatingTodayId}
                   todayDate={todayDate}
+                  agentInitialsMap={agentInitialsMap}
+                  selectedDate={selectedDate}
                 />
               ))
             ) : (
               <tr>
-                <td colSpan={9 + dates.length + 1} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={8 + dates.length + 2} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>

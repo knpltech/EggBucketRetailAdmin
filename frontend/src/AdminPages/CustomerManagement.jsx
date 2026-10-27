@@ -43,6 +43,9 @@ import {
   getRiskFactorLabel,
   getRiskFactorColor,
   getStatusColor,
+  buildAgentInitialsMap,
+  getAgentInitials,
+  isCustomerAssignedToAgent,
 } from "../utils/customerMetrics";
 
 // TABS
@@ -326,6 +329,75 @@ export default function CustomerManagement() {
     return resolveTodayEffectiveStatus(customer, todayDate);
   };
 
+  const getDeliveredOrCheckedAgentName = (customer) => {
+    const status = getLatestStatus(customer);
+    // For pending, nothing should come!
+    if (status !== "Delivered" && status !== "Checked") {
+      return "";
+    }
+
+    const last8Days = customer.last8Days || {};
+    const todayEntry = last8Days[todayDate];
+    if (!todayEntry) return "";
+
+    const entryObj = typeof todayEntry === "object" ? todayEntry : {};
+
+    // 1. Direct agentName
+    if (entryObj.agentName && typeof entryObj.agentName === "string" && entryObj.agentName.trim()) {
+      return entryObj.agentName.trim();
+    }
+
+    // 2. Nested agent object
+    const nested = entryObj.assignedDeliverymen || entryObj.agent || null;
+    if (nested && typeof nested === "object") {
+      const nName = nested.name || nested.display_name || nested.agentName || "";
+      if (nName) return nName;
+    }
+
+    // 3. Match agentId in agents array
+    const aId = entryObj.agentId || (typeof nested === "string" ? nested : "");
+    if (aId) {
+      const matched = (agents || []).find((a) => a.id === aId || a._id === aId);
+      if (matched) {
+        return matched.name || matched.display_name || "";
+      }
+    }
+
+    if (entryObj.deliveryMan) {
+      if (typeof entryObj.deliveryMan === "string") {
+        const matched = (agents || []).find((a) => a.id === entryObj.deliveryMan);
+        if (matched) return matched.name || matched.display_name || "";
+        return entryObj.deliveryMan;
+      }
+      if (typeof entryObj.deliveryMan === "object") {
+        return entryObj.deliveryMan.name || "";
+      }
+    }
+
+    if (customer.deliveryAgent && customer.deliveryAgent !== "-") {
+      return customer.deliveryAgent;
+    }
+
+    return "";
+  };
+
+  const agentInitialsMap = useMemo(() => {
+    const names = [];
+    if (Array.isArray(agents)) {
+      agents.forEach((a) => {
+        const name = a.name || a.display_name;
+        if (name) names.push(name);
+      });
+    }
+    if (Array.isArray(customers)) {
+      customers.forEach((c) => {
+        const todayEntry = c.last8Days?.[todayDate];
+        if (todayEntry?.agentName) names.push(todayEntry.agentName);
+      });
+    }
+    return buildAgentInitialsMap(names);
+  }, [agents, customers, todayDate]);
+
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
@@ -389,14 +461,15 @@ export default function CustomerManagement() {
     }
 
     if (activeAgentTab !== "ALL AGENTS") {
+      const activeAgents = (agents || []).filter((a) => a.active !== false);
       if (activeAgentTab === "UNASSIGNED") {
-        list = list.filter((c) => !c.assignedDeliverymen || String(c.assignedDeliverymen).trim() === "");
+        list = list.filter((c) => !activeAgents.some((agent) => isCustomerAssignedToAgent(c, agent, todayDate)));
       } else {
-        const selectedAgent = agents.find(a => a.id === activeAgentTab);
+        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab);
         if (selectedAgent) {
-           list = list.filter(c => c.assignedDeliverymen === selectedAgent.id || c.assignedDeliverymen === selectedAgent.name);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, selectedAgent, todayDate));
         } else {
-           list = list.filter(c => c.assignedDeliverymen === activeAgentTab);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, { id: activeAgentTab, name: activeAgentTab }, todayDate));
         }
       }
     }
@@ -698,14 +771,19 @@ export default function CustomerManagement() {
     }
 
     if (activeAgentTab !== "ALL AGENTS") {
+      const activeAgents = (agents || []).filter((a) => a.active !== false);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayDate = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
+
       if (activeAgentTab === "UNASSIGNED") {
-        list = list.filter((c) => !c.assignedDeliverymen || String(c.assignedDeliverymen).trim() === "");
+        list = list.filter((c) => !activeAgents.some((agent) => isCustomerAssignedToAgent(c, agent, yesterdayDate)));
       } else {
-        const selectedAgent = agents.find(a => a.id === activeAgentTab);
+        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab);
         if (selectedAgent) {
-           list = list.filter(c => c.assignedDeliverymen === selectedAgent.id || c.assignedDeliverymen === selectedAgent.name);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, selectedAgent, yesterdayDate));
         } else {
-           list = list.filter(c => c.assignedDeliverymen === activeAgentTab);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, { id: activeAgentTab, name: activeAgentTab }, yesterdayDate));
         }
       }
     }
@@ -1290,72 +1368,7 @@ export default function CustomerManagement() {
         ))}
       </div>
 
-      {/* DELIVERY GAP FILTERS TABS */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {["ALL", "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G7+", "G10+", "G15+", "G20+", "G30+"].map((gap) => (
-          <button
-            key={gap}
-            onClick={() => setActiveGapTab(gap)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeGapTab === gap ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            {gap}
-          </button>
-        ))}
-      </div>
 
-      {/* BUSINESS CATEGORIES TABS */}
-      {businessTypes && businessTypes.length > 0 && (
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <button
-            onClick={() => setActiveBusinessTab("ALL")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "ALL" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            ALL CATEGORIES
-          </button>
-          <button
-            onClick={() => setActiveBusinessTab("UNASSIGNED")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === "UNASSIGNED" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            UNASSIGNED
-          </button>
-          {businessTypes.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActiveBusinessTab(t)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeBusinessTab === t ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ZONE FILTERS TABS */}
-      {zones && zones.length > 0 && (
-        <div className="flex gap-2 mb-6 flex-wrap">
-          <button
-            onClick={() => setActiveZoneTab("ALL")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === "ALL" ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            ALL ZONES
-          </button>
-          <button
-            onClick={() => setActiveZoneTab("UNASSIGNED")}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === "UNASSIGNED" ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            UNASSIGNED
-          </button>
-          {zones.map((z) => (
-            <button
-              key={z}
-              onClick={() => setActiveZoneTab(z)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeZoneTab === z ? "bg-teal-600 text-white border-teal-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-            >
-              {z}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* ROUTE FILTERS TABS */}
       {routes && routes.length > 0 && (
@@ -1415,19 +1428,6 @@ export default function CustomerManagement() {
         </div>
       )}
 
-      {/* WEEKDAY FILTERS TABS */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {["ALL CUSTOMERS", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
-          <button
-            key={day}
-            onClick={() => setActiveWeekdayTab(day)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${activeWeekdayTab === day ? "bg-purple-600 text-white border-purple-600 shadow-sm" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
-          >
-            {day}
-          </button>
-        ))}
-      </div>
-
       {/* STATUS FILTERS TABS */}
       <div className="flex gap-2 mb-6 flex-wrap">
         {["ALL STATUS", "Pending", "Checked", "Delivered", "Undelivered"].map((status) => (
@@ -1439,114 +1439,6 @@ export default function CustomerManagement() {
             {status}
           </button>
         ))}
-      </div>
-
-      {/* REMARK FILTERS TABS */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {[
-          { label: "ALL REMARKS", value: "ALL" },
-          { label: "Stock Available", value: "stock_available" },
-          { label: "Shop Closed", value: "shop_closed" },
-          { label: "Confirmed Tomorrow", value: "confirmed_tomorrow" },
-          { label: "Price Issue", value: "price_issue" },
-          { label: "Other Vendor", value: "other_vendor" },
-          { label: "Need Credit", value: "need_credit" },
-          { label: "Quality Issue", value: "quality_issue" },
-          { label: "Owner Not Available", value: "owner_not_available" },
-        ].map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveRemarkTab(tab.value)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-              activeRemarkTab === tab.value
-                ? "bg-slate-600 text-white border-slate-600 shadow-sm"
-                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* AI EVALUATION LOGIC FILTERS */}
-      <div className="bg-white p-4 rounded-xl shadow mb-6 border border-indigo-100 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 text-indigo-950 font-bold text-sm">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
-          AI Logics Filter:
-        </div>
-
-        {/* Logic 1: Purchase Cadence */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-            Purchase Cadence:
-          </label>
-          <select
-            value={activeCadenceFilter}
-            onChange={(e) => setActiveCadenceFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="ALL">ALL CADENCES</option>
-            {LOGIC_1_PURCHASE_CADENCE.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Logic 3: Purchase Intent */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-            Purchase Intent:
-          </label>
-          <select
-            value={activeIntentFilter}
-            onChange={(e) => setActiveIntentFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="ALL">ALL INTENTS</option>
-            {LOGIC_3_PURCHASE_INTENT.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Logic 2: Customer State */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-            Customer State:
-          </label>
-          <select
-            value={activeStateFilter}
-            onChange={(e) => setActiveStateFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="ALL">ALL STATES</option>
-            {LOGIC_2_CUSTOMER_STATE.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Clear Filters Button */}
-        {(activeCadenceFilter !== "ALL" ||
-          activeStateFilter !== "ALL" ||
-          activeIntentFilter !== "ALL") && (
-          <button
-            onClick={() => {
-              setActiveCadenceFilter("ALL");
-              setActiveStateFilter("ALL");
-              setActiveIntentFilter("ALL");
-            }}
-            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors ml-auto"
-          >
-            Reset AI Logic Filters
-          </button>
-        )}
       </div>
 
       {/* TABLE */}
@@ -1572,6 +1464,7 @@ export default function CustomerManagement() {
               <th className="px-2 py-3">Status</th>
               <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
               <th className="px-2 py-3 whitespace-nowrap">Reset</th>
+              <th className="px-2 py-3 whitespace-nowrap">Delivery Agent</th>
             </tr>
           </thead>
 
@@ -1874,16 +1767,25 @@ export default function CustomerManagement() {
                 )}
 
                 <td className="px-2 py-3">
-                  <div className="flex flex-col items-center gap-1">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
-                    >
-                      {getLatestStatus(c)}
-                    </span>
-                    <span className="text-[10px] text-gray-500 font-medium">
-                      {getRemarkDisplay(c)}
-                    </span>
-                  </div>
+                  {(() => {
+                    const agentName = getDeliveredOrCheckedAgentName(c);
+                    return (
+                      <div className="flex flex-col items-center gap-1">
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getLatestStatus(c))}`}
+                          title={agentName ? `Marked by: ${agentName}` : undefined}
+                        >
+                          {getLatestStatus(c)}
+                        </span>
+                        <span
+                          className="text-[10px] text-gray-500 font-medium"
+                          title={agentName ? `Marked by: ${agentName}` : undefined}
+                        >
+                          {getRemarkDisplay(c)}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-2 py-3">
                   <div className="relative inline-block">
@@ -1938,6 +1840,24 @@ export default function CustomerManagement() {
                         >
                           {isResetting ? ".." : "R"}
                         </button>
+                      </div>
+                    );
+                  })()}
+                </td>
+                {/* Delivery Agent Column at the End (Initials only with collision resolution, empty for pending) */}
+                <td className="px-2 py-3 text-center align-middle">
+                  {(() => {
+                    const agentName = getDeliveredOrCheckedAgentName(c);
+                    const initials = agentName ? getAgentInitials(agentName, agentInitialsMap) : "";
+
+                    if (!initials) return null;
+
+                    return (
+                      <div
+                        className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px] mx-auto shadow-xs"
+                        title={agentName}
+                      >
+                        {initials}
                       </div>
                     );
                   })()}

@@ -335,6 +335,7 @@ const getRetentionStatus = (delivery = null) => {
       category: "",
       categoryLabel: "-",
       reason: "",
+      agentName: "",
     };
   }
 
@@ -348,6 +349,7 @@ const getRetentionStatus = (delivery = null) => {
     delivery.quantity ??
     delivery.trayCount ??
     null;
+  const agentName = String(delivery.agentName || "").trim();
 
   if (type === "delivered") {
     return {
@@ -357,6 +359,7 @@ const getRetentionStatus = (delivery = null) => {
       categoryLabel: "-",
       reason: "",
       traysDelivered,
+      agentName,
     };
   }
 
@@ -370,6 +373,7 @@ const getRetentionStatus = (delivery = null) => {
         delivery.checkReason ||
         delivery.reason ||
         getRetentionCategoryLabel(type),
+      agentName,
     };
   }
 
@@ -379,6 +383,7 @@ const getRetentionStatus = (delivery = null) => {
     category: "",
     categoryLabel: "-",
     reason: "",
+    agentName: "",
   };
 };
 
@@ -529,7 +534,46 @@ const getRetentionCustomers = async (req, res) => {
     // ⭐ OPTIMIZATION: Use cached delivery partner map (24-hour TTL)
     const deliveryPartnerMap = await getDeliveryPartnerMapCached();
 
+    const getCustomerStatus = (customer) => {
+      const entry = customer.last8Days?.[todayKey];
+      const entryObj =
+        typeof entry === "string" ? { status: entry } : entry || {};
+      const status = String(entryObj.status || "")
+        .trim()
+        .toLowerCase();
+
+      if (status === "delivered") {
+        return "delivered";
+      }
+
+      const checkedStatuses = [
+        "checked",
+        "reached",
+        "price_mismatch",
+        "price_issue",
+        "shop_closed",
+        "stock_available",
+        "other_vendor",
+        "confirmed_tomorrow",
+        "confirmed_for_tomorrow",
+        "need_credit",
+        "quality_issue",
+        "owner_not_available",
+      ];
+      if (checkedStatuses.includes(status)) {
+        return "checked";
+      }
+
+      return "pending";
+    };
+
     const getRetentionAgentName = (customer) => {
+      // ONLY return agent if checked or delivered! For pending, nothing should come!
+      const status = getCustomerStatus(customer);
+      if (status !== "delivered" && status !== "checked") {
+        return "";
+      }
+
       const entry = customer.last8Days?.[todayKey];
       const entryObj =
         typeof entry === "string" ? { status: entry } : entry || {};
@@ -565,50 +609,7 @@ const getRetentionCustomers = async (req, res) => {
         return deliveryPartnerMap.get(agentId) || agentId;
       }
 
-      // 4. Fallback to default assigned delivery partner
-      const defaultAgentId = customer.assignedDeliverymen || customer.deliveredBy || customer.deliveryMan || "";
-      if (defaultAgentId) {
-        if (typeof defaultAgentId === "string") {
-          return deliveryPartnerMap.get(defaultAgentId) || defaultAgentId;
-        } else if (typeof defaultAgentId === "object") {
-          return defaultAgentId.name || defaultAgentId.display_name || "";
-        }
-      }
-
       return "";
-    };
-
-    const getCustomerStatus = (customer) => {
-      const entry = customer.last8Days?.[todayKey];
-      const entryObj =
-        typeof entry === "string" ? { status: entry } : entry || {};
-      const status = String(entryObj.status || "")
-        .trim()
-        .toLowerCase();
-
-      if (status === "delivered") {
-        return "delivered";
-      }
-
-      const checkedStatuses = [
-        "checked",
-        "reached",
-        "price_mismatch",
-        "price_issue",
-        "shop_closed",
-        "stock_available",
-        "other_vendor",
-        "confirmed_tomorrow",
-        "confirmed_for_tomorrow",
-        "need_credit",
-        "quality_issue",
-        "owner_not_available",
-      ];
-      if (checkedStatuses.includes(status)) {
-        return "checked";
-      }
-
-      return "pending";
     };
 
     // ⭐ OPTIMIZATION: Cache the full processed customer dataset per date
@@ -696,6 +697,7 @@ const getRetentionCustomers = async (req, res) => {
         status: entryObj.status,
         time: entryObj.time || null,
         assignedDeliverymen: entryObj.agentId || null,
+        agentName: getRetentionAgentName(customer),
         traysDelivered:
           entryObj.quantity ?? entryObj.trays ?? entryObj.traysDelivered ?? 0,
       };
@@ -870,6 +872,23 @@ const getRetentionCustomers = async (req, res) => {
 
           let previousDeliveryData = null;
           if (entryObj) {
+            let prevAgent = "";
+            const nested = entryObj.assignedDeliverymen || entryObj.agent || null;
+            if (nested) {
+              if (typeof nested === "string" && nested.trim()) {
+                prevAgent = deliveryPartnerMap.get(nested.trim()) || nested.trim();
+              } else if (typeof nested === "object") {
+                prevAgent = nested.name || nested.display_name || nested.agentName || "";
+              }
+            }
+            if (!prevAgent && entryObj.agentName) {
+              prevAgent = String(entryObj.agentName).trim();
+            }
+            if (!prevAgent && (entryObj.agentId || entryObj.assignedDeliverymen)) {
+              const aId = entryObj.agentId || entryObj.assignedDeliverymen;
+              prevAgent = deliveryPartnerMap.get(aId) || aId;
+            }
+
             previousDeliveryData = {
               type: entryObj.status,
               checkReason: entryObj.reason || "",
@@ -877,6 +896,7 @@ const getRetentionCustomers = async (req, res) => {
               traysDelivered: entryObj.traysDelivered,
               trays: entryObj.trays,
               quantity: entryObj.quantity,
+              agentName: prevAgent,
             };
           }
 

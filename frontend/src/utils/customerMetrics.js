@@ -476,3 +476,170 @@ export function normalizeRetentionRemark(value = "") {
 export function getName(c) {
   return c?.name || c?.customerName || "Unknown";
 }
+
+/**
+ * Generates an initials map for a list of delivery agent names.
+ * Standard format: 2-letter initials (e.g. "TS" for Tapas Singha, "AS" for Ashutosh Sarkar).
+ * Collision resolution: When 2 or more names share the same 2-letter initials,
+ * disambiguates with 3 letters (e.g. "ASS" / "AMS", or "ASH" / "AMI").
+ */
+export function buildAgentInitialsMap(agentNames = []) {
+  const uniqueNames = Array.from(
+    new Set(
+      (agentNames || [])
+        .filter(Boolean)
+        .map((n) => String(n).trim())
+        .filter((n) => n && n !== "-" && n !== "Unassigned" && n !== "Unknown Agent"),
+    ),
+  );
+
+  const get2Letter = (name) => {
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "";
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const groups = {};
+  uniqueNames.forEach((name) => {
+    const init2 = get2Letter(name);
+    if (!groups[init2]) groups[init2] = [];
+    groups[init2].push(name);
+  });
+
+  const resultMap = {};
+
+  Object.entries(groups).forEach(([init2, names]) => {
+    if (names.length === 1) {
+      resultMap[names[0]] = init2;
+    } else {
+      // Clash detected! Generate unique 3-letter initials for each clashing name
+      const usedInitials = new Set();
+      names.forEach((name) => {
+        const parts = name.split(/\s+/).filter(Boolean);
+        let candidate = "";
+
+        // Candidate 1: First 2 of first name + First of last name (e.g. "Ashutosh Sarkar" -> "ASS", "Amit Sharma" -> "AMS")
+        if (parts.length >= 2) {
+          const c1 = (parts[0].substring(0, 2) + parts[parts.length - 1][0]).toUpperCase();
+          if (c1.length === 3 && !usedInitials.has(c1)) {
+            candidate = c1;
+          }
+        }
+
+        // Candidate 2: First of first name + First 2 of last name (e.g. "Ashutosh Sarkar" -> "ASA", "Amit Sharma" -> "ASH")
+        if (!candidate && parts.length >= 2) {
+          const c2 = (parts[0][0] + parts[parts.length - 1].substring(0, 2)).toUpperCase();
+          if (c2.length === 3 && !usedInitials.has(c2)) {
+            candidate = c2;
+          }
+        }
+
+        // Candidate 3: First 3 letters of first name (e.g. "Ashutosh" -> "ASH", "Amit" -> "AMI")
+        if (!candidate && parts[0]) {
+          const c3 = parts[0].substring(0, 3).toUpperCase();
+          if (c3.length === 3 && !usedInitials.has(c3)) {
+            candidate = c3;
+          }
+        }
+
+        // Candidate 4: Any unique 3 letters from name
+        if (!candidate) {
+          const alphaOnly = name.replace(/[^a-zA-Z]/g, "").toUpperCase();
+          for (let i = 0; i <= alphaOnly.length - 3; i++) {
+            const sub = alphaOnly.substring(i, i + 3);
+            if (!usedInitials.has(sub)) {
+              candidate = sub;
+              break;
+            }
+          }
+        }
+
+        // Fallback
+        if (!candidate) {
+          candidate = ((parts[0]?.substring(0, 2) || "AG") + (usedInitials.size + 1)).toUpperCase();
+        }
+
+        usedInitials.add(candidate);
+        resultMap[name] = candidate;
+      });
+    }
+  });
+
+  return resultMap;
+}
+
+/**
+ * Returns initials for a single agent name, using the initialsMap if provided
+ * or falling back to standard 2-letter initials.
+ */
+export function getAgentInitials(name, initialsMap = null) {
+  if (!name || name === "-" || name === "Unassigned") return "";
+  const trimmed = String(name).trim();
+  if (initialsMap && initialsMap[trimmed]) {
+    return initialsMap[trimmed];
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * Checks whether a customer is assigned to a specific delivery agent.
+ * Checks:
+ * 1. Direct assignments (assignedDeliverymen, deliveredBy, deliveryMan) - handles comma-separated IDs, names, and UIDs.
+ * 2. Route assignment - checks if agent's assigned routes (agent.route) includes customer's route (c.route).
+ * 3. Today's execution records (last8Days[dateKey]) - if the customer was serviced/checked by this agent.
+ */
+export function isCustomerAssignedToAgent(customer, agent, dateKey = null) {
+  if (!customer || !agent) return false;
+
+  const agentId = String(agent.id || agent._id || "").trim();
+  const agentUid = String(agent.uid || "").trim();
+  const agentName = String(agent.name || agent.display_name || "").trim().toLowerCase();
+
+  // 1. Direct assignments
+  const directFields = [customer.assignedDeliverymen, customer.deliveredBy, customer.deliveryMan];
+  for (const raw of directFields) {
+    if (!raw) continue;
+    const parts = String(raw).split(",").map((s) => s.trim()).filter(Boolean);
+    for (const p of parts) {
+      if (agentId && p === agentId) return true;
+      if (agentUid && p === agentUid) return true;
+      if (agentName && p.toLowerCase() === agentName) return true;
+    }
+  }
+
+  // 2. Route-based assignment (agent.route contains comma-separated routes)
+  if (customer.route && agent.route) {
+    const agentRoutes = String(agent.route)
+      .split(",")
+      .map((r) => r.trim().toLowerCase())
+      .filter(Boolean);
+    if (agentRoutes.includes(String(customer.route).trim().toLowerCase())) {
+      return true;
+    }
+  }
+
+  // 3. Execution record for dateKey (or today)
+  if (dateKey && customer.last8Days && customer.last8Days[dateKey]) {
+    const entry = customer.last8Days[dateKey];
+    const entryObj = typeof entry === "object" ? entry : {};
+    const eAgentId = String(entryObj.agentId || entryObj.assignedDeliverymen || "").trim();
+    const eAgentName = String(entryObj.agentName || "").trim().toLowerCase();
+    const eDeliveryMan = String(entryObj.deliveryMan || "").trim();
+    const nested = entryObj.assignedDeliverymen || entryObj.agent || null;
+    const nestedName = (nested && typeof nested === "object")
+      ? String(nested.name || nested.display_name || nested.agentName || "").trim().toLowerCase()
+      : (typeof nested === "string" ? nested.trim().toLowerCase() : "");
+
+    if (agentId && (eAgentId === agentId || eDeliveryMan === agentId)) return true;
+    if (agentUid && (eAgentId === agentUid || eDeliveryMan === agentUid)) return true;
+    if (agentName && (eAgentName === agentName || nestedName === agentName)) return true;
+  }
+
+  return false;
+}
+
+

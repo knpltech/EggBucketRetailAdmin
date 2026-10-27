@@ -24,6 +24,7 @@ import {
   computePeakFrequency,
   computePotential,
   getCurrentCategory,
+  isCustomerAssignedToAgent,
 } from "../utils/customerMetrics";
 import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 
@@ -370,14 +371,15 @@ export default function CallingCustomers() {
     }
 
     if (activeAgentTab !== "ALL AGENTS") {
+      const activeAgents = (agents || []).filter((a) => a.active !== false);
       if (activeAgentTab === "UNASSIGNED") {
-        list = list.filter((c) => !c.assignedDeliverymen || String(c.assignedDeliverymen).trim() === "");
+        list = list.filter((c) => !activeAgents.some((agent) => isCustomerAssignedToAgent(c, agent, todayDate)));
       } else {
-        const selectedAgent = agents.find(a => a.id === activeAgentTab);
+        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab);
         if (selectedAgent) {
-           list = list.filter(c => c.assignedDeliverymen === selectedAgent.id || c.assignedDeliverymen === selectedAgent.name);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, selectedAgent, todayDate));
         } else {
-           list = list.filter(c => c.assignedDeliverymen === activeAgentTab);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, { id: activeAgentTab, name: activeAgentTab }, todayDate));
         }
       }
     }
@@ -585,14 +587,19 @@ export default function CallingCustomers() {
     }
 
     if (activeAgentTab !== "ALL AGENTS") {
+      const activeAgents = (agents || []).filter((a) => a.active !== false);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayDate = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
+
       if (activeAgentTab === "UNASSIGNED") {
-        list = list.filter((c) => !c.assignedDeliverymen || String(c.assignedDeliverymen).trim() === "");
+        list = list.filter((c) => !activeAgents.some((agent) => isCustomerAssignedToAgent(c, agent, yesterdayDate)));
       } else {
-        const selectedAgent = agents.find(a => a.id === activeAgentTab);
+        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab);
         if (selectedAgent) {
-           list = list.filter(c => c.assignedDeliverymen === selectedAgent.id || c.assignedDeliverymen === selectedAgent.name);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, selectedAgent, yesterdayDate));
         } else {
-           list = list.filter(c => c.assignedDeliverymen === activeAgentTab);
+          list = list.filter((c) => isCustomerAssignedToAgent(c, { id: activeAgentTab, name: activeAgentTab }, yesterdayDate));
         }
       }
     }
