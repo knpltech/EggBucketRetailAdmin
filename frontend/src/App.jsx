@@ -26,7 +26,6 @@ import AdminViewDashboard from "./Admin-View/Admin-ViewDashboard";
 import AboutVPage from "./Admin-View/aboutView";
 import CustomerMapForDelivery from "./AdminPages/CustomerMapForDelivery";
 import CustomerManagement from "./AdminPages/CustomerManagement";
-import CallingCustomers from "./AdminPages/CallingCustomers";
 import CustomerRoutes from "./AdminPages/CustomerRoutes";
 import PriorityWindow from "./AdminPages/PriorityWindow";
 import CustomerManagementV from "./Admin-View/cutM";
@@ -100,8 +99,8 @@ function App() {
         <Route path="incentive-management" element={<IncentiveManagement />} />
         <Route path="business-statistics" element={<BusinessStatistics />} />
         <Route path="customer-management" element={<CustomerManagement />} />
-        <Route path="calling-customers" element={<CallingCustomers />} />
-        <Route path="prime-customers" element={<CallingCustomers />} />
+        <Route path="calling-customers" element={<Navigate to="/admin/customer-management" replace />} />
+        <Route path="prime-customers" element={<Navigate to="/admin/customer-management" replace />} />
         <Route path="routes" element={<CustomerRoutes />} />
         <Route path="priority-window" element={<PriorityWindow />} />
         <Route

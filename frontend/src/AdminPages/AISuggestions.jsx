@@ -268,7 +268,18 @@ const AISuggestions = () => {
       // Fetch business types dynamically
       try {
         const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
-        setBusinessTypes(btRes.data || []);
+        const rawBt = btRes.data || [];
+        const sanitizedBt = rawBt
+          .map((t) => {
+            const val = String(t || "").trim();
+            if (!val || val.toLowerCase() === "premium customer") return null;
+            if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
+              return "RESIDENTIAL CUSTOMERS";
+            }
+            return val;
+          })
+          .filter(Boolean);
+        setBusinessTypes(Array.from(new Set(sanitizedBt)));
       } catch (err) {
         console.error("Error fetching business types:", err);
       }

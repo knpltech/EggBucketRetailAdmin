@@ -19,7 +19,7 @@ const ReportV = () => {
   const [displayedDeliveries, setDisplayedDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [sortBy, setSortBy] = useState("customer");
+  const [sortBy, setSortBy] = useState("time");
   const [selectedAgent, setSelectedAgent] = useState("all");
 
   const getToday = () => {
@@ -355,9 +355,8 @@ const ReportV = () => {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="w-full border px-4 py-2.5 rounded-lg shadow-sm"
               >
-                <option value="customer">Customer Name (A-Z)</option>
-                <option value="createdAt">Created Date</option>
                 <option value="time">Delivery Creation Time</option>
+                <option value="customer">Customer Name (A-Z)</option>
               </select>
             </div>
 

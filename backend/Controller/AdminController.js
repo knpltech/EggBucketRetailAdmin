@@ -1831,19 +1831,26 @@ const addBusinessType = async (req, res) => {
 
 const getBusinessTypes = async (req, res) => {
   try {
-    const cacheKey = "businessTypes:list";
-    const cached = cache.get(cacheKey);
-    if (cached) return res.json(cached);
-
     const db = getFirestore();
     const snap = await db.collection("businessTypes").get();
-    const types = snap.docs.map((doc) => doc.data().name).filter(Boolean);
+    const types = snap.docs
+      .map((doc) => {
+        const val = String(doc.data()?.name || "").trim();
+        if (!val || val.toLowerCase() === "premium customer") return null;
+        if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
+          return "RESIDENTIAL CUSTOMERS";
+        }
+        return val;
+      })
+      .filter(Boolean);
 
-    // Sort alphabetically
-    types.sort((a, b) => a.localeCompare(b));
+    // Remove duplicates and sort alphabetically
+    const uniqueTypes = Array.from(new Set(types));
+    uniqueTypes.sort((a, b) => a.localeCompare(b));
 
-    cache.set(cacheKey, types, 3600); // Cache for 1 hour
-    res.json(types);
+    const cacheKey = "businessTypes:list";
+    cache.set(cacheKey, uniqueTypes, 3600); // Cache for 1 hour
+    res.json(uniqueTypes);
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: "Server error" });

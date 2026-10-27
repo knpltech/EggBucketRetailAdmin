@@ -63,14 +63,6 @@ const TABS = [
   "D5",
   "D6",
   "D7",
-  "F0",
-  "F1",
-  "F2",
-  "F3",
-  "F4",
-  "F5",
-  "F6",
-  "F7",
 ];
 
 // ─── Residential Customer Helper ─────────────────────────────────────────────
@@ -230,7 +222,18 @@ export default function CustomerManagement() {
         // Fetch business types dynamically
         try {
           const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
-          setBusinessTypes(btRes.data || []);
+          const rawBt = btRes.data || [];
+          const sanitizedBt = rawBt
+            .map((t) => {
+              const val = String(t || "").trim();
+              if (!val || val.toLowerCase() === "premium customer") return null;
+              if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
+                return "RESIDENTIAL CUSTOMERS";
+              }
+              return val;
+            })
+            .filter(Boolean);
+          setBusinessTypes(Array.from(new Set(sanitizedBt)));
         } catch (err) {
           console.error("Error fetching business types:", err);
         }
@@ -330,18 +333,34 @@ export default function CustomerManagement() {
     return resolveTodayEffectiveStatus(customer, todayDate);
   };
 
-  const getDeliveredOrCheckedAgentName = (customer) => {
-    const status = getLatestStatus(customer);
-    // For pending, nothing should come!
-    if (status !== "Delivered" && status !== "Checked") {
+  const getAttendedAgentNameForDate = (customer, dateKey = todayDate) => {
+    const last8Days = customer.last8Days || {};
+    const dayEntry = last8Days[dateKey];
+    if (!dayEntry) return "";
+
+    const entryObj = typeof dayEntry === "object" ? dayEntry : { status: dayEntry };
+    const rawStatus = String(entryObj.status || "").trim().toLowerCase();
+
+    const isDelivered = rawStatus === "delivered";
+    const isChecked = [
+      "checked",
+      "reached",
+      "price_mismatch",
+      "price_issue",
+      "shop_closed",
+      "stock_available",
+      "other_vendor",
+      "confirmed_tomorrow",
+      "confirmed_for_tomorrow",
+      "need_credit",
+      "quality_issue",
+      "owner_not_available",
+    ].includes(rawStatus) || Boolean(entryObj.reason) || Boolean(entryObj.checkReason);
+
+    // Only attended customers (Delivered or Checked) have an attending agent
+    if (!isDelivered && !isChecked) {
       return "";
     }
-
-    const last8Days = customer.last8Days || {};
-    const todayEntry = last8Days[todayDate];
-    if (!todayEntry) return "";
-
-    const entryObj = typeof todayEntry === "object" ? todayEntry : {};
 
     // 1. Direct agentName
     if (entryObj.agentName && typeof entryObj.agentName === "string" && entryObj.agentName.trim()) {
@@ -352,34 +371,87 @@ export default function CustomerManagement() {
     const nested = entryObj.assignedDeliverymen || entryObj.agent || null;
     if (nested && typeof nested === "object") {
       const nName = nested.name || nested.display_name || nested.agentName || "";
-      if (nName) return nName;
+      if (nName) return nName.trim();
     }
 
     // 3. Match agentId in agents array
-    const aId = entryObj.agentId || (typeof nested === "string" ? nested : "");
+    const aId = entryObj.agentId || entryObj.deliveryManId || (typeof nested === "string" ? nested : "");
     if (aId) {
-      const matched = (agents || []).find((a) => a.id === aId || a._id === aId);
+      const matched = (agents || []).find((a) => a.id === aId || a._id === aId || a.uid === aId);
       if (matched) {
-        return matched.name || matched.display_name || "";
+        return (matched.name || matched.display_name || "").trim();
       }
     }
 
     if (entryObj.deliveryMan) {
       if (typeof entryObj.deliveryMan === "string") {
-        const matched = (agents || []).find((a) => a.id === entryObj.deliveryMan);
-        if (matched) return matched.name || matched.display_name || "";
-        return entryObj.deliveryMan;
+        const dm = entryObj.deliveryMan.trim();
+        const matched = (agents || []).find((a) => a.id === dm || a.uid === dm || (a.name && a.name.toLowerCase() === dm.toLowerCase()));
+        if (matched) return (matched.name || matched.display_name || "").trim();
+        return dm;
       }
       if (typeof entryObj.deliveryMan === "object") {
-        return entryObj.deliveryMan.name || "";
+        return (entryObj.deliveryMan.name || entryObj.deliveryMan.display_name || "").trim();
       }
     }
 
     if (customer.deliveryAgent && customer.deliveryAgent !== "-") {
-      return customer.deliveryAgent;
+      return String(customer.deliveryAgent).trim();
     }
 
     return "";
+  };
+
+  const getDeliveredOrCheckedAgentName = (customer) => {
+    return getAttendedAgentNameForDate(customer, todayDate);
+  };
+
+  const isCustomerAttendedBySelectedAgent = (customer, selectedAgent, dateKey = todayDate) => {
+    if (!customer || !selectedAgent) return false;
+
+    const attendedName = getAttendedAgentNameForDate(customer, dateKey);
+    if (!attendedName) return false;
+
+    const targetName = String(selectedAgent.name || selectedAgent.display_name || selectedAgent.id || "").trim().toLowerCase();
+    const targetId = String(selectedAgent.id || selectedAgent.uid || selectedAgent._id || "").trim();
+
+    if (targetName && attendedName.toLowerCase() === targetName) {
+      return true;
+    }
+
+    const last8Days = customer.last8Days || {};
+    const dayEntry = last8Days[dateKey];
+    const entryObj = typeof dayEntry === "object" ? dayEntry : {};
+    const eAgentId = String(entryObj.agentId || entryObj.deliveryManId || "").trim();
+    if (targetId && eAgentId && (eAgentId === targetId || eAgentId === selectedAgent.uid)) {
+      return true;
+    }
+
+    const nested = entryObj.assignedDeliverymen || entryObj.agent;
+    if (nested && typeof nested === "object") {
+      const nName = String(nested.name || nested.display_name || nested.agentName || "").trim().toLowerCase();
+      if (targetName && nName === targetName) return true;
+      const nId = String(nested.id || nested._id || nested.uid || "").trim();
+      if (targetId && nId && (nId === targetId || nId === selectedAgent.uid)) return true;
+    } else if (typeof nested === "string" && nested.trim()) {
+      if (targetId && (nested.trim() === targetId || nested.trim() === selectedAgent.uid)) return true;
+      if (nested.trim().toLowerCase() === targetName) return true;
+    }
+
+    if (entryObj.deliveryMan) {
+      if (typeof entryObj.deliveryMan === "string") {
+        const dm = entryObj.deliveryMan.trim();
+        if (targetId && (dm === targetId || dm === selectedAgent.uid)) return true;
+        if (dm.toLowerCase() === targetName) return true;
+      } else if (typeof entryObj.deliveryMan === "object") {
+        const dmName = String(entryObj.deliveryMan.name || entryObj.deliveryMan.display_name || "").trim().toLowerCase();
+        if (targetName && dmName === targetName) return true;
+        const dmId = String(entryObj.deliveryMan.id || entryObj.deliveryMan._id || entryObj.deliveryMan.uid || "").trim();
+        if (targetId && dmId && (dmId === targetId || dmId === selectedAgent.uid)) return true;
+      }
+    }
+
+    return false;
   };
 
   const agentInitialsMap = useMemo(() => {
@@ -402,7 +474,7 @@ export default function CustomerManagement() {
   // ─── Filter + Sort (on loaded data) ───────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...customers];
-    if (activeTab === "RESIDENTIAL CUSTOMER") {
+    if (activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "RESIDENTIAL CUSTOMERS") {
       list = list.filter((c) => isResidentialCustomer(c));
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
@@ -412,7 +484,7 @@ export default function CustomerManagement() {
         const createdTime = new Date(c.createdAt).getTime();
         return (now - createdTime) <= fortyFiveDaysMs;
       });
-    } else if (activeTab === "CALLING CUSTOMER") {
+    } else if (activeTab === "CALLING CUSTOMER" || activeTab === "CALLING CUSTOMERS") {
       list = list.filter((c) => {
         const bt = String(c.businessType || "").trim().toLowerCase();
         return bt === "calling customer" || bt === "calling customers";
@@ -422,12 +494,6 @@ export default function CustomerManagement() {
       list = list.filter((c) => {
         const count = c.deliveredCount ?? getDeliveredCount(c);
         return targetDays === 7 ? count >= 7 : count === targetDays;
-      });
-    } else if (/^F[0-7]$/.test(activeTab)) {
-      const targetGap = Number(activeTab.slice(1));
-      list = list.filter((c) => {
-        const gap = getFrequencyGapNumber(c);
-        return targetGap === 7 ? gap >= 7 : gap === targetGap;
       });
     }
 
@@ -462,16 +528,14 @@ export default function CustomerManagement() {
     }
 
     if (activeAgentTab !== "ALL AGENTS") {
-      const activeAgents = (agents || []).filter((a) => a.active !== false);
       if (activeAgentTab === "UNASSIGNED") {
-        list = list.filter((c) => !activeAgents.some((agent) => isCustomerAssignedToAgent(c, agent, todayDate)));
+        list = list.filter((c) => {
+          const attendedName = getAttendedAgentNameForDate(c, todayDate);
+          return !attendedName || attendedName === "-" || attendedName.toLowerCase() === "unassigned";
+        });
       } else {
-        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab);
-        if (selectedAgent) {
-          list = list.filter((c) => isCustomerAssignedToAgent(c, selectedAgent, todayDate));
-        } else {
-          list = list.filter((c) => isCustomerAssignedToAgent(c, { id: activeAgentTab, name: activeAgentTab }, todayDate));
-        }
+        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab || a._id === activeAgentTab) || { id: activeAgentTab, name: activeAgentTab };
+        list = list.filter((c) => isCustomerAttendedBySelectedAgent(c, selectedAgent, todayDate));
       }
     }
 
@@ -719,7 +783,7 @@ export default function CustomerManagement() {
       return count;
     };
 
-    if (activeTab === "RESIDENTIAL CUSTOMER") {
+    if (activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "RESIDENTIAL CUSTOMERS") {
       list = list.filter((c) => isResidentialCustomer(c));
     } else if (activeTab === "ONBOARDING") {
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
@@ -729,7 +793,7 @@ export default function CustomerManagement() {
         const createdTime = new Date(c.createdAt).getTime();
         return (yesterday - createdTime) <= fortyFiveDaysMs;
       });
-    } else if (activeTab === "CALLING CUSTOMER") {
+    } else if (activeTab === "CALLING CUSTOMER" || activeTab === "CALLING CUSTOMERS") {
       list = list.filter((c) => {
         const bt = String(c.businessType || "").trim().toLowerCase();
         return bt === "calling customer" || bt === "calling customers";
@@ -737,14 +801,6 @@ export default function CustomerManagement() {
     } else if (/^D[0-7]$/.test(activeTab)) {
       const targetDays = Number(activeTab.slice(1));
       list = list.filter((c) => targetDays === 7 ? getYesterdayDeliveredCount(c) >= 7 : getYesterdayDeliveredCount(c) === targetDays);
-    } else if (/^F[0-7]$/.test(activeTab)) {
-      const targetGap = Number(activeTab.slice(1));
-      list = list.filter((c) => {
-        const peakNum = getPeakFrequencyNumber(c);
-        const catNum = getYesterdayDeliveredCount(c);
-        const gap = Math.max(0, Math.min(7, peakNum - catNum));
-        return targetGap === 7 ? gap >= 7 : gap === targetGap;
-      });
     }
 
     if (activeBusinessTab !== "ALL") {
@@ -772,20 +828,18 @@ export default function CustomerManagement() {
     }
 
     if (activeAgentTab !== "ALL AGENTS") {
-      const activeAgents = (agents || []).filter((a) => a.active !== false);
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayDate = getDateStringInTimeZone(yesterday, "Asia/Kolkata");
 
       if (activeAgentTab === "UNASSIGNED") {
-        list = list.filter((c) => !activeAgents.some((agent) => isCustomerAssignedToAgent(c, agent, yesterdayDate)));
+        list = list.filter((c) => {
+          const attendedName = getAttendedAgentNameForDate(c, yesterdayDate);
+          return !attendedName || attendedName === "-" || attendedName.toLowerCase() === "unassigned";
+        });
       } else {
-        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab);
-        if (selectedAgent) {
-          list = list.filter((c) => isCustomerAssignedToAgent(c, selectedAgent, yesterdayDate));
-        } else {
-          list = list.filter((c) => isCustomerAssignedToAgent(c, { id: activeAgentTab, name: activeAgentTab }, yesterdayDate));
-        }
+        const selectedAgent = (agents || []).find((a) => a.id === activeAgentTab || a.uid === activeAgentTab || a._id === activeAgentTab) || { id: activeAgentTab, name: activeAgentTab };
+        list = list.filter((c) => isCustomerAttendedBySelectedAgent(c, selectedAgent, yesterdayDate));
       }
     }
 
@@ -899,7 +953,7 @@ export default function CustomerManagement() {
     }
 
     let key = "ALL";
-    if (activeTab === "RESIDENTIAL CUSTOMER") {
+    if (activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "RESIDENTIAL CUSTOMERS") {
       key = "RESIDENTIAL";
     } else if (activeTab === "ONBOARDING") {
       key = "ONBOARDING";
@@ -1190,8 +1244,8 @@ export default function CustomerManagement() {
         Risk_Factor: getRiskFactorLabel(c),
         Delivery_Gap: normalizeDeliveryGap(c.deliveryGap),
       };
-      // Add Current_Category for ALL, RESIDENTIAL CUSTOMER, ONBOARDING, CALLING CUSTOMER and F0-F7 tabs
-      if (activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) {
+      // Add Current_Category for ALL, RESIDENTIAL CUSTOMER, ONBOARDING, CALLING CUSTOMER tabs
+      if (activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "RESIDENTIAL CUSTOMERS" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") {
         baseData.Current_Category = getCurrentCategory(c);
       }
       baseData["Purchase Cadence"] = resolveCleanPattern(c.purchaseCadence || c.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
@@ -1447,25 +1501,58 @@ export default function CustomerManagement() {
         <table className="w-full text-xs text-center border-collapse">
           <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="px-2 py-3">Customer ID</th>
-              <th className="px-2 py-3">Name</th>
-              <th className="px-2 py-3">Zone</th>
-              <th className="px-2 py-3">Route</th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Customer</div>
+                <div>ID</div>
+              </th>
+              <th className="px-2 py-2">Name</th>
+              <th className="px-2 py-2">Zone</th>
+              <th className="px-2 py-2">Route</th>
 
-              <th className="px-2 py-3">Delivery Plan</th>
-              <th className="px-2 py-3">Weekly Schedule</th>
-              <th className="px-2 py-3">Peak_Potential</th>
-              <th className="px-2 py-3">Peak_Frequency</th>
-              <th className="px-2 py-3 whitespace-nowrap">Frequency Gap</th>
-              <th className="px-2 py-3 whitespace-nowrap">Risk_Factor</th>
-              <th className="px-2 py-3">Delivery_Gap</th>
-              {(activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
-                <th className="px-2 py-3">Current Category</th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Delivery</div>
+                <div>Plan</div>
+              </th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Weekly</div>
+                <div>Schedule</div>
+              </th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Peak</div>
+                <div>Potential</div>
+              </th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Peak</div>
+                <div>Frequency</div>
+              </th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Frequency</div>
+                <div>Gap</div>
+              </th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Risk</div>
+                <div>Factor</div>
+              </th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Delivery</div>
+                <div>Gap</div>
+              </th>
+              {(activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "RESIDENTIAL CUSTOMERS" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
+                <th className="px-2 py-2 leading-tight">
+                  <div>Current</div>
+                  <div>Category</div>
+                </th>
               )}
-              <th className="px-2 py-3">Status</th>
-              <th className="px-2 py-3 whitespace-nowrap">Execution Calendar</th>
-              <th className="px-2 py-3 whitespace-nowrap">Reset</th>
-              <th className="px-2 py-3 whitespace-nowrap">Delivery Agent</th>
+              <th className="px-2 py-2">Status</th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Execution</div>
+                <div>Calendar</div>
+              </th>
+              <th className="px-2 py-2">Reset</th>
+              <th className="px-2 py-2 leading-tight">
+                <div>Delivery</div>
+                <div>Agent</div>
+              </th>
             </tr>
           </thead>
 
@@ -1752,7 +1839,7 @@ export default function CustomerManagement() {
                   </span>
                 </td>
 
-                {(activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER" || /^F[0-7]$/.test(activeTab)) && (
+                {(activeTab === "ALL" || activeTab === "RESIDENTIAL CUSTOMER" || activeTab === "RESIDENTIAL CUSTOMERS" || activeTab === "ONBOARDING" || activeTab === "CALLING CUSTOMER") && (
                   <td className="px-2 py-3">
                     <span
                       className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"

@@ -326,11 +326,31 @@ const CustomerInfo = () => {
     }
   };
 
+  const formatBusinessTypeDisplay = (bt) => {
+    const val = String(bt || "").trim();
+    if (!val) return "UNASSIGNED";
+    if (val.toLowerCase() === "premium customer") return "UNASSIGNED";
+    if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
+      return "RESIDENTIAL CUSTOMERS";
+    }
+    return val;
+  };
+
   const fetchBusinessTypes = async () => {
     try {
       const res = await axios.get(`${ADMIN_PATH}/business-types`);
-      const fetchedTypes = res.data || [];
-      setBusinessTypes(fetchedTypes.sort((a, b) => String(a).localeCompare(String(b))));
+      const fetchedTypes = (res.data || [])
+        .map((t) => {
+          const val = String(t || "").trim();
+          if (!val || val.toLowerCase() === "premium customer") return null;
+          if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
+            return "RESIDENTIAL CUSTOMERS";
+          }
+          return val;
+        })
+        .filter(Boolean);
+      const uniqueTypes = Array.from(new Set(fetchedTypes));
+      setBusinessTypes(uniqueTypes.sort((a, b) => String(a).localeCompare(String(b))));
     } catch (err) {
       console.warn("Business Types API unavailable:", err);
       setBusinessTypes([]);
@@ -352,18 +372,23 @@ const CustomerInfo = () => {
   const assignBusinessType = async (id, businessType) => {
     if (!businessType || assigningTypeId === id) return;
 
+    const normalizedBt =
+      businessType.toLowerCase().includes("residential") || businessType.toLowerCase().includes("residencial")
+        ? "RESIDENTIAL CUSTOMERS"
+        : businessType;
+
     try {
       setAssigningTypeId(id);
 
       await axios.post(`${ADMIN_PATH}/customer/status`, {
         id,
-        businessType,
+        businessType: normalizedBt,
       });
 
       patchCachedUserInfoCustomer(id, (prev) => ({
         ...prev,
-        businessType,
-        business: businessType,
+        businessType: normalizedBt,
+        business: normalizedBt,
       }));
       await fetchCustomers({ page: currentPage });
     } finally {
@@ -451,7 +476,7 @@ const CustomerInfo = () => {
         "Phone": c.phone || "",
         "Zone": c.zone || "UNASSIGNED",
         "Route": c.route || "UNASSIGNED",
-        "Business Type": c.businessType || "UNASSIGNED",
+        "Business Type": formatBusinessTypeDisplay(c.businessType),
         "Created At": c.createdAt ? new Date(c.createdAt).toLocaleString() : "",
       }));
 
@@ -855,7 +880,7 @@ const CustomerInfo = () => {
 
                     <select
                       autoFocus
-                      defaultValue={c.businessType}
+                      defaultValue={formatBusinessTypeDisplay(c.businessType)}
                       onBlur={() => setEditingTypeId(null)}
                       onChange={async (e) => {
                         await assignBusinessType(c.id, e.target.value);
@@ -876,7 +901,7 @@ const CustomerInfo = () => {
 
                     <div className="flex items-center gap-2">
 
-                      <span>{c.businessType}</span>
+                      <span>{formatBusinessTypeDisplay(c.businessType)}</span>
 
                       <button
                         onClick={() =>
