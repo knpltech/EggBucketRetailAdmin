@@ -53,6 +53,7 @@ const AISuggestions = () => {
   const [activeCadenceFilter, setActiveCadenceFilter] = useState("ALL");
   const [activeStateFilter, setActiveStateFilter] = useState("ALL");
   const [activeIntentFilter, setActiveIntentFilter] = useState("ALL");
+  const [marketSituation, setMarketSituation] = useState("Normal");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [routeFilter, setRouteFilter] = useState([]);
   const [activeGapTab, setActiveGapTab] = useState("ALL");
@@ -247,6 +248,7 @@ const AISuggestions = () => {
     activeCadenceFilter,
     activeStateFilter,
     activeIntentFilter,
+    marketSituation,
     categoryFilter,
     routeFilter,
   ]);
@@ -1178,15 +1180,33 @@ const AISuggestions = () => {
           </select>
         </div>
 
+        {/* Market Situation */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Market Situation:
+          </label>
+          <select
+            value={marketSituation}
+            onChange={(e) => setMarketSituation(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer font-medium"
+          >
+            <option value="Good">Good</option>
+            <option value="Normal">Normal</option>
+            <option value="Bad">Bad</option>
+          </select>
+        </div>
+
         {/* Clear Filters Button */}
         {(activeCadenceFilter !== "ALL" ||
           activeStateFilter !== "ALL" ||
-          activeIntentFilter !== "ALL") && (
+          activeIntentFilter !== "ALL" ||
+          marketSituation !== "Normal") && (
             <button
               onClick={() => {
                 setActiveCadenceFilter("ALL");
                 setActiveStateFilter("ALL");
                 setActiveIntentFilter("ALL");
+                setMarketSituation("Normal");
               }}
               className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors ml-auto"
             >

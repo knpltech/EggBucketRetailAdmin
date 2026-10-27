@@ -22,6 +22,7 @@ import {
   getDeliveryGapNumber,
   getDeliveryGapColor,
   computePeakFrequency,
+  resolvePeakFrequency,
   computePotential,
   getCurrentCategory,
   isCustomerAssignedToAgent,
@@ -168,7 +169,7 @@ export default function CallingCustomers() {
   const normaliseRows = (rows) =>
     rows.map((c) => ({
       ...c,
-      peakFrequency: c.Peak_Frequency || c.peakFrequency || computePeakFrequency(c.last8Days),
+      peakFrequency: resolvePeakFrequency(c),
       potential: c.Peak_Potential || computePotential(c.last8Days),
       deliveryGap: normalizeDeliveryGap(c.deliveryGap),
     }));

@@ -23,6 +23,7 @@ import {
   getDateStringInTimeZone,
   getPeakFrequencyNumber,
   computePeakFrequency,
+  resolvePeakFrequency,
   getPeakFrequencyLabel,
   getPeakFrequencyColor,
   normalizePotential,
@@ -169,7 +170,7 @@ export default function CustomerManagement() {
   const normaliseRows = (rows) =>
     rows.map((c) => ({
       ...c,
-      peakFrequency: c.Peak_Frequency || c.peakFrequency || computePeakFrequency(c.last8Days),
+      peakFrequency: resolvePeakFrequency(c),
       potential: c.Peak_Potential || computePotential(c.last8Days),
       deliveryGap: normalizeDeliveryGap(c.deliveryGap),
       deliveredCount: getDeliveredCountForCustomer(c),
