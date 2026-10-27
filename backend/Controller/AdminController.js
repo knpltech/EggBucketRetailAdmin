@@ -149,24 +149,17 @@ const computeDeliveryGap = (last8Days, todayDate, customerData = {}) => {
 };
 
 const resolvePeakFrequency = (customerData = {}, last8Days = {}) => {
-  const peak30Days = computePeakFrequency30Days(last8Days);
+  const computedPeak = computePeakFrequency30Days(last8Days || customerData.last8Days || {});
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
     customerData.peakFrequency ||
     customerData.peak_frequency,
   );
 
-  const hasAnyDeliveries = Object.values(last8Days || {}).some((entry) => {
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
-    ).trim().toLowerCase();
-    return status === "delivered";
-  });
+  const compNum = Number(computedPeak.slice(1)) || 0;
+  const savedNum = savedPeak ? Number(savedPeak.slice(1)) || 0 : 0;
 
-  if (hasAnyDeliveries) {
-    return peak30Days;
-  }
-  return savedPeak || "D0";
+  return `D${Math.max(savedNum, compNum)}`;
 };
 
 

@@ -112,24 +112,17 @@ const getPeakFrequencyNumber = (value) => {
 };
 
 const resolvePeakFrequency = (customerData = {}) => {
-  const peak30Days = computePeakFrequency30Days(customerData.last8Days || {});
+  const computedPeak = computePeakFrequency30Days(customerData.last8Days || {});
   const savedPeak = normalizePeakFrequency(
     customerData.Peak_Frequency ||
     customerData.peakFrequency ||
     customerData.peak_frequency,
   );
 
-  const hasAnyDeliveries = Object.values(customerData.last8Days || {}).some((entry) => {
-    const status = String(
-      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
-    ).trim().toLowerCase();
-    return status === "delivered";
-  });
+  const compNum = Number(computedPeak.slice(1)) || 0;
+  const savedNum = savedPeak ? Number(savedPeak.slice(1)) || 0 : 0;
 
-  if (hasAnyDeliveries) {
-    return peak30Days;
-  }
-  return savedPeak || "D0";
+  return `D${Math.max(savedNum, compNum)}`;
 };
 
 const getDefaultOnboardingRoute = async (db) => {
@@ -204,7 +197,9 @@ const buildCustomerInfoPayload = (
   if (isUnassignedRoute && defaultOnboardingRoute) {
     updateFields.route = defaultOnboardingRoute;
   }
-  if (hasAnyDeliveries && peakFrequency && peakFrequency !== savedPeakFreq) {
+  const peakFreqNum = Number(peakFrequency.slice(1)) || 0;
+  const savedFreqNum = savedPeakFreq ? Number(savedPeakFreq.slice(1)) || 0 : 0;
+  if (hasAnyDeliveries && peakFreqNum > savedFreqNum) {
     updateFields.Peak_Frequency = peakFrequency;
   }
   if (hasAnyDeliveries && peakPotential && peakPotential !== savedPeakPotential) {

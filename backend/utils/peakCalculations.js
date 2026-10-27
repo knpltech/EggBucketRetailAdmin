@@ -53,38 +53,54 @@ export function normalizePotential(value) {
 }
 
 /**
- * Computes Peak Frequency (D0 to D7) based on a 7-day sliding window over the past 30 days.
+ * Computes Peak Frequency (D0 to D7) based on a 7-day sliding window over the customer's entire lifetime history in last8Days.
  */
-export function computePeakFrequency30Days(last8Days = {}) {
+export function computePeakFrequencyLifetime(last8Days = {}) {
   if (!last8Days || typeof last8Days !== "object") return "D0";
 
-  let maxWeekCount = 0;
-  const today = new Date();
+  const deliveredDaysSet = new Set();
+  for (const [dateStr, entry] of Object.entries(last8Days)) {
+    if (!dateStr) continue;
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
+    ).trim().toLowerCase();
 
-  // Slide a 7-day window across the 30-day period (offsets 0 to 23: 24 windows of 7 days)
-  for (let offset = 0; offset <= 23; offset++) {
-    let weekCount = 0;
-
-    for (let day = 0; day < 7; day++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - (offset + day));
-      const dateStr = getDateStringInTimeZone(d, INDIA_TZ);
-      const entry = last8Days[dateStr];
-      const status = String(
-        typeof entry === "string" ? entry : entry?.status || entry?.type || ""
-      ).trim().toLowerCase();
-
-      if (status === "delivered") weekCount++;
+    if (status === "delivered") {
+      const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (match) {
+        const time = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+        if (Number.isFinite(time)) {
+          deliveredDaysSet.add(Math.floor(time / 86400000));
+        }
+      }
     }
+  }
 
-    if (weekCount > maxWeekCount) {
-      maxWeekCount = weekCount;
-      if (maxWeekCount === 7) break;
+  if (deliveredDaysSet.size === 0) return "D0";
+
+  const sortedDays = Array.from(deliveredDaysSet).sort((a, b) => a - b);
+  let maxWeekCount = 0;
+  let left = 0;
+
+  for (let right = 0; right < sortedDays.length; right++) {
+    while (sortedDays[right] - sortedDays[left] > 6) {
+      left++;
+    }
+    const count = right - left + 1;
+    if (count > maxWeekCount) {
+      maxWeekCount = count;
+      if (maxWeekCount >= 7) {
+        maxWeekCount = 7;
+        break;
+      }
     }
   }
 
   return `D${Math.min(maxWeekCount, 7)}`;
 }
+
+export const computePeakFrequency30Days = computePeakFrequencyLifetime;
+export const computePeakFrequency = computePeakFrequencyLifetime;
 
 /**
  * Computes Peak Potential number (max trays in a single delivered order) over the past 30 days.
@@ -126,7 +142,7 @@ export function computePeakPotentialNumber30Days(last8Days = {}) {
 
 /**
  * Batch updates peak frequency and peak potential for all customers in customersSnap.
- * Reuses existing snapshot documents with ZERO extra reads.
+ * Peak Frequency only updates when a customer's new computed frequency exceeds their saved peak (High-Water Mark).
  */
 export async function updateCustomersPeak30Days(db, customersSnap) {
   if (!customersSnap || customersSnap.empty) return 0;
@@ -139,17 +155,20 @@ export async function updateCustomersPeak30Days(db, customersSnap) {
     const data = doc.data() || {};
     const last8Days = data.last8Days || {};
 
-    const computedPeakFreq = computePeakFrequency30Days(last8Days);
+    const computedPeakFreq = computePeakFrequencyLifetime(last8Days);
+    const compFreqNum = Number(computedPeakFreq.slice(1)) || 0;
     const currentPeakFreq = normalizePeakFrequency(data.Peak_Frequency || data.peakFrequency);
+    const currentFreqNum = currentPeakFreq ? Number(currentPeakFreq.slice(1)) || 0 : 0;
 
     const computedPeakPotNum = computePeakPotentialNumber30Days(last8Days);
     const computedPeakPot = computedPeakPotNum > 0 ? `T${computedPeakPotNum}` : "T1";
     const currentPeakPot = normalizePotential(data.Peak_Potential || data.peakPotential);
 
     const updates = {};
-    if (computedPeakFreq !== currentPeakFreq) {
-      updates.Peak_Frequency = computedPeakFreq;
-      updates.peakFrequency = computedPeakFreq;
+    // High-Water Mark: Only update Peak_Frequency if a new higher record is achieved
+    if (compFreqNum > currentFreqNum) {
+      updates.Peak_Frequency = `D${compFreqNum}`;
+      updates.peakFrequency = `D${compFreqNum}`;
     }
     if (computedPeakPot !== currentPeakPot) {
       updates.Peak_Potential = computedPeakPot;
@@ -175,3 +194,5 @@ export async function updateCustomersPeak30Days(db, customersSnap) {
 
   return totalUpdated;
 }
+
+export const updateCustomersPeakLifetime = updateCustomersPeak30Days;

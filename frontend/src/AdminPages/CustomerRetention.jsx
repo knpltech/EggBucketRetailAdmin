@@ -299,9 +299,7 @@ const CustomerRow = React.memo(({
   const currentCategory = customer.currentCategory || "-";
   const currentCatNum = getCurrentCategoryNumber(currentCategory);
 
-  const peakFrequency = customer.Peak_Frequency
-    ? normalizePeakFrequency(customer.Peak_Frequency)
-    : resolvePeakFrequency(customer);
+  const peakFrequency = resolvePeakFrequency(customer);
   const peakFreqNum = getPeakFrequencyNumber(peakFrequency);
 
   const frequencyGapNum = Math.max(0, Math.min(7, peakFreqNum - currentCatNum));
@@ -1009,7 +1007,7 @@ const CustomerRetention = () => {
 
           (payload.customers || []).forEach((customer) => {
             const currentCat = customer.currentCategory || "-";
-            const peakFreq = customer.Peak_Frequency || resolvePeakFrequency(customer);
+            const peakFreq = resolvePeakFrequency(customer);
             const peakPot = normalizePotential(customer.Peak_Potential || computePeakPotential(customer.last8Days));
             const delGap = normalizeDeliveryGap(customer.deliveryGap || "G0");
             const freqGap = customer.frequencyGap || `F${Math.max(0, Math.min(7, getPeakFrequencyNumber(peakFreq) - getCurrentCategoryNumber(currentCat)))}`;

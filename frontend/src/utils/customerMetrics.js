@@ -77,16 +77,21 @@ const resolvedPeakCache = new WeakMap();
 
 export function getDateDayNumber(dateStr) {
   const match = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const time = Date.UTC(year, month - 1, day);
 
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const time = Date.UTC(year, month - 1, day);
+    if (Number.isFinite(time)) return Math.floor(time / 86400000);
+  }
 
-  if (!Number.isFinite(time)) return null;
+  const parsed = Date.parse(dateStr);
+  if (Number.isFinite(parsed)) {
+    return Math.floor(parsed / 86400000);
+  }
 
-  return Math.floor(time / 86400000);
+  return null;
 }
 
 // ─── Peak Frequency Helpers ───────────────────────────────────────────────────
@@ -115,7 +120,8 @@ export function getPeakFrequencyNumber(customerOrValue) {
 }
 
 /**
- * Computes Peak Frequency (D0 to D7) based on 30-day sliding window in last8Days.
+ * Computes Peak Frequency (D0 to D7) based on customer's entire lifetime history in last8Days.
+ * Evaluates the maximum delivery count in any 7-consecutive-day window across their lifetime.
  */
 export function computePeakFrequency(last8Days = {}) {
   if (!last8Days || typeof last8Days !== "object") return "D0";
@@ -123,28 +129,43 @@ export function computePeakFrequency(last8Days = {}) {
     return peakFrequencyCache.get(last8Days);
   }
 
-  const dates = getPast30DaysList();
-  let maxWeekCount = 0;
+  const deliveredDaysSet = new Set();
+  for (const [dateStr, entry] of Object.entries(last8Days)) {
+    if (!dateStr) continue;
+    const status = String(
+      typeof entry === "string" ? entry : entry?.status || entry?.type || ""
+    ).trim().toLowerCase();
 
-  // Slide a 7-day window across the 30-day period (offsets 0 to 23: 24 windows of 7 days)
-  for (let offset = 0; offset <= 23; offset++) {
-    let weekCount = 0;
-
-    for (let day = 0; day < 7; day++) {
-      const dateStr = dates[offset + day];
-      const entry = last8Days[dateStr];
-      if (!entry) continue;
-
-      const status = String(
-        typeof entry === "string" ? entry : entry.status || entry.type || ""
-      ).trim().toLowerCase();
-
-      if (status === "delivered") weekCount++;
+    if (status === "delivered") {
+      const dayNum = getDateDayNumber(dateStr);
+      if (dayNum !== null) {
+        deliveredDaysSet.add(dayNum);
+      }
     }
+  }
 
-    if (weekCount > maxWeekCount) {
-      maxWeekCount = weekCount;
-      if (maxWeekCount === 7) break; // Maximum reached, stop early
+  if (deliveredDaysSet.size === 0) {
+    const res = "D0";
+    peakFrequencyCache.set(last8Days, res);
+    return res;
+  }
+
+  const sortedDays = Array.from(deliveredDaysSet).sort((a, b) => a - b);
+  let maxWeekCount = 0;
+  let left = 0;
+
+  // Window of 7 consecutive calendar days (right - left <= 6)
+  for (let right = 0; right < sortedDays.length; right++) {
+    while (sortedDays[right] - sortedDays[left] > 6) {
+      left++;
+    }
+    const count = right - left + 1;
+    if (count > maxWeekCount) {
+      maxWeekCount = count;
+      if (maxWeekCount >= 7) {
+        maxWeekCount = 7;
+        break;
+      }
     }
   }
 
@@ -153,6 +174,11 @@ export function computePeakFrequency(last8Days = {}) {
   return res;
 }
 
+/**
+ * High-water mark resolver for Peak Frequency:
+ * Returns the maximum between the customer's saved Peak_Frequency and any achieved lifetime peak.
+ * Peak frequency never rolls off or decreases; it only increases when a new record is set.
+ */
 export function resolvePeakFrequency(customer = {}) {
   if (!customer || typeof customer !== "object") return "D0";
   if (resolvedPeakCache.has(customer)) {
@@ -164,14 +190,13 @@ export function resolvePeakFrequency(customer = {}) {
     customer.peakFrequency ||
     customer.peak_frequency
   );
+  const computedPeak = computePeakFrequency(customer.last8Days);
 
-  let result = "D0";
-  if (savedPeak) {
-    result = savedPeak;
-  } else {
-    result = computePeakFrequency(customer.last8Days);
-  }
+  const savedNum = getFrequencyNumber(savedPeak);
+  const compNum = getFrequencyNumber(computedPeak);
+  const bestNum = Math.max(savedNum, compNum);
 
+  const result = `D${bestNum}`;
   resolvedPeakCache.set(customer, result);
   return result;
 }
