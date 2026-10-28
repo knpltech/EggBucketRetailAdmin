@@ -8,6 +8,8 @@ import {
   LOGIC_2_CUSTOMER_STATE,
   LOGIC_3_PURCHASE_INTENT,
   resolveCleanPattern,
+  computeAutoPurchaseCadence,
+  resolveCustomerState,
 } from "../utils/aiSuggestionEngine";
 
 const AISuggestionTable = ({
@@ -47,9 +49,9 @@ const AISuggestionTable = ({
               <th className="p-3 text-left font-semibold text-gray-800">Current Category</th>
               <th className="p-3 text-left font-semibold text-gray-800">Current Toggle</th>
               <th className="p-3 text-center font-semibold text-gray-800">Status</th>
+              <th className="p-3 text-left font-semibold text-gray-800">Customer State</th>
               <th className="p-3 text-left font-semibold text-gray-800">Purchase Cadence</th>
               <th className="p-3 text-left font-semibold text-gray-800">Purchase Intent</th>
-              <th className="p-3 text-left font-semibold text-gray-800">Customer State</th>
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Apply AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Execution Calendar</th>
@@ -109,9 +111,9 @@ const AISuggestionTable = ({
               <th className="px-1 py-2 text-center font-semibold text-gray-800 leading-tight">Current<br/>Category</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Current<br/>Toggle</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Status</th>
+              <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight min-w-[122px]">Customer State</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight min-w-[122px]">Purchase Cadence</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight min-w-[122px]">Purchase Intent</th>
-              <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight min-w-[122px]">Customer State</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">AI<br/>Suggestion</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Apply AI<br/>Suggestion</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Execution<br/>Calendar</th>
@@ -130,9 +132,9 @@ const AISuggestionTable = ({
                 setEditingRouteId={setEditingRouteId}
                 onApplySuggestion={onApplySuggestion}
                 isUpdating={updatingSuggestionId === item.customer.id}
-                customerPattern={resolveCleanPattern(rowPatterns[item.customer.id] || item.customer.purchaseCadence || item.customer.pattern, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1)}
+                customerPattern={item.autoCadence || computeAutoPurchaseCadence(item.customer)}
                 onPatternChange={onPatternChange}
-                secondaryPattern={resolveCleanPattern(rowSecondaryPatterns[item.customer.id] || item.customer.customerState, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2)}
+                secondaryPattern={item.autoCustomerState || resolveCustomerState(item.customer, rowSecondaryPatterns[item.customer.id])}
                 onSecondaryPatternChange={onSecondaryPatternChange}
                 tertiaryPattern={resolveCleanPattern(rowTertiaryPatterns[item.customer.id] || item.customer.purchaseIntent, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3)}
                 onTertiaryPatternChange={onTertiaryPatternChange}

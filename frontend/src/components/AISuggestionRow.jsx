@@ -385,32 +385,7 @@ const AISuggestionRow = ({
         </div>
       </td>
 
-      <td className="px-1.5 py-2">
-        <select
-          value={customerPattern || DEFAULT_LOGIC_1}
-          onChange={(e) => onPatternChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
-          title={customerPattern || DEFAULT_LOGIC_1}
-        >
-          {LOGIC_1_PURCHASE_CADENCE.map(pattern => (
-            <option key={pattern} value={pattern}>{pattern}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="px-1.5 py-2">
-        <select
-          value={tertiaryPattern || DEFAULT_LOGIC_3}
-          onChange={(e) => onTertiaryPatternChange(customer.id, e.target.value)}
-          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
-          title={tertiaryPattern || DEFAULT_LOGIC_3}
-        >
-          {LOGIC_3_PURCHASE_INTENT.map(pattern => (
-            <option key={`ter-${pattern}`} value={pattern}>{pattern}</option>
-          ))}
-        </select>
-      </td>
-
+      {/* 1) Customer State */}
       <td className="px-1.5 py-2">
         <select
           value={secondaryPattern || DEFAULT_LOGIC_2}
@@ -420,6 +395,30 @@ const AISuggestionRow = ({
         >
           {LOGIC_2_CUSTOMER_STATE.map(pattern => (
             <option key={`sec-${pattern}`} value={pattern}>{pattern}</option>
+          ))}
+        </select>
+      </td>
+
+      {/* 2) Purchase Cadence (Auto-updated based on Peak Frequency / Creation Date) */}
+      <td className="px-1.5 py-2">
+        <span
+          className="inline-flex items-center justify-center border border-gray-300 px-2 py-0.5 rounded text-xs font-semibold text-gray-800 bg-gray-50 shadow-sm w-[120px] overflow-hidden text-ellipsis whitespace-nowrap text-center cursor-default"
+          title={`Auto-computed Purchase Cadence: ${customerPattern}`}
+        >
+          {customerPattern}
+        </span>
+      </td>
+
+      {/* 3) Purchase Intent */}
+      <td className="px-1.5 py-2">
+        <select
+          value={tertiaryPattern || DEFAULT_LOGIC_3}
+          onChange={(e) => onTertiaryPatternChange(customer.id, e.target.value)}
+          className="border border-gray-300 px-1 py-0.5 rounded text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50 w-[120px] overflow-hidden text-ellipsis whitespace-nowrap"
+          title={tertiaryPattern || DEFAULT_LOGIC_3}
+        >
+          {LOGIC_3_PURCHASE_INTENT.map(pattern => (
+            <option key={`ter-${pattern}`} value={pattern}>{pattern}</option>
           ))}
         </select>
       </td>

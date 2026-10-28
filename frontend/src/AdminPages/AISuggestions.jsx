@@ -11,6 +11,9 @@ import {
   getTodayEffectiveStatus,
   resolvePeakFrequency,
   generateAISuggestion,
+  computeAutoPurchaseCadence,
+  computeAutoCustomerState,
+  resolveCustomerState,
   BUYING_PATTERNS,
   LOGIC_1_PURCHASE_CADENCE,
   LOGIC_2_CUSTOMER_STATE,
@@ -360,7 +363,7 @@ const AISuggestions = () => {
               id: c.id,
               purchaseCadence: localCadence[c.id] || c.purchaseCadence || "Learning",
               customerState: localSecondary[c.id] || c.customerState || "Active",
-              purchaseIntent: localTertiary[c.id] || c.purchaseIntent || "Unknown",
+              purchaseIntent: localTertiary[c.id] || (c.purchaseIntent === "Unknown" ? "Learning" : c.purchaseIntent) || "Learning",
             });
           }
         });
@@ -405,10 +408,20 @@ const AISuggestions = () => {
       const frequencyGapStr = `F${frequencyGapNumber}`;
       const riskFactorNumber = peakFrequencyNumber > 0 ? frequencyGapNumber / peakFrequencyNumber : 0;
       const riskFactorStr = riskFactorNumber.toFixed(2);
+      const autoCadence = computeAutoPurchaseCadence({
+        ...customer,
+        Peak_Frequency: peakFrequencyStr,
+      });
+      const autoCustomerState = computeAutoCustomerState({
+        ...customer,
+        riskFactorNumber,
+      });
 
       return {
         customer: {
           ...customer,
+          autoCadence,
+          autoCustomerState,
           customerStatus,
           customerRemark,
           deliveryGapStr,
@@ -418,6 +431,8 @@ const AISuggestions = () => {
           riskFactorStr,
           riskFactorNumber,
         },
+        autoCadence,
+        autoCustomerState,
         customerStatus,
         customerRemark,
         currentCategory,
@@ -437,15 +452,15 @@ const AISuggestions = () => {
 
   const processedData = useMemo(() => {
     const data = baseCustomerData.map((item) => {
-      const saved1 = rowPatterns[item.customer.id] || item.customer.purchaseCadence || item.customer.pattern;
-      const customerPattern = resolveCleanPattern(saved1, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
-      const saved2 = rowSecondaryPatterns[item.customer.id] || item.customer.customerState;
-      const secondaryPattern = resolveCleanPattern(saved2, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
+      const customerPattern = item.autoCadence || computeAutoPurchaseCadence(item.customer);
+      const saved2 = rowSecondaryPatterns[item.customer.id];
+      const secondaryPattern = resolveCustomerState(item.customer, saved2);
       const saved3 = rowTertiaryPatterns[item.customer.id] || item.customer.purchaseIntent;
       const tertiaryPattern = resolveCleanPattern(saved3, LOGIC_3_PURCHASE_INTENT, DEFAULT_LOGIC_3);
 
       return {
         ...item,
+        autoCustomerState: secondaryPattern,
         suggestion: generateAISuggestion(item.customer, customerPattern, secondaryPattern, tertiaryPattern),
       };
     });
@@ -509,17 +524,15 @@ const AISuggestions = () => {
         String(normalizedCustomerType).trim().toLowerCase() ===
         String(businessTypeFilter).trim().toLowerCase();
 
-      // AI Logics Filters (Purchase Cadence, Customer State, Purchase Intent)
-      if (activeCadenceFilter !== "ALL") {
-        const saved1 = rowPatterns[item.customer.id] || item.customer.purchaseCadence || item.customer.pattern;
-        const customerCadence = resolveCleanPattern(saved1, LOGIC_1_PURCHASE_CADENCE, DEFAULT_LOGIC_1);
-        if (customerCadence !== activeCadenceFilter) return false;
+      // AI Logics Filters (1: Customer State, 2: Purchase Cadence, 3: Purchase Intent)
+      if (activeStateFilter !== "ALL") {
+        const customerState = item.autoCustomerState || resolveCustomerState(item.customer, rowSecondaryPatterns[item.customer.id]);
+        if (customerState !== activeStateFilter) return false;
       }
 
-      if (activeStateFilter !== "ALL") {
-        const saved2 = rowSecondaryPatterns[item.customer.id] || item.customer.customerState;
-        const customerState = resolveCleanPattern(saved2, LOGIC_2_CUSTOMER_STATE, DEFAULT_LOGIC_2);
-        if (customerState !== activeStateFilter) return false;
+      if (activeCadenceFilter !== "ALL") {
+        const customerCadence = item.autoCadence || computeAutoPurchaseCadence(item.customer);
+        if (customerCadence !== activeCadenceFilter) return false;
       }
 
       if (activeIntentFilter !== "ALL") {
@@ -1134,7 +1147,26 @@ const AISuggestions = () => {
           AI Logics Filter:
         </div>
 
-        {/* Logic 1: Purchase Cadence */}
+        {/* Logic 1: Customer State */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+            Customer State:
+          </label>
+          <select
+            value={activeStateFilter}
+            onChange={(e) => setActiveStateFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="ALL">ALL STATES</option>
+            {LOGIC_2_CUSTOMER_STATE.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Logic 2: Purchase Cadence */}
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
             Purchase Cadence:
@@ -1165,25 +1197,6 @@ const AISuggestions = () => {
           >
             <option value="ALL">ALL INTENTS</option>
             {LOGIC_3_PURCHASE_INTENT.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Logic 2: Customer State */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-            Customer State:
-          </label>
-          <select
-            value={activeStateFilter}
-            onChange={(e) => setActiveStateFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="ALL">ALL STATES</option>
-            {LOGIC_2_CUSTOMER_STATE.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>

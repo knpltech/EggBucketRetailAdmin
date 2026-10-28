@@ -506,7 +506,6 @@ export const LOGIC_1_PURCHASE_CADENCE = [
   "Everyday",
   "Alternate Day",
   "2 Alternate Day",
-  "Weekly",
 ];
 
 export const LOGIC_2_CUSTOMER_STATE = [
@@ -517,7 +516,7 @@ export const LOGIC_2_CUSTOMER_STATE = [
 ];
 
 export const LOGIC_3_PURCHASE_INTENT = [
-  "Unknown",
+  "Learning",
   "Everyday",
   "Alternate Day",
   "2 Alternate Day",
@@ -533,6 +532,84 @@ export const BUYING_PATTERNS = [
   ...LOGIC_2_CUSTOMER_STATE,
   ...LOGIC_3_PURCHASE_INTENT,
 ];
+
+/**
+ * Auto-computes Purchase Cadence directly based on:
+ * 1. Customer Creation Date < 45 Days -> "Learning"
+ * 2. Peak Frequency D0 -> "Learning"
+ * 3. Peak Frequency D7 to D5 -> "Everyday"
+ * 4. Peak Frequency D4 to D2 -> "Alternate Day"
+ * 5. Peak Frequency D1 -> "2 Alternate Day"
+ */
+export const computeAutoPurchaseCadence = (customer) => {
+  if (!customer) return "Learning";
+
+  // Check Customer Creation Date < 45 Days -> Learning
+  const rawCreated =
+    customer.createdAt ||
+    customer.created_at ||
+    customer.creationDate ||
+    customer.customerCreatedAt ||
+    customer.createdDate;
+
+  if (rawCreated) {
+    let createdDate = null;
+    if (typeof rawCreated === "string" || typeof rawCreated === "number") {
+      const d = new Date(rawCreated);
+      if (!Number.isNaN(d.getTime())) createdDate = d;
+    } else if (typeof rawCreated === "object") {
+      const sec = rawCreated.seconds ?? rawCreated._seconds;
+      if (typeof sec === "number") {
+        const nano = rawCreated.nanoseconds ?? rawCreated._nanoseconds ?? 0;
+        createdDate = new Date(sec * 1000 + Math.floor(nano / 1e6));
+      }
+    }
+
+    if (createdDate) {
+      const now = new Date();
+      const diffMs = now.getTime() - createdDate.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      if (diffDays >= 0 && diffDays < 45) {
+        return "Learning";
+      }
+    }
+  }
+
+  // Peak Frequency based logic
+  const peakFreq = resolvePeakFrequency(customer);
+  const num = getPeakFrequencyNumber(peakFreq);
+
+  if (num >= 5 && num <= 7) return "Everyday";
+  if (num >= 2 && num <= 4) return "Alternate Day";
+  if (num === 1) return "2 Alternate Day";
+  return "Learning";
+};
+
+/**
+ * Auto-computes Customer State directly based on Risk Factor:
+ * If Risk Factor = 0.00 -> "Active"
+ * If Risk Factor > 0.00 -> "At Risk"
+ */
+export const computeAutoCustomerState = (customer) => {
+  if (!customer) return "Active";
+  const rf = customer.riskFactorNumber !== undefined
+    ? customer.riskFactorNumber
+    : getRiskFactorNumber(customer);
+  const num = Number(rf);
+  return Number.isFinite(num) && num > 0 ? "At Risk" : "Active";
+};
+
+export const resolveCustomerState = (customer, savedState) => {
+  const manual = savedState || customer?.customerState;
+  const clean = manual ? String(manual).trim() : "";
+  if (
+    clean &&
+    ["inactive", "on call", "oncall", "need credit", "other vendor", "ceased operations temporarily", "ceased operations permanently"].includes(clean.toLowerCase())
+  ) {
+    return resolveCleanPattern(clean, LOGIC_2_CUSTOMER_STATE, "Active");
+  }
+  return computeAutoCustomerState(customer);
+};
 
 export const resolveCleanPattern = (saved, validList, defaultVal) => {
   if (!saved) return defaultVal;
@@ -589,6 +666,11 @@ export const resolveCleanPattern = (saved, validList, defaultVal) => {
     ["no pattern", "nopattern", "no-pattern"].includes(lower)
   ) {
     return "No Pattern";
+  }
+
+  // Unknown -> Learning alias for Purchase Intent
+  if (validList.includes("Learning") && lower === "unknown") {
+    return "Learning";
   }
 
   return defaultVal;
@@ -736,12 +818,14 @@ const evaluatePattern = (customer, pattern, logicLabel = "") => {
       };
 
     // --- Logic 3: Purchase Intent ---
+    case "Learning":
+    case "Learning (Always ON)":
     case "Unknown":
     case "Unknown (Always ON)":
       return {
         suggestion: "TURN_ON_TODAY",
         confidence: 100,
-        reason: "Purchase Intent: Unknown (Always ON)",
+        reason: "Purchase Intent: Learning (Always ON)",
       };
     case "Stable Purchase":
     case "Stable Purchase (Always ON)":
@@ -794,7 +878,7 @@ export const generateAISuggestion = (
 ) => {
   const skipConfig = customer?.skipConfig || {};
 
-  // RULE: Skip config active (Applies across all patterns)
+  // RULE 0: Skip config active (Applies across all patterns)
   if (skipConfig?.days > 0) {
     return {
       suggestion: "KEEP_OFF_TODAY",
@@ -804,41 +888,39 @@ export const generateAISuggestion = (
     };
   }
 
-  const primaryResult = evaluatePattern(customer, primaryPattern, "Purchase Cadence");
-  const secondaryResult = evaluatePattern(customer, secondaryPattern, "Customer State");
-  const tertiaryResult = evaluatePattern(customer, tertiaryPattern, "Purchase Intent");
-
-  const isPrimaryOn = primaryResult.suggestion.includes("ON");
-  const isSecondaryOn = secondaryResult.suggestion.includes("ON");
-  const isTertiaryOn = tertiaryResult.suggestion.includes("ON");
-
-  const formatReason = (label, result) => {
-    const raw = String(result?.reason || "").trim();
-    if (!raw) return `${label}: (Always ON)`;
-    return raw.startsWith(label) ? raw : `${label}: ${raw}`;
-  };
-
-  const primaryReason = formatReason("Purchase Cadence", primaryResult);
-  const tertiaryReason = formatReason("Purchase Intent", tertiaryResult);
-  const secondaryReason = formatReason("Customer State", secondaryResult);
-
-  if (isPrimaryOn && isSecondaryOn && isTertiaryOn) {
+  // STEP 1: If Customer State is At Risk -> Directly jump to Turn ON (skip other logic)
+  if (
+    secondaryPattern === "At Risk" ||
+    secondaryPattern === "At Risk (Always ON)"
+  ) {
     return {
       suggestion: "TURN_ON_TODAY",
-      confidence: Math.min(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
-      reason: `${primaryReason} | ${tertiaryReason} | ${secondaryReason}`,
-    };
-  } else {
-    const offLogics = [];
-    if (!isPrimaryOn) offLogics.push(primaryReason);
-    if (!isTertiaryOn) offLogics.push(tertiaryReason);
-    if (!isSecondaryOn) offLogics.push(secondaryReason);
-    return {
-      suggestion: "TURN_OFF_TODAY",
-      confidence: Math.max(primaryResult.confidence, secondaryResult.confidence, tertiaryResult.confidence),
-      reason: `OFF because - ${offLogics.join(" | ")}`,
+      confidence: 100,
+      reason: "Customer State: At Risk (Direct Turn ON)",
     };
   }
+
+  // Check if Customer State is explicitly an OFF state (Inactive, On Call, Need Credit, Other Vendor, etc.)
+  const secondaryResult = evaluatePattern(customer, secondaryPattern, "Customer State");
+  if (!secondaryResult.suggestion.includes("ON")) {
+    return {
+      suggestion: "TURN_OFF_TODAY",
+      confidence: secondaryResult.confidence || 100,
+      reason: secondaryResult.reason || `Customer State: ${secondaryPattern} (Always OFF)`,
+    };
+  }
+
+  // STEP 2: If Customer State is Active (or other active state) -> Jump to Purchase Intent condition
+  const intentResult = evaluatePattern(customer, tertiaryPattern, "Purchase Intent");
+  const isIntentOn = intentResult.suggestion.includes("ON");
+
+  return {
+    suggestion: isIntentOn ? "TURN_ON_TODAY" : "TURN_OFF_TODAY",
+    confidence: intentResult.confidence || 100,
+    reason: `Customer State: ${secondaryPattern} | ${intentResult.reason}`,
+  };
+
+  // NOTE: Purchase Cadence (primaryPattern) gives no input to AI suggestion; it is for data display only.
 };
 
 export const generateDummyAISuggestion = generateAISuggestion;

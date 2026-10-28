@@ -4,6 +4,8 @@ import {
   getDateStringInTimeZone,
   computeDeliveryGap,
   computeCurrentCategory,
+  computeAutoPurchaseCadence,
+  resolveCustomerState,
 } from './aiSuggestionEngine';
 import { normalizePotential } from './customerMetrics';
 
@@ -39,6 +41,9 @@ export const exportToExcel = (sortedData, logicOption) => {
       'Potential': normalizePotential(customer.Peak_Potential),
       'Delivery Gap': deliveryGap || '',
       'Current Status': customer.todayOverride?.status || 'NOT SET',
+      'Customer State': item.autoCustomerState || resolveCustomerState(customer),
+      'Purchase Cadence': item.autoCadence || computeAutoPurchaseCadence(customer),
+      'Purchase Intent': customer?.purchaseIntent || '',
       'AI Suggestion': suggestion.suggestion || '',
       'Confidence': suggestion.confidence || 0,
       'Reason': suggestion.reason || '',
