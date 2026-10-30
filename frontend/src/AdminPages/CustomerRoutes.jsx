@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye, FiChevronDown, FiChevronRight, FiLayers, FiRotateCcw } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiTarget, FiTrendingUp, FiEdit2, FiEye, FiChevronDown, FiChevronRight, FiLayers, FiRotateCcw, FiSearch, FiSmartphone, FiCheck } from "react-icons/fi";
 import { ADMIN_PATH } from "../constant";
 import { getCachedUserInfo, invalidateClientUserInfoCache } from "../utils/customerInfoClientCache";
 import SubRouteOptimizationModal from "../components/SubRouteOptimizationModal";
@@ -43,6 +43,11 @@ export default function CustomerRoutes() {
   const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState(false);
   const [selectedResetAgent, setSelectedResetAgent] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+
+  // Preview screen state (below Assigned Deliverymen)
+  const [previewAgentId, setPreviewAgentId] = useState("");
+  const [previewSearch, setPreviewSearch] = useState("");
+  const [previewFilter, setPreviewFilter] = useState("ALL");
 
   // Parent route collapse state
   const [collapsedParents, setCollapsedParents] = useState({});
@@ -468,11 +473,93 @@ export default function CustomerRoutes() {
           ...agent,
           customersAssigned,
           activeCustomers,
+          customers: assigned,
           isActive: true,
           displayRoute: computedRoutes || "No routes"
         };
       });
   }, [agents, customers]);
+
+  const activeAssignedAgents = useMemo(() => {
+    return agentStats.filter(
+      (a) => (a.displayRoute && a.displayRoute !== "No routes") || a.customersAssigned > 0
+    );
+  }, [agentStats]);
+
+  const currentPreviewAgent = useMemo(() => {
+    if (!activeAssignedAgents || activeAssignedAgents.length === 0) return null;
+    if (previewAgentId) {
+      const found = activeAssignedAgents.find(
+        (a) => a.id === previewAgentId || a.uid === previewAgentId
+      );
+      if (found) return found;
+    }
+    return activeAssignedAgents[0];
+  }, [activeAssignedAgents, previewAgentId]);
+
+  const previewCustomersList = useMemo(() => {
+    return currentPreviewAgent?.customers || [];
+  }, [currentPreviewAgent]);
+
+  const previewTodayDate = useMemo(() => {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  }, []);
+
+  const previewAgentDeliveredTrays = useMemo(() => {
+    if (!previewCustomersList.length) return 0;
+    let sum = 0;
+    previewCustomersList.forEach((c) => {
+      const entry = c.last8Days?.[previewTodayDate];
+      if (entry) {
+        const status = String(
+          typeof entry === "string" ? entry : entry?.status || ""
+        ).trim().toLowerCase();
+        if (status === "delivered") {
+          const trays =
+            entry.traysDelivered ??
+            entry.trays ??
+            entry.quantity ??
+            entry?.deliveredTrays ??
+            0;
+          sum += Number(trays) || 0;
+        }
+      }
+    });
+    return sum;
+  }, [previewCustomersList, previewTodayDate]);
+
+  const filteredPreviewCustomers = useMemo(() => {
+    let list = previewCustomersList;
+    if (previewSearch.trim()) {
+      const q = previewSearch.trim().toLowerCase();
+      list = list.filter(
+        (c) =>
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.route || "").toLowerCase().includes(q) ||
+          (c.id || "").toLowerCase().includes(q) ||
+          (c.custid || "").toLowerCase().includes(q)
+      );
+    }
+    if (previewFilter === "ON") {
+      list = list.filter((c) => getTodayEffectiveStatus(c) === "ON");
+    } else if (previewFilter === "OFF") {
+      list = list.filter((c) => getTodayEffectiveStatus(c) === "OFF");
+    } else if (previewFilter === "DELIVERED") {
+      list = list.filter((c) => {
+        const entry = c.last8Days?.[previewTodayDate];
+        const status = String(
+          typeof entry === "string" ? entry : entry?.status || ""
+        ).trim().toLowerCase();
+        return status === "delivered";
+      });
+    }
+    return list;
+  }, [previewCustomersList, previewSearch, previewFilter, previewTodayDate]);
 
 
   // Compute pending sub-route optimizations based on D-category and Delivery Gap
@@ -1774,14 +1861,35 @@ export default function CustomerRoutes() {
                   ];
                   const colorClass = colors[i % colors.length];
 
+                  const isPreviewSelected =
+                    currentPreviewAgent &&
+                    (currentPreviewAgent.id === agent.id ||
+                      (agent.uid && currentPreviewAgent.uid === agent.uid));
+
                   return (
-                    <div key={agent.id} className={`border rounded-xl p-3 flex flex-col gap-2 shadow-sm ${colorClass}`}>
+                    <div
+                      key={agent.id}
+                      onClick={() => setPreviewAgentId(agent.id || agent.uid)}
+                      className={`border rounded-xl p-3 flex flex-col gap-2 shadow-sm transition-all cursor-pointer ${
+                        isPreviewSelected
+                          ? "ring-2 ring-blue-500 shadow-md scale-[1.01]"
+                          : "hover:shadow-md hover:scale-[1.005]"
+                      } ${colorClass}`}
+                      title="Click to preview delivery queue below"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-xs shadow-sm">
                           {getInitials(agent.name || agent.display_name)}
                         </div>
                         <div className="overflow-hidden flex-1">
-                          <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
+                          <div className="flex items-center justify-between gap-1">
+                            <h3 className="font-bold text-sm truncate">{agent.name || agent.display_name}</h3>
+                            {isPreviewSelected && (
+                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-600 text-white shadow-2xs">
+                                Previewing
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[10px] font-medium opacity-80 break-words whitespace-normal" title={agent.displayRoute}>
                             {agent.displayRoute}
                           </p>
@@ -1800,6 +1908,209 @@ export default function CustomerRoutes() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          {/* PREVIEW SCREEN (BELOW ASSIGNED DELIVERYMEN SECTION) */}
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col">
+            <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <FiSmartphone className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-800 leading-tight">Delivery Preview</h2>
+                  <p className="text-[10px] text-gray-400">Live agent delivery run</p>
+                </div>
+              </div>
+              {currentPreviewAgent && (
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {currentPreviewAgent.activeCustomers} Active
+                </span>
+              )}
+            </div>
+
+            {/* Deliveryman selector dropdown */}
+            <div className="mb-3">
+              <label className="text-[11px] font-semibold text-gray-600 block mb-1">
+                Select Deliveryman to Preview
+              </label>
+              <select
+                value={currentPreviewAgent?.id || ""}
+                onChange={(e) => setPreviewAgentId(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white font-medium text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+              >
+                {activeAssignedAgents.length === 0 ? (
+                  <option value="">No assigned deliverymen</option>
+                ) : (
+                  activeAssignedAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name || agent.display_name} ({agent.customersAssigned} Total • {agent.activeCustomers} Active)
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            {/* Active Preview Details */}
+            {currentPreviewAgent ? (
+              <>
+                <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200 rounded-xl p-3 mb-3 shadow-2xs">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0">
+                      {getInitials(currentPreviewAgent.name || currentPreviewAgent.display_name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-xs text-gray-900 truncate">
+                        {currentPreviewAgent.name || currentPreviewAgent.display_name}
+                      </h3>
+                      <p className="text-[10px] font-medium text-gray-500 truncate" title={currentPreviewAgent.displayRoute}>
+                        {currentPreviewAgent.displayRoute}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+                    <div className="bg-white/90 p-1.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                      <span className="text-gray-400 block text-[9px] font-medium">Total Shops</span>
+                      <span className="text-gray-800 font-extrabold text-xs">{currentPreviewAgent.customersAssigned}</span>
+                    </div>
+                    <div className="bg-white/90 p-1.5 rounded-lg border border-emerald-200/80 shadow-2xs">
+                      <span className="text-emerald-600 block text-[9px] font-medium">Ready (ON)</span>
+                      <span className="text-emerald-700 font-extrabold text-xs">{currentPreviewAgent.activeCustomers}</span>
+                    </div>
+                    <div className="bg-white/90 p-1.5 rounded-lg border border-purple-200/80 shadow-2xs">
+                      <span className="text-purple-600 block text-[9px] font-medium">Delivered</span>
+                      <span className="text-purple-700 font-extrabold text-xs">{previewAgentDeliveredTrays}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filter and Search */}
+                <div className="flex flex-col gap-2 mb-3">
+                  <div className="relative">
+                    <FiSearch className="absolute left-2.5 top-2.5 text-gray-400 w-3 h-3" />
+                    <input
+                      type="text"
+                      placeholder="Search shops or route..."
+                      value={previewSearch}
+                      onChange={(e) => setPreviewSearch(e.target.value)}
+                      className="w-full pl-8 pr-2.5 py-1.5 text-[11px] border border-gray-300 rounded-lg bg-white outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex gap-1 overflow-x-auto pb-0.5">
+                    {[
+                      { key: "ALL", label: `All (${previewCustomersList.length})` },
+                      { key: "ON", label: "Ready (ON)" },
+                      { key: "OFF", label: "OFF" },
+                      { key: "DELIVERED", label: "Delivered" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setPreviewFilter(tab.key)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer whitespace-nowrap ${
+                          previewFilter === tab.key
+                            ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                            : "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Scrollable Customer Queue Screen */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden bg-slate-50 flex flex-col max-h-[380px]">
+                  <div className="bg-slate-200/70 px-3 py-1.5 text-[10px] font-bold text-slate-600 flex justify-between items-center border-b border-gray-200">
+                    <span>Stop Queue</span>
+                    <span>{filteredPreviewCustomers.length} shops</span>
+                  </div>
+
+                  <div className="overflow-y-auto p-2 flex flex-col gap-2 divide-y divide-gray-100">
+                    {filteredPreviewCustomers.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-gray-400 italic">
+                        No shops match preview filter.
+                      </div>
+                    ) : (
+                      filteredPreviewCustomers.map((cust, idx) => {
+                        const isOn = getTodayEffectiveStatus(cust) === "ON";
+                        const todayEntry = cust.last8Days?.[previewTodayDate];
+                        const todayStatus = String(
+                          typeof todayEntry === "string" ? todayEntry : todayEntry?.status || ""
+                        ).trim().toLowerCase();
+                        const isDelivered = todayStatus === "delivered";
+                        const isChecked = [
+                          "checked", "reached", "price_mismatch", "stock_available",
+                          "other_vendor", "shop_closed", "confirmed_tomorrow"
+                        ].includes(todayStatus);
+
+                        const category = computeCurrentCategory(cust.last8Days);
+                        const gap = normalizeDeliveryGap(computeDeliveryGap(cust.last8Days, previewTodayDate, cust));
+
+                        return (
+                          <div
+                            key={cust.id || idx}
+                            className="bg-white p-2.5 rounded-lg border border-gray-200/80 shadow-2xs flex flex-col gap-1 hover:shadow-xs transition-shadow"
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-gray-400 w-4 shrink-0">
+                                    #{idx + 1}
+                                  </span>
+                                  <h4 className="text-xs font-bold text-gray-900 truncate" title={cust.name}>
+                                    {cust.name || "Customer"}
+                                  </h4>
+                                </div>
+                                <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-500 font-medium flex-wrap">
+                                  <span className="bg-gray-100 px-1 py-0.2 rounded text-[9px] text-gray-600 truncate max-w-[120px]">
+                                    {cust.route || "No route"}
+                                  </span>
+                                  <span className="bg-purple-50 text-purple-700 px-1 py-0.2 rounded text-[9px] font-bold">
+                                    {category}
+                                  </span>
+                                  <span className="bg-blue-50 text-blue-700 px-1 py-0.2 rounded text-[9px] font-bold">
+                                    {gap}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Status Badge */}
+                              <div className="shrink-0 text-right">
+                                {isDelivered ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-green-100 text-green-800 border border-green-200">
+                                    Delivered
+                                  </span>
+                                ) : isChecked ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
+                                    Checked
+                                  </span>
+                                ) : isOn ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Ready (ON)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                                    OFF
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="p-6 text-center text-xs text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                No deliverymen assigned yet.
               </div>
             )}
           </div>

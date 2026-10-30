@@ -29,6 +29,7 @@ import {
   getPotentialColor,
   getPeakFrequencyColor,
   computePeakPotential,
+  getAgentInitials,
 } from "../utils/customerMetrics";
 import ExecutionCalendarModal from "./ExecutionCalendarModal";
 
@@ -176,7 +177,9 @@ const AISuggestionRow = ({
   tertiaryPattern = DEFAULT_LOGIC_3,
   onTertiaryPatternChange,
   updatingScheduleId,
-  onUpdateSchedule
+  onUpdateSchedule,
+  agentInitialsMap = {},
+  getDeliveryAgentName,
 }) => {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [openSchedule, setOpenSchedule] = useState(false);
@@ -202,6 +205,11 @@ const AISuggestionRow = ({
 
   const customerStatus = customer?.customerStatus || getLatestDeliveryStatus(customer, todayDate);
   const customerRemark = customer?.customerRemark !== undefined ? customer.customerRemark : getCustomerRemarkDisplay(customer, todayDate);
+
+  const agentName = getDeliveryAgentName
+    ? getDeliveryAgentName(customer)
+    : (customer.deliveryAgent && customer.deliveryAgent !== "-" ? customer.deliveryAgent : "");
+  const agentInitials = agentName ? getAgentInitials(agentName, agentInitialsMap) : "";
 
   return (
     <tr className={`border-b border-gray-300 hover:bg-gray-50/50 bg-white text-center transition-colors ${calendarOpen ? 'relative z-50' : ''}`}>
@@ -481,6 +489,20 @@ const AISuggestionRow = ({
             />
           )}
         </div>
+      </td>
+
+      {/* Delivery Agent Column (Initials only e.g. SD, TS, AS) */}
+      <td className="px-1.5 py-2 text-center align-middle">
+        {agentInitials ? (
+          <div
+            className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[10px] mx-auto shadow-2xs cursor-default select-none hover:bg-blue-200 transition-colors"
+            title={agentName ? `Delivery Agent: ${agentName}` : agentInitials}
+          >
+            {agentInitials}
+          </div>
+        ) : (
+          <span className="text-gray-300 text-xs font-semibold cursor-default select-none">-</span>
+        )}
       </td>
     </tr>
   );

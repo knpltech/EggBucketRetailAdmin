@@ -1178,47 +1178,42 @@ export default function CustomerManagement() {
       return;
     }
 
-    const customerName = getName(customer) || "Customer";
-    const confirmed = window.confirm(
-      `Reset ${customerName} to pending for today?`,
-    );
-    if (!confirmed) return;
+    const prevCustomers = customers;
 
+    // 1. Optimistically update UI immediately
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id !== customer.id) return c;
+        const updatedLast8Days = { ...(c.last8Days || {}) };
+        delete updatedLast8Days[todayDate];
+        return {
+          ...c,
+          last8Days: updatedLast8Days,
+        };
+      }),
+    );
+
+    // Also update client cache
+    patchCachedUserInfoCustomer(customer.id, (row) => {
+      const updatedLast8Days = { ...(row.last8Days || {}) };
+      delete updatedLast8Days[todayDate];
+      return {
+        ...row,
+        last8Days: updatedLast8Days,
+      };
+    });
+
+    // 2. Perform DB update in background
     try {
       setResettingCustomerId(customer.id);
-      const res = await axios.post(`${ADMIN_PATH}/customer-retention/reset`, {
+      await axios.post(`${ADMIN_PATH}/customer-retention/reset`, {
         customerId: customer.id,
         date: todayDate,
       });
-
-      if (res.status === 200 || res.data?.message) {
-        // Optimistically update customer in state
-        setCustomers((prev) =>
-          prev.map((c) => {
-            if (c.id !== customer.id) return c;
-            const updatedLast8Days = { ...(c.last8Days || {}) };
-            delete updatedLast8Days[todayDate];
-            return {
-              ...c,
-              last8Days: updatedLast8Days,
-            };
-          }),
-        );
-
-        // Also update client cache
-        patchCachedUserInfoCustomer(customer.id, (row) => {
-          const updatedLast8Days = { ...(row.last8Days || {}) };
-          delete updatedLast8Days[todayDate];
-          return {
-            ...row,
-            last8Days: updatedLast8Days,
-          };
-        });
-
-        alert("Customer reset to pending successfully!");
-      }
     } catch (err) {
       console.error("Reset error:", err);
+      // Rollback state on error
+      setCustomers(prevCustomers);
       const errorMsg =
         err?.response?.data?.message ||
         err?.message ||

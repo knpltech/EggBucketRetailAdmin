@@ -30,6 +30,8 @@ const AISuggestionTable = ({
   onTertiaryPatternChange,
   updatingScheduleId,
   onUpdateSchedule,
+  agentInitialsMap,
+  getDeliveryAgentName,
 }) => {
   if (loading) {
     return (
@@ -55,6 +57,7 @@ const AISuggestionTable = ({
               <th className="p-3 text-left font-semibold text-gray-800">AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Apply AI Suggestion</th>
               <th className="p-3 text-left font-semibold text-gray-800">Execution Calendar</th>
+              <th className="p-3 text-center font-semibold text-gray-800">Delivery Agent</th>
             </tr>
           </thead>
           <tbody>
@@ -78,6 +81,7 @@ const AISuggestionTable = ({
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-16 mx-auto"></div></td>
                 <td className="p-4 py-6"><div className="h-4 bg-gray-200 rounded w-12 mx-auto"></div></td>
+                <td className="p-4 py-6"><div className="h-6 bg-gray-200 rounded-full w-8 mx-auto"></div></td>
               </tr>
             ))}
           </tbody>
@@ -117,6 +121,7 @@ const AISuggestionTable = ({
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">AI<br/>Suggestion</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Apply AI<br/>Suggestion</th>
               <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight">Execution<br/>Calendar</th>
+              <th className="px-1.5 py-2 text-center font-semibold text-gray-800 leading-tight whitespace-nowrap">Delivery<br/>Agent</th>
             </tr>
           </thead>
           <tbody>
@@ -140,6 +145,8 @@ const AISuggestionTable = ({
                 onTertiaryPatternChange={onTertiaryPatternChange}
                 updatingScheduleId={updatingScheduleId}
                 onUpdateSchedule={onUpdateSchedule}
+                agentInitialsMap={agentInitialsMap}
+                getDeliveryAgentName={getDeliveryAgentName}
               />
             ))}
           </tbody>

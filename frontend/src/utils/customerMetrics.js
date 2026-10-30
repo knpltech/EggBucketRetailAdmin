@@ -667,4 +667,180 @@ export function isCustomerAssignedToAgent(customer, agent, dateKey = null) {
   return false;
 }
 
+/**
+ * Extracts parent route name (e.g., 'R1-A' -> 'R1', 'R001A' -> 'R001', 'R10B' -> 'R10')
+ */
+export function extractParentRoute(routeName) {
+  if (!routeName) return "Other";
+  const trimmed = String(routeName).trim();
+  const match = trimmed.match(/^(R\d+)([A-Za-z])?(.*)$/i);
+  if (match) {
+    return match[1].toUpperCase();
+  }
+  const parts = trimmed.split(/[\s-]+/);
+  if (parts.length > 0 && parts[0]) {
+    return parts[0].toUpperCase();
+  }
+  return trimmed.toUpperCase();
+}
+
+/**
+ * Resolves the primary assigned delivery agent name for a given customer.
+ * Uses hierarchical resolution:
+ * 1. Direct agent name field on customer (deliveryAgent)
+ * 2. Today's execution record in customer.last8Days[todayDate] (agentName, deliveryMan, agent, etc.)
+ * 3. Direct customer assignments (assignedDeliverymen, deliveredBy, deliveryMan, assignedAgent, agentName)
+ * 4. Route assignment from agents list (exact route match, parent route match)
+ * 5. Recent execution history from customer.last8Days (who serviced them on previous days)
+ */
+export function resolveCustomerDeliveryAgent(customer, agents = [], options = {}) {
+  if (!customer) return "";
+  const { todayDate = null, agentByIdMap = null, routeAgentMap = null } = options;
+
+  const matchAgentName = (val) => {
+    if (!val) return "";
+    if (typeof val === "object") {
+      const oName = val.name || val.display_name || val.agentName || "";
+      if (oName) return String(oName).trim();
+      val = val.id || val.uid || "";
+    }
+    const str = String(val).trim();
+    if (!str || str === "-") return "";
+
+    if (agentByIdMap && agentByIdMap.has(str)) {
+      return agentByIdMap.get(str);
+    }
+    if (agentByIdMap && agentByIdMap.has(str.toLowerCase())) {
+      return agentByIdMap.get(str.toLowerCase());
+    }
+
+    if (Array.isArray(agents)) {
+      const strLower = str.toLowerCase();
+      const matched = agents.find(
+        (a) =>
+          a.id === str ||
+          a.uid === str ||
+          a._id === str ||
+          (a.name && a.name.toLowerCase() === strLower) ||
+          (a.display_name && a.display_name.toLowerCase() === strLower)
+      );
+      if (matched) {
+        return (matched.name || matched.display_name || "").trim();
+      }
+    }
+
+    if (!/^[0-9a-fA-F-]{20,}$/.test(str) && !/^[A-Za-z0-9_-]{24,}$/.test(str)) {
+      return str;
+    }
+    return "";
+  };
+
+  if (customer.deliveryAgent && customer.deliveryAgent !== "-") {
+    const raw = String(customer.deliveryAgent).trim();
+    const matched = matchAgentName(raw);
+    if (matched) return matched;
+  }
+
+  const last8Days = customer.last8Days || {};
+  if (todayDate && last8Days[todayDate]) {
+    const todayEntry = last8Days[todayDate];
+    const entryObj = typeof todayEntry === "object" ? todayEntry : { status: todayEntry };
+    if (entryObj.agentName && String(entryObj.agentName).trim()) {
+      return String(entryObj.agentName).trim();
+    }
+    const tAgent = matchAgentName(
+      entryObj.assignedDeliverymen ||
+        entryObj.deliveryMan ||
+        entryObj.agent ||
+        entryObj.agentId ||
+        entryObj.deliveryManId
+    );
+    if (tAgent) return tAgent;
+  }
+
+  const directFields = [
+    customer.assignedDeliverymen,
+    customer.deliveredBy,
+    customer.deliveryMan,
+    customer.assignedAgent,
+    customer.agentName,
+    customer.agent,
+  ];
+
+  for (const field of directFields) {
+    if (!field) continue;
+    if (typeof field === "object") {
+      const name = matchAgentName(field);
+      if (name) return name;
+    } else {
+      const tokens = String(field).split(",").map((s) => s.trim()).filter(Boolean);
+      for (const t of tokens) {
+        const name = matchAgentName(t);
+        if (name) return name;
+      }
+    }
+  }
+
+  const custRoute = customer.route && customer.route !== "UNASSIGNED" ? String(customer.route).trim() : "";
+  if (custRoute) {
+    const custRouteLower = custRoute.toLowerCase();
+    const parentRouteLower = extractParentRoute(custRoute).toLowerCase();
+
+    if (routeAgentMap) {
+      if (routeAgentMap.has(custRouteLower)) return routeAgentMap.get(custRouteLower);
+      if (routeAgentMap.has(parentRouteLower)) return routeAgentMap.get(parentRouteLower);
+    }
+
+    if (Array.isArray(agents) && agents.length > 0) {
+      for (const a of agents) {
+        const isActive = a.active === true || a.active === "true" || a.active === undefined;
+        if (!isActive || !a.route) continue;
+        const rList = String(a.route).split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
+        if (rList.includes(custRouteLower)) {
+          return (a.name || a.display_name || "").trim();
+        }
+      }
+
+      for (const a of agents) {
+        const isActive = a.active === true || a.active === "true" || a.active === undefined;
+        if (!isActive || !a.route) continue;
+        const rList = String(a.route).split(",").map((r) => extractParentRoute(r).toLowerCase()).filter(Boolean);
+        if (rList.includes(parentRouteLower)) {
+          return (a.name || a.display_name || "").trim();
+        }
+      }
+
+      for (const a of agents) {
+        if (!a.route) continue;
+        const rList = String(a.route).split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
+        if (rList.includes(custRouteLower) || rList.includes(parentRouteLower)) {
+          return (a.name || a.display_name || "").trim();
+        }
+      }
+    }
+  }
+
+  if (last8Days && typeof last8Days === "object") {
+    const sortedDates = Object.keys(last8Days).sort().reverse();
+    for (const dKey of sortedDates) {
+      if (todayDate && dKey === todayDate) continue;
+      const entry = last8Days[dKey];
+      if (!entry) continue;
+      const entryObj = typeof entry === "object" ? entry : {};
+      if (entryObj.agentName && String(entryObj.agentName).trim()) {
+        return String(entryObj.agentName).trim();
+      }
+      const histAgent = matchAgentName(
+        entryObj.assignedDeliverymen ||
+          entryObj.deliveryMan ||
+          entryObj.agent ||
+          entryObj.agentId ||
+          entryObj.deliveryManId
+      );
+      if (histAgent) return histAgent;
+    }
+  }
+
+  return "";
+}
 

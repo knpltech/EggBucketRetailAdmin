@@ -7,14 +7,16 @@ import {
   computeAutoPurchaseCadence,
   resolveCustomerState,
 } from './aiSuggestionEngine';
-import { normalizePotential } from './customerMetrics';
+import { normalizePotential, getAgentInitials } from './customerMetrics';
 
 /**
  * Export AI Suggestions to Excel
  * @param {Array} sortedData - The sorted and filtered data to export
  * @param {String} logicOption - The current logic option (logic1, logic2, logic3, logic4, logic5, logic6)
+ * @param {Function} [getDeliveryAgentName] - Optional helper to get delivery agent name
+ * @param {Object} [agentInitialsMap] - Optional map of agent initials
  */
-export const exportToExcel = (sortedData, logicOption) => {
+export const exportToExcel = (sortedData, logicOption, getDeliveryAgentName = null, agentInitialsMap = null) => {
   if (!sortedData || sortedData.length === 0) {
     alert('No data to export');
     return;
@@ -26,12 +28,15 @@ export const exportToExcel = (sortedData, logicOption) => {
     const suggestion = item.suggestion;
     const todayDate = getDateStringInTimeZone(new Date(), 'Asia/Kolkata');
     const deliveryGap = computeDeliveryGap(customer?.last8Days, todayDate, customer);
+    const agentName = getDeliveryAgentName ? getDeliveryAgentName(customer) : (customer.deliveryAgent || '');
+    const agentInitials = agentName ? getAgentInitials(agentName, agentInitialsMap) : '';
 
     return {
       'Status': item.customerStatus || customer.customerStatus || '',
       'Customer ID': customer.custid || '',
       'Customer Name': customer.name || '',
       'Route': customer.route || '',
+      'Delivery Agent': agentInitials ? `${agentInitials}${agentName ? ` - ${agentName}` : ''}` : '',
       'Business': customer.business || '',
       'Phone': customer.phone || '',
       'Peak Frequency': resolvePeakFrequency(customer) || '',
@@ -58,15 +63,23 @@ export const exportToExcel = (sortedData, logicOption) => {
 
   // Auto-fit column widths
   const colWidths = [
+    { wch: 12 }, // Status
     { wch: 12 }, // Customer ID
-    { wch: 20 }, // Customer Name
+    { wch: 22 }, // Customer Name
+    { wch: 18 }, // Route
+    { wch: 20 }, // Delivery Agent
     { wch: 20 }, // Business
     { wch: 15 }, // Phone
     { wch: 15 }, // Peak Frequency
+    { wch: 15 }, // Frequency Gap
+    { wch: 12 }, // Risk Factor
     { wch: 18 }, // Current Category
     { wch: 12 }, // Potential
     { wch: 15 }, // Delivery Gap
     { wch: 15 }, // Current Status
+    { wch: 16 }, // Customer State
+    { wch: 18 }, // Purchase Cadence
+    { wch: 16 }, // Purchase Intent
     { wch: 20 }, // AI Suggestion
     { wch: 12 }, // Confidence
     { wch: 30 }, // Reason

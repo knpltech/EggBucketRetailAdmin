@@ -31,6 +31,8 @@ import {
 } from "../utils/customerInfoClientCache";
 import {
   getPotentialNumber,
+  buildAgentInitialsMap,
+  getAgentInitials,
 } from "../utils/customerMetrics";
 import { exportToExcel } from "../utils/excelExport";
 import AISuggestionTable from "../components/AISuggestionTable";
@@ -66,6 +68,7 @@ const AISuggestions = () => {
   const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false);
   const priorityDropdownRef = useRef(null);
   const [routes, setRoutes] = useState([]);
+  const [agents, setAgents] = useState([]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -289,13 +292,15 @@ const AISuggestions = () => {
 
       // Fetch priorities and routes dynamically
       try {
-        const [prioritiesRes, routeRes] = await Promise.all([
+        const [prioritiesRes, routeRes, agentsRes] = await Promise.all([
           axios.get(`${ADMIN_PATH}/priorities`).catch(() => ({ data: [] })),
           axios.get(`${ADMIN_PATH}/routes`).catch(() => ({ data: [] })),
+          axios.get(`${ADMIN_PATH}/get-del-partner`).catch(() => ({ data: [] })),
         ]);
 
         const fetchedPriorities = (prioritiesRes.data || []).sort((a, b) => (a.order || 99) - (b.order || 99));
         setPriorities(fetchedPriorities);
+        setAgents(agentsRes.data || []);
 
         const routeMap = {};
         const routeNames = (routeRes.data || []).map(r => {
@@ -385,8 +390,122 @@ const AISuggestions = () => {
     }
   };
 
+  const todayDate = useMemo(() => getDateStringInTimeZone(new Date(), "Asia/Kolkata"), []);
+
+  const getCustomerDeliveryAgentName = useCallback(
+    (customer) => {
+      if (!customer) return "";
+
+      // 1. Check today's attended/checked/delivered entry
+      const last8Days = customer.last8Days || {};
+      const todayEntry = last8Days[todayDate];
+      const entryObj =
+        typeof todayEntry === "object" && todayEntry !== null
+          ? todayEntry
+          : { status: todayEntry };
+      const rawStatus = String(entryObj.status || "").trim().toLowerCase();
+
+      const isDelivered = rawStatus === "delivered";
+      const isChecked =
+        [
+          "checked",
+          "reached",
+          "price_mismatch",
+          "price_issue",
+          "shop_closed",
+          "stock_available",
+          "other_vendor",
+          "confirmed_tomorrow",
+          "confirmed_for_tomorrow",
+          "need_credit",
+          "quality_issue",
+          "owner_not_available",
+        ].includes(rawStatus) ||
+        Boolean(entryObj.reason) ||
+        Boolean(entryObj.checkReason);
+
+      if (isDelivered || isChecked) {
+        if (
+          entryObj.agentName &&
+          typeof entryObj.agentName === "string" &&
+          entryObj.agentName.trim()
+        ) {
+          return entryObj.agentName.trim();
+        }
+        const nested = entryObj.assignedDeliverymen || entryObj.agent || null;
+        if (nested && typeof nested === "object") {
+          const nName = nested.name || nested.display_name || nested.agentName || "";
+          if (nName) return nName.trim();
+        }
+        const aId =
+          entryObj.agentId ||
+          entryObj.deliveryManId ||
+          (typeof nested === "string" ? nested : "");
+        if (aId) {
+          const matched = (agents || []).find(
+            (a) => a.id === aId || a._id === aId || a.uid === aId
+          );
+          if (matched) return (matched.name || matched.display_name || "").trim();
+        }
+      }
+
+      // 2. Direct customer assignment (deliveryAgent, assignedDeliverymen, deliveredBy, deliveryMan)
+      if (customer.deliveryAgent && customer.deliveryAgent !== "-") {
+        return String(customer.deliveryAgent).trim();
+      }
+      const direct =
+        customer.assignedDeliverymen || customer.deliveredBy || customer.deliveryMan;
+      if (direct) {
+        if (typeof direct === "object" && direct !== null) {
+          const dName = direct.name || direct.display_name || "";
+          if (dName) return dName.trim();
+        }
+        const dStr = String(direct).trim();
+        const matched = (agents || []).find(
+          (a) =>
+            a.id === dStr ||
+            a.uid === dStr ||
+            a._id === dStr ||
+            (a.name && a.name.toLowerCase() === dStr.toLowerCase())
+        );
+        if (matched) return (matched.name || matched.display_name || "").trim();
+        if (dStr && !/^[0-9a-fA-F-]{20,}$/.test(dStr)) {
+          return dStr;
+        }
+      }
+
+      // 3. Fallback: Route assignment in agents
+      if (customer.route && customer.route !== "UNASSIGNED" && Array.isArray(agents)) {
+        const routeAgent = agents.find((a) => {
+          if (!a.route) return false;
+          const rList = a.route.split(",").map((r) => r.trim().toLowerCase());
+          return rList.includes(customer.route.trim().toLowerCase());
+        });
+        if (routeAgent) {
+          return (routeAgent.name || routeAgent.display_name || "").trim();
+        }
+      }
+
+      return "";
+    },
+    [agents, todayDate],
+  );
+
+  const agentInitialsMap = useMemo(() => {
+    const names = [];
+    (agents || []).forEach((a) => {
+      if (a.name) names.push(a.name);
+      if (a.display_name) names.push(a.display_name);
+    });
+    (customers || []).forEach((c) => {
+      if (c.deliveryAgent && c.deliveryAgent !== "-") names.push(c.deliveryAgent);
+      const aName = getCustomerDeliveryAgentName(c);
+      if (aName) names.push(aName);
+    });
+    return buildAgentInitialsMap(names);
+  }, [agents, customers, getCustomerDeliveryAgentName]);
+
   const baseCustomerData = useMemo(() => {
-    const todayDate = getDateStringInTimeZone(new Date(), "Asia/Kolkata");
 
     return customers.map((customer) => {
       const customerStatus = getLatestDeliveryStatus(customer, todayDate);
@@ -802,7 +921,12 @@ const AISuggestions = () => {
   };
 
   const handleDownloadExcel = () => {
-    exportToExcel(sortedData, "Multiple Patterns (Dummy)");
+    exportToExcel(
+      sortedData,
+      "Multiple Patterns (Dummy)",
+      getCustomerDeliveryAgentName,
+      agentInitialsMap,
+    );
   };
 
   const totalCustomers = filteredData.length;
@@ -1264,6 +1388,8 @@ const AISuggestions = () => {
           onTertiaryPatternChange={handleTertiaryPatternChange}
           updatingScheduleId={updatingScheduleId}
           onUpdateSchedule={handleUpdateWeeklySchedule}
+          agentInitialsMap={agentInitialsMap}
+          getDeliveryAgentName={getCustomerDeliveryAgentName}
         />
       </div>
 

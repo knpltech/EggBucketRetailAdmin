@@ -21,6 +21,7 @@ import {
   getPotentialColor,
   getPeakFrequencyColor,
   computePeakPotential,
+  computeCurrentCategory,
   normalizeRetentionRemark,
   buildAgentInitialsMap,
   getAgentInitials,
@@ -472,15 +473,31 @@ const CustomerRow = React.memo(({
 
       <td className="px-2 py-2 text-center align-middle">
         <div className="flex flex-col items-center justify-center h-[40px]">
-          <button
-            type="button"
-            onClick={() => onReset(customer)}
-            disabled={resettingId === customer.id}
-            className="mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 bg-[#FF3B30] text-white shadow hover:opacity-90 disabled:opacity-50 cursor-pointer"
-            title="Reset to pending"
-          >
-            {resettingId === customer.id ? ".." : "R"}
-          </button>
+          {(() => {
+            const isAlreadyPending =
+              customer.days?.[selectedDate]?.key === "pending" ||
+              customer.isResetDone;
+            if (isAlreadyPending) {
+              return (
+                <span
+                  className="mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 bg-slate-100 text-slate-500 border border-slate-200 cursor-default select-none shadow-2xs"
+                  title="Already pending"
+                >
+                  ✓ Reset
+                </span>
+              );
+            }
+            return (
+              <button
+                type="button"
+                onClick={() => onReset(customer)}
+                className="mx-auto rounded-full text-[9px] leading-3 font-semibold flex items-center justify-center text-center px-1.5 w-[70px] min-h-[24px] shrink-0 bg-[#FF3B30] text-white shadow hover:opacity-90 active:scale-95 cursor-pointer transition-all"
+                title="Reset to pending"
+              >
+                R
+              </button>
+            );
+          })()}
         </div>
       </td>
 
@@ -876,23 +893,37 @@ const CustomerRetention = () => {
   };
 
   const handleReset = useCallback(
-    async (customer) => {
-      const confirmed = window.confirm(
-        `Reset ${customer.name} to pending for ${selectedDate}?`,
-      );
-      if (!confirmed) return;
-
+    (customer) => {
       if (!customer?.id) {
         alert("Customer ID is missing");
         return;
       }
 
+      // If already pending on this date, skip
+      const existingDay = customer.days?.[selectedDate];
+      if (existingDay && existingDay.key === "pending") {
+        return;
+      }
+
       const prevCustomers = customers;
       const prevCounts = counts;
+      const prevAgentStats = computedAgentStats;
+      const prevOverallStats = computedOverallStats;
 
-      // 1. Instantly update UI optimistically without waiting for server
-      setCustomers((prev) =>
-        prev.map((c) => {
+      const customerCat =
+        existingDay?.category ||
+        customer.todayCategory ||
+        "";
+      const customerAgent =
+        existingDay?.agentName ||
+        (selectedDate === todayDate ? customer.deliveryAgent : "");
+
+      // 1. INSTANT OPTIMISTIC VISUAL UPDATE (Done immediately as soon as button is clicked)
+      setCustomers((prev) => {
+        if (selectedCategory !== "all") {
+          return prev.filter((c) => c.id !== customer.id);
+        }
+        return prev.map((c) => {
           if (c.id !== customer.id) return c;
           const updatedDays = { ...(c.days || {}) };
           updatedDays[selectedDate] = {
@@ -912,19 +943,58 @@ const CustomerRetention = () => {
             todayCategory: selectedDate === todayDate ? "" : c.todayCategory,
             todayCategoryLabel: selectedDate === todayDate ? "-" : c.todayCategoryLabel,
             todayReason: selectedDate === todayDate ? "" : c.todayReason,
+            currentCategory: computeCurrentCategory(updatedLast8Days),
             days: updatedDays,
             last8Days: updatedLast8Days,
+            isResetDone: true,
           };
-        }),
-      );
+        });
+      });
 
-      // Optimistically decrement count for checked category
-      if (customer.todayCategory && selectedDate === todayDate) {
-        setCounts((prev) => ({
+      // Optimistically decrement counts
+      setCounts((prev) => {
+        const next = { ...prev };
+        next.all = Math.max(0, (next.all || 0) - 1);
+        if (customerCat && next[customerCat] !== undefined) {
+          next[customerCat] = Math.max(0, (next[customerCat] || 0) - 1);
+        }
+        return next;
+      });
+
+      // Optimistically decrement category stats
+      const catFieldMap = {
+        stock_available: "stockAvailable",
+        shop_closed: "shopClosed",
+        confirmed_tomorrow: "confirmedTomorrow",
+        price_issue: "priceIssue",
+        other_vendor: "otherVendor",
+        need_credit: "needCredit",
+        quality_issue: "qualityIssue",
+        owner_not_available: "ownerNotAvailable",
+      };
+      const statField = catFieldMap[customerCat];
+
+      if (statField) {
+        setComputedOverallStats((prev) => ({
           ...prev,
-          all: Math.max(0, (prev.all || 0) - 1),
-          [customer.todayCategory]: Math.max(0, (prev[customer.todayCategory] || 0) - 1),
+          [statField]: Math.max(0, (prev[statField] || 0) - 1),
+          totalShops: Math.max(0, (prev.totalShops || 0) - 1),
         }));
+
+        if (customerAgent) {
+          setComputedAgentStats((prev) =>
+            prev.map((a) => {
+              if (a.name === customerAgent) {
+                return {
+                  ...a,
+                  [statField]: Math.max(0, (a[statField] || 0) - 1),
+                  totalShops: Math.max(0, (a.totalShops || 0) - 1),
+                };
+              }
+              return a;
+            })
+          );
+        }
       }
 
       // Invalidate memory cache so subsequent manual loads fetch fresh
@@ -934,44 +1004,53 @@ const CustomerRetention = () => {
         }
       });
 
-      try {
-        setResettingId(customer.id);
-        const resetPayload = {
-          customerId: customer.id,
-          date: selectedDate,
-        };
-
-        // Try primary endpoint first
+      // 2. UPDATE DB IN BACKGROUND ("later we can update the db")
+      (async () => {
         try {
-          await axios.post(
-            `${ADMIN_PATH}/customer-retention/reset`,
-            resetPayload,
-          );
-        } catch (primaryError) {
-          if (primaryError?.response?.status === 404) {
+          const resetPayload = {
+            customerId: customer.id,
+            date: selectedDate,
+          };
+
+          try {
             await axios.post(
-              `${ADMIN_PATH}/customer/retention/reset`,
+              `${ADMIN_PATH}/customer-retention/reset`,
               resetPayload,
             );
-          } else {
-            throw primaryError;
+          } catch (primaryError) {
+            if (primaryError?.response?.status === 404) {
+              await axios.post(
+                `${ADMIN_PATH}/customer/retention/reset`,
+                resetPayload,
+              );
+            } else {
+              throw primaryError;
+            }
           }
+        } catch (err) {
+          console.error("Background reset error:", err);
+          // Rollback state on error
+          setCustomers(prevCustomers);
+          setCounts(prevCounts);
+          setComputedAgentStats(prevAgentStats);
+          setComputedOverallStats(prevOverallStats);
+          const errorMessage =
+            err?.response?.data?.message ||
+            err?.message ||
+            "Reset failed on server. Reverting changes.";
+          alert(errorMessage);
         }
-      } catch (err) {
-        console.error("Reset error details:", err);
-        // Rollback state on error
-        setCustomers(prevCustomers);
-        setCounts(prevCounts);
-        const errorMessage =
-          err?.response?.data?.message ||
-          err?.message ||
-          "Reset failed. Please try again.";
-        alert(errorMessage);
-      } finally {
-        setResettingId("");
-      }
+      })();
     },
-    [selectedDate, todayDate, customers, counts],
+    [
+      selectedDate,
+      todayDate,
+      selectedCategory,
+      customers,
+      counts,
+      computedAgentStats,
+      computedOverallStats,
+    ],
   );
 
   const downloadRetentionExcel = async () => {
