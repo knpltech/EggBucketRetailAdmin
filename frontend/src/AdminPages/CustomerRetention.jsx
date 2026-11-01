@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-import { FiEdit2 } from "react-icons/fi";
+import { FiEdit2, FiCalendar } from "react-icons/fi";
+import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 import { ADMIN_PATH } from "../constant";
 import { getTodayEffectiveStatus } from "../utils/aiSuggestionEngine";
 import {
@@ -302,6 +303,8 @@ const CustomerRow = React.memo(({
   todayDate,
   agentInitialsMap = {},
   selectedDate,
+  calendarCustomer,
+  setCalendarCustomer,
 }) => {
   const currentCategory = customer.currentCategory || "-";
   const currentCatNum = getCurrentCategoryNumber(currentCategory);
@@ -477,6 +480,28 @@ const CustomerRow = React.memo(({
         );
       })}
 
+      {/* Execution Calendar */}
+      <td className="px-2 py-2 text-center align-middle">
+        <div className="relative inline-block">
+          <div
+            className="flex justify-center items-center cursor-pointer hover:bg-gray-100 p-1.5 rounded-full transition-colors w-min mx-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCalendarCustomer(calendarCustomer?.id === customer.id ? null : customer);
+            }}
+            title="Click to view execution calendar"
+          >
+            <FiCalendar className="w-4 h-4 text-blue-600" />
+          </div>
+          {calendarCustomer?.id === customer.id && (
+            <ExecutionCalendarModal
+              customer={customer}
+              onClose={() => setCalendarCustomer(null)}
+            />
+          )}
+        </div>
+      </td>
+
       <td className="px-2 py-2 text-center align-middle">
         <div className="flex flex-col items-center justify-center h-[40px]">
           {(() => {
@@ -578,6 +603,7 @@ const CustomerRetention = () => {
   const [assigningRouteId, setAssigningRouteId] = useState(null);
   const [editingRouteId, setEditingRouteId] = useState(null);
   const [updatingTodayId, setUpdatingTodayId] = useState(null);
+  const [calendarCustomer, setCalendarCustomer] = useState(null);
   const todayDate = getTodayDate();
 
   const toggleTodayDelivery = async (customer) => {
@@ -1386,6 +1412,7 @@ const CustomerRetention = () => {
                   </th>
                 );
               })}
+              <th className="px-2 py-2 text-center text-xs font-semibold whitespace-nowrap">Execution Calendar</th>
               <th className="px-2 py-2 text-center text-xs font-semibold">Reset</th>
               <th className="px-2 py-2 text-center text-xs font-semibold whitespace-nowrap">Delivery Agent</th>
             </tr>
@@ -1394,7 +1421,7 @@ const CustomerRetention = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8 + dates.length + 2} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={8 + dates.length + 3} className="px-4 py-8 text-center text-xs text-slate-500">
                   Loading...
                 </td>
               </tr>
@@ -1416,11 +1443,13 @@ const CustomerRetention = () => {
                   todayDate={todayDate}
                   agentInitialsMap={agentInitialsMap}
                   selectedDate={selectedDate}
+                  calendarCustomer={calendarCustomer}
+                  setCalendarCustomer={setCalendarCustomer}
                 />
               ))
             ) : (
               <tr>
-                <td colSpan={8 + dates.length + 2} className="px-4 py-8 text-center text-xs text-slate-500">
+                <td colSpan={8 + dates.length + 3} className="px-4 py-8 text-center text-xs text-slate-500">
                   No checked customers found for this date.
                 </td>
               </tr>

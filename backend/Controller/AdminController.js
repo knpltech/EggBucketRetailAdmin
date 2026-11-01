@@ -4568,7 +4568,10 @@ const getManualPriorityCustomers = async (req, res) => {
           data.request_time ??
           data.manual_priority_time ??
           data.manualPriorityTime ??
-          data.todayOverride?.date ??
+          data.manual_priority_at ??
+          data.manual_priority_set_at ??
+          data.todayOverride?.time ??
+          data.todayOverride?.timestamp ??
           data.updatedAt ??
           data.last8DaysUpdatedAt ??
           data.createdAt;
