@@ -40,6 +40,12 @@ const CATEGORY_OPTIONS = [
 ];
 const SORT_OPTIONS = [
   { value: "name", label: "Name" },
+  { value: "riskFactor", label: "Risk Factor (High to Low)" },
+  { value: "riskFactorAsc", label: "Risk Factor (Low to High)" },
+  { value: "currentCategory", label: "Current Category (D0 to D7)" },
+  { value: "currentCategoryDesc", label: "Current Category (D7 to D0)" },
+  { value: "deliveryGap", label: "Delivery Gap (Highest First)" },
+  { value: "deliveryGapAsc", label: "Delivery Gap (G0 First)" },
   { value: "zone", label: "Zone" },
   { value: "route", label: "Route" },
   { value: "deliveryTime", label: "Delivery Time" },
@@ -691,7 +697,7 @@ const CustomerRetention = () => {
   // ⭐ OPTIMIZED: Fetch retention data with backend pagination & caching
   const fetchRetentionCustomers = useCallback(
     async ({ date = selectedDate, page = currentPage, category = selectedCategory, sort = sortBy, agent = selectedAgent, showLoader = true } = {}) => {
-      const cacheKey = `retention:v6:${date}:${category}:${agent}:${sort}:${page}`;
+      const cacheKey = `retention:v7:${date}:${category}:${agent}:${sort}:${page}`;
       const isToday = date === getTodayDate();
       const cached = isToday ? null : cacheRef.current[cacheKey];
 

@@ -495,6 +495,15 @@ const getRetentionCustomers = async (req, res) => {
       "route",
       "deliveryTime",
       "deliveryAgent",
+      "riskFactor",
+      "riskFactorDesc",
+      "riskFactorAsc",
+      "currentCategory",
+      "currentCategoryDesc",
+      "currentCategoryAsc",
+      "deliveryGap",
+      "deliveryGapDesc",
+      "deliveryGapAsc",
     ]);
     const sortBy = allowedSorts.has(req.query.sortBy)
       ? req.query.sortBy
@@ -509,7 +518,7 @@ const getRetentionCustomers = async (req, res) => {
     const previousDates = dates.slice(0, -1);
 
     // ⭐ AGGRESSIVE CACHING: Include page, category and sort in cache key
-    const cacheKey = `customerRetention:v22:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `customerRetention:v24:${todayKey}:${categoryFilter}:${agentFilter}:${sortBy}:${page}:${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(
@@ -801,7 +810,88 @@ const getRetentionCustomers = async (req, res) => {
       return null;
     };
 
+    const customerMetricsMap = new Map();
+    const getCustomerRetentionMetrics = (customer) => {
+      let metrics = customerMetricsMap.get(customer.id);
+      if (metrics) return metrics;
+
+      const currentCategory = getCurrentCategoryFromLast8Days(
+        customer.last8Days,
+        new Date(`${todayKey}T00:00:00`),
+      );
+      const deliveryGapStr = computeDeliveryGap(customer.last8Days, todayKey, customer);
+      const peakFrequency = customer.Peak_Frequency || resolvePeakFrequency(customer, customer.last8Days);
+
+      const currentCatNum = Number(String(currentCategory).replace(/\D/g, "")) || 0;
+      const peakFreqNum = Number(String(peakFrequency).replace(/\D/g, "")) || 0;
+      const freqGapNum = Math.max(0, Math.min(7, peakFreqNum - currentCatNum));
+      const riskFactor = peakFreqNum > 0 ? freqGapNum / peakFreqNum : 0;
+      const riskFactorStr = Number.isFinite(riskFactor) ? riskFactor.toFixed(2) : "0.00";
+
+      const gapMatch = String(deliveryGapStr).match(/\d+/);
+      const deliveryGapNum = gapMatch ? parseInt(gapMatch[0], 10) : 0;
+
+      metrics = {
+        currentCategory,
+        currentCatNum,
+        deliveryGap: deliveryGapStr,
+        deliveryGapNum,
+        peakFrequency,
+        frequencyGap: `F${freqGapNum}`,
+        riskFactorNumber: riskFactor,
+        riskFactorStr,
+      };
+
+      customerMetricsMap.set(customer.id, metrics);
+      return metrics;
+    };
+
     filteredCustomers.sort((a, b) => {
+      if (sortBy === "riskFactor" || sortBy === "riskFactorDesc") {
+        const aRF = getCustomerRetentionMetrics(a).riskFactorNumber;
+        const bRF = getCustomerRetentionMetrics(b).riskFactorNumber;
+        if (bRF !== aRF) return bRF - aRF;
+        const aGap = getCustomerRetentionMetrics(a).deliveryGapNum;
+        const bGap = getCustomerRetentionMetrics(b).deliveryGapNum;
+        if (bGap !== aGap) return bGap - aGap;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
+      if (sortBy === "riskFactorAsc") {
+        const aRF = getCustomerRetentionMetrics(a).riskFactorNumber;
+        const bRF = getCustomerRetentionMetrics(b).riskFactorNumber;
+        if (aRF !== bRF) return aRF - bRF;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
+      if (sortBy === "currentCategory" || sortBy === "currentCategoryAsc") {
+        const aCat = getCustomerRetentionMetrics(a).currentCatNum;
+        const bCat = getCustomerRetentionMetrics(b).currentCatNum;
+        if (aCat !== bCat) return aCat - bCat;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
+      if (sortBy === "currentCategoryDesc") {
+        const aCat = getCustomerRetentionMetrics(a).currentCatNum;
+        const bCat = getCustomerRetentionMetrics(b).currentCatNum;
+        if (bCat !== aCat) return bCat - aCat;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
+      if (sortBy === "deliveryGap" || sortBy === "deliveryGapDesc") {
+        const aGap = getCustomerRetentionMetrics(a).deliveryGapNum;
+        const bGap = getCustomerRetentionMetrics(b).deliveryGapNum;
+        if (bGap !== aGap) return bGap - aGap;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
+      if (sortBy === "deliveryGapAsc") {
+        const aGap = getCustomerRetentionMetrics(a).deliveryGapNum;
+        const bGap = getCustomerRetentionMetrics(b).deliveryGapNum;
+        if (aGap !== bGap) return aGap - bGap;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
       if (sortBy === "deliveryTime") {
         const aEntry = a.last8Days?.[todayKey];
         const bEntry = b.last8Days?.[todayKey];
@@ -934,11 +1024,7 @@ const getRetentionCustomers = async (req, res) => {
           }
         }
 
-        const currentCategory = getCurrentCategoryFromLast8Days(
-          customer.last8Days,
-          new Date(`${todayKey}T00:00:00`),
-        );
-        const deliveryGap = computeDeliveryGap(customer.last8Days, todayKey, customer);
+        const metrics = getCustomerRetentionMetrics(customer);
 
         rows.push({
           id: customer.id,
@@ -948,9 +1034,12 @@ const getRetentionCustomers = async (req, res) => {
           zone: customer.zone || "UNASSIGNED",
           route: customer.route || customer.routeName || customer.route_name || customer.Route || "",
           Peak_Potential: customer.Peak_Potential || "T1",
-          Peak_Frequency: customer.Peak_Frequency || resolvePeakFrequency(customer, customer.last8Days),
-          deliveryGap: deliveryGap,
-          currentCategory: currentCategory,
+          Peak_Frequency: metrics.peakFrequency,
+          frequencyGap: metrics.frequencyGap,
+          riskFactorNumber: metrics.riskFactorNumber,
+          riskFactorStr: metrics.riskFactorStr,
+          deliveryGap: metrics.deliveryGap,
+          currentCategory: metrics.currentCategory,
           todayCategory: todayStatus.category,
           todayCategoryLabel: todayStatus.categoryLabel,
           todayReason: todayStatus.reason,
