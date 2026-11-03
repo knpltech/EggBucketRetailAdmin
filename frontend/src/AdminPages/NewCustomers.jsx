@@ -42,6 +42,7 @@ import {
   Truck,
   User,
   CheckCircle,
+  History,
 } from "lucide-react";
 
 const INDIA_TZ = "Asia/Kolkata";
@@ -195,16 +196,12 @@ export default function NewCustomers() {
   const [deletePriorityModalCustomer, setDeletePriorityModalCustomer] = useState(null);
   const [clearingPriority, setClearingPriority] = useState(false);
 
-  // Front-end dismissed row IDs (removed only from front end view, persisted in localStorage, no database changes)
-  const [dismissedPriorityIds, setDismissedPriorityIds] = useState(() => {
-    try {
-      const saved = localStorage.getItem("egg_dismissed_priority_ids");
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
+  // 30-Day History State
+  const [isHistoryMode, setIsHistoryMode] = useState(false);
+  const [historyPriorityCustomers, setHistoryPriorityCustomers] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Front-end dismissed row IDs for Sales App
   const [dismissedSalesIds, setDismissedSalesIds] = useState(() => {
     try {
       const saved = localStorage.getItem("egg_dismissed_sales_ids");
@@ -344,7 +341,7 @@ export default function NewCustomers() {
     }
   }, []);
 
-  // Fetch manual priority customers from "customers" collection
+  // Fetch manual priority customers from "customers" collection (Active pending requests)
   const fetchManualPriorityCustomers = useCallback(
     async (isManualRefresh = false) => {
       if (isManualRefresh) setManualPriorityLoading(true);
@@ -364,31 +361,68 @@ export default function NewCustomers() {
     []
   );
 
-  // Front-end removal of priority row (as soon as button clicked, removed only from front end, no data changed)
-  const handleRemovePriorityRow = (id, name) => {
-    setDismissedPriorityIds((prev) => {
-      const updated = new Set(prev);
-      updated.add(id);
-      try {
-        localStorage.setItem(
-          "egg_dismissed_priority_ids",
-          JSON.stringify(Array.from(updated))
-        );
-      } catch (e) {
-        console.warn("Could not save to localStorage:", e);
+  // Fetch 30-day manual priority history
+  const fetchManualPriorityHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await axios.get(
+        `${ADMIN_PATH}/manual-priority-customers?history=true`,
+        { headers: getAuthHeader() }
+      );
+      if (res.data?.success) {
+        setHistoryPriorityCustomers(res.data.data || []);
       }
-      return updated;
-    });
-    showToast(`Removed ${name || "customer"} from view (no changes to data)`);
+    } catch (err) {
+      console.error("Failed to load priority history:", err);
+      showToast("Failed to load 30-day priority history", "error");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  // Toggle 30-Day History Mode
+  const toggleHistoryMode = () => {
+    const next = !isHistoryMode;
+    setIsHistoryMode(next);
+    if (next) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const fromKey = thirtyDaysAgo.toISOString().slice(0, 10);
+      const toKey = new Date().toISOString().slice(0, 10);
+      setFromDate(fromKey);
+      setToDate(toKey);
+      setDatePreset("custom");
+      fetchManualPriorityHistory();
+      showToast("Showing last 30 days history");
+    } else {
+      setFromDate("");
+      setToDate("");
+      setDatePreset("all");
+      fetchManualPriorityCustomers(true);
+      showToast("Returned to active orders view");
+    }
   };
 
-  // Restore dismissed priority rows
-  const handleRestorePriorityRows = () => {
-    setDismissedPriorityIds(new Set());
+  // Clear manual priority customer: optimistically removes row from view AND updates Firestore manual_priority: false
+  const handleClearPriority = async (id, name) => {
+    // 1. Instantly remove row from front end state so it vanishes immediately
+    setManualPriorityCustomers((prev) => prev.filter((c) => c.id !== id));
+    setHistoryPriorityCustomers((prev) => prev.filter((c) => c.id !== id));
+    showToast(`Priority request cleared for ${name || "customer"}`);
+
+    // 2. Call backend DELETE endpoint to set manual_priority: false and archive in database
     try {
-      localStorage.removeItem("egg_dismissed_priority_ids");
-    } catch (e) {}
-    showToast("Restored all hidden priority rows");
+      await axios.delete(`${ADMIN_PATH}/manual-priority-customers/${id}`, {
+        headers: getAuthHeader(),
+      });
+    } catch (err) {
+      console.error("Failed to clear manual priority in database:", err);
+      showToast(
+        err.response?.data?.message || "Failed to clear priority in database",
+        "error"
+      );
+      fetchManualPriorityCustomers();
+    }
   };
 
   // Front-end removal of sales customer registration row (no changes to database)
@@ -746,14 +780,10 @@ export default function NewCustomers() {
     showToast("Exported to Excel successfully!");
   };
 
-  // Active priority customers for this page (auto-removes queries addressed > 30 days & front-end deleted rows)
+  // Active priority customers for this page (switches between active and 30-day history)
   const activePriorityCustomers = useMemo(() => {
-    return manualPriorityCustomers.filter((c) => {
-      if (dismissedPriorityIds.has(c.id)) return false;
-      if (isAddressedOlderThan30Days(c)) return false;
-      return true;
-    });
-  }, [manualPriorityCustomers, dismissedPriorityIds, isAddressedOlderThan30Days]);
+    return isHistoryMode ? historyPriorityCustomers : manualPriorityCustomers;
+  }, [isHistoryMode, historyPriorityCustomers, manualPriorityCustomers]);
 
   // Filtered manual priority list
   const filteredManualPriority = useMemo(() => {
@@ -1066,6 +1096,21 @@ export default function NewCustomers() {
                 />
               </button>
 
+              {/* History Button (Last 30 Days based on selected app type) */}
+              <button
+                type="button"
+                onClick={toggleHistoryMode}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95 ${
+                  isHistoryMode
+                    ? "bg-purple-600 hover:bg-purple-700 text-white ring-2 ring-purple-400"
+                    : "bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200"
+                }`}
+                title="View last 30 days data based on selected app"
+              >
+                <History className={`w-3.5 h-3.5 ${historyLoading ? "animate-spin" : ""}`} />
+                <span>{isHistoryMode ? "Active Orders" : "History (30 Days)"}</span>
+              </button>
+
               {/* Export Excel */}
               <button
                 type="button"
@@ -1156,6 +1201,32 @@ export default function NewCustomers() {
             )}
           </div>
         </div>
+
+        {/* History Active Banner */}
+        {isHistoryMode && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl text-xs text-purple-950 font-semibold pt-2 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>
+                Showing <strong>Last 30 Days History</strong> for:{" "}
+                <span className="font-bold underline decoration-purple-400">
+                  {activeMainTab === "ALL"
+                    ? "Both Routes App & Sales App"
+                    : activeMainTab === "ROUTES_APP"
+                    ? "Routes App (Delivery Priority Requests)"
+                    : "Sales App (New Customer Registrations)"}
+                </span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={toggleHistoryMode}
+              className="text-purple-700 hover:text-purple-900 underline text-xs font-bold cursor-pointer hover:opacity-80"
+            >
+              ← Back to Active Orders
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -1426,17 +1497,6 @@ export default function NewCustomers() {
             </div>
 
             <div className="flex items-center gap-3">
-              {dismissedPriorityIds.size > 0 && (
-                <button
-                  type="button"
-                  onClick={handleRestorePriorityRows}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold transition cursor-pointer"
-                  title="Restore rows removed from this page"
-                >
-                  <RefreshCw className="w-3 h-3 text-amber-600" />
-                  <span>Restore ({dismissedPriorityIds.size} hidden)</span>
-                </button>
-              )}
               <span className="text-xs font-semibold text-gray-500 self-center">
                 Showing <strong className="text-gray-800">{filteredManualPriority.length}</strong> of{" "}
                 {activePriorityCustomers.length} Requests
@@ -1629,6 +1689,16 @@ export default function NewCustomers() {
                                 {c.attendedDate && <span>• {c.attendedDate}</span>}
                               </div>
                             </div>
+                          ) : c.attendedType === "CLEARED" || c.status === "CLEARED" ? (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-300 shadow-2xs">
+                                <Check className="w-3.5 h-3.5 text-gray-500" />
+                                <span>Priority Cleared</span>
+                              </span>
+                              <div className="text-[11px] text-gray-400 font-medium">
+                                {c.completedAt ? new Date(c.completedAt).toLocaleDateString() : "Cleared manually"}
+                              </div>
+                            </div>
                           ) : (
                             <div className="space-y-1">
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
@@ -1642,18 +1712,28 @@ export default function NewCustomers() {
                           )}
                         </td>
 
-                        {/* 6. Actions (Delete button appears when attended) */}
-                        {/* 6. Actions (Delete button immediately removes row from front end, no changes to data) */}
+                        {/* 6. Actions: Clear Priority / Fulfilled / Archived */}
                         <td className="py-4 px-5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleRemovePriorityRow(c.id, c.name)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs active:scale-95"
-                            title="Delete row (removes from this page, no changes to data)"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Delete</span>
-                          </button>
+                          {isHistoryMode && c.attendedType === "DELIVERED" ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Fulfilled</span>
+                            </span>
+                          ) : isHistoryMode && (c.attendedType === "CLEARED" || c.status === "CLEARED") ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-gray-600 bg-gray-50 border border-gray-200">
+                              <span>Archived</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleClearPriority(c.id, c.name)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs active:scale-95"
+                              title="Clear priority request (reverts manual priority to false in database and removes row)"
+                            >
+                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Clear Priority</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

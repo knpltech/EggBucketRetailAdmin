@@ -4515,6 +4515,7 @@ const getManualPriorityCustomers = async (req, res) => {
   try {
     const db = getFirestore();
     const { search, fromDate, toDate, agent } = req.query;
+    const isHistory = String(req.query.history || "").toLowerCase() === "true";
 
     const seenIds = new Set();
     const docList = [];
@@ -4742,6 +4743,58 @@ const getManualPriorityCustomers = async (req, res) => {
           data.location ||
           (lat && lng ? `Lat: ${lat}, Lng: ${lng}` : "Location not provided");
 
+        // When delivery is done to a customer with manual_priority == true:
+        // Automatically revert manual_priority to false in Firestore and archive to history
+        if (attended && attendedType === "DELIVERED") {
+          doc.ref
+            .update({
+              manual_priority: false,
+              manual_priority_cleared_at: Date.now(),
+              manual_priority_delivered_at: Date.now(),
+            })
+            .catch((err) =>
+              console.error("Error auto-reverting manual_priority on delivery:", err)
+            );
+
+          db.collection("manual_priority_history")
+            .doc(`${doc.id}_${attendedDate || todayDateKey}`)
+            .set(
+              {
+                customerId: doc.id,
+                name,
+                businessName,
+                business: businessName,
+                location,
+                lat,
+                lng,
+                phone: data.phone || "",
+                custid: data.custid || "",
+                route: data.route || "",
+                zone: data.zone || "",
+                timeOfRequest: timeOfRequestFormatted,
+                timeOfRequestMs,
+                timeOfRequestIso,
+                requestDateKey,
+                attended: true,
+                attendedType: "DELIVERED",
+                attendedStatus: "Delivered",
+                attendedDate,
+                attendedAgent,
+                attendedQuantity,
+                attendedAmount,
+                attendedReason,
+                status: "DELIVERED",
+                completedAt: Date.now(),
+                timestamp: Date.now(),
+                source: "Routes App (Delivery)",
+              },
+              { merge: true }
+            )
+            .catch((err) =>
+              console.error("Error archiving priority history:", err)
+            );
+        }
+
         return {
           id: doc.id,
           name,
@@ -4758,7 +4811,7 @@ const getManualPriorityCustomers = async (req, res) => {
           custid: data.custid || "",
           route: data.route || "",
           zone: data.zone || "",
-          manual_priority: true,
+          manual_priority: attendedType === "DELIVERED" ? false : true,
           attended,
           attendedType,
           attendedStatus,
@@ -4771,10 +4824,91 @@ const getManualPriorityCustomers = async (req, res) => {
       })
     );
 
-    // Sort newest first
-    list.sort((a, b) => (b.timeOfRequestMs || 0) - (a.timeOfRequestMs || 0));
+    let finalItems = [];
 
-    let filtered = list;
+    if (!isHistory) {
+      // ACTIVE MODE: Only customers whose manual_priority is active and NOT yet delivered
+      finalItems = list.filter((c) => c.attendedType !== "DELIVERED");
+    } else {
+      // HISTORY MODE: Last 30 days data (delivered, checked, attended, cleared)
+      const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const historyCollectionItems = [];
+
+      try {
+        const histSnap = await db.collection("manual_priority_history").get();
+        histSnap.forEach((hDoc) => {
+          const hData = hDoc.data() || {};
+          const hTime =
+            hData.timestamp || hData.completedAt || hData.clearedAt || 0;
+          if (hTime >= thirtyDaysAgoMs || !thirtyDaysAgoMs) {
+            historyCollectionItems.push({
+              id: hDoc.id,
+              customerId: hData.customerId || hDoc.id,
+              name: hData.name || "N/A",
+              businessName: hData.businessName || hData.business || "N/A",
+              business: hData.businessName || hData.business || "N/A",
+              location: hData.location || "Location not provided",
+              lat: hData.lat || null,
+              lng: hData.lng || null,
+              timeOfRequest:
+                hData.timeOfRequest ||
+                (hTime
+                  ? new Intl.DateTimeFormat("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    }).format(new Date(hTime))
+                  : "N/A"),
+              timeOfRequestMs: hTime,
+              timeOfRequestIso: hTime ? new Date(hTime).toISOString() : null,
+              requestDateKey:
+                hData.requestDateKey ||
+                (hTime ? new Date(hTime).toISOString().slice(0, 10) : null),
+              phone: hData.phone || "",
+              custid: hData.custid || "",
+              route: hData.route || "",
+              zone: hData.zone || "",
+              manual_priority: false,
+              attended: hData.attended ?? true,
+              attendedType: hData.attendedType || hData.status || "COMPLETED",
+              attendedStatus:
+                hData.attendedStatus ||
+                (hData.attendedType === "DELIVERED" ? "Delivered" : "Completed"),
+              attendedDate:
+                hData.attendedDate ||
+                (hTime ? new Date(hTime).toISOString().slice(0, 10) : null),
+              attendedAgent: hData.attendedAgent || null,
+              attendedQuantity: hData.attendedQuantity || null,
+              attendedAmount: hData.attendedAmount || null,
+              attendedReason: hData.attendedReason || null,
+              completedAt: hTime,
+              isHistory: true,
+            });
+          }
+        });
+      } catch (histErr) {
+        console.warn("Could not query manual_priority_history:", histErr);
+      }
+
+      // Merge current list and historyCollectionItems, deduplicating by customerId + attendedDate
+      const seenMap = new Map();
+      [...list, ...historyCollectionItems].forEach((item) => {
+        const key = `${item.customerId || item.id}_${item.attendedDate || item.timeOfRequestIso || item.timeOfRequest}`;
+        if (!seenMap.has(key)) {
+          seenMap.set(key, item);
+        }
+      });
+      finalItems = Array.from(seenMap.values());
+    }
+
+    // Sort newest first
+    finalItems.sort((a, b) => (b.timeOfRequestMs || 0) - (a.timeOfRequestMs || 0));
+
+    let filtered = finalItems;
 
     // Optional query filtering
     if (search && search.trim()) {
@@ -4831,27 +4965,53 @@ const clearManualPriorityCustomer = async (req, res) => {
     const docRef = db.collection("customers").doc(id);
     const docSnap = await docRef.get();
 
+    let targetRef = docRef;
+    let targetSnap = docSnap;
+
     if (!docSnap.exists) {
       const altRef = db.collection("customer").doc(id);
       const altSnap = await altRef.get();
       if (!altSnap.exists) {
         return res.status(404).json({ success: false, message: "Customer not found" });
       }
-      await altRef.update({
-        manual_priority: false,
-        manual_priority_cleared_at: Date.now(),
-      });
-      try {
-        cache.del(`customer:${id}`);
-        cache.del("userInfo");
-      } catch (cErr) {}
-      return res.status(200).json({ success: true, message: "Manual priority cleared" });
+      targetRef = altRef;
+      targetSnap = altSnap;
     }
 
-    await docRef.update({
+    const custData = targetSnap.data() || {};
+
+    await targetRef.update({
       manual_priority: false,
       manual_priority_cleared_at: Date.now(),
     });
+
+    // Archive cleared priority to history
+    await db
+      .collection("manual_priority_history")
+      .doc(`${id}_${Date.now()}`)
+      .set(
+        {
+          customerId: id,
+          name: custData.name || "N/A",
+          businessName: custData.business || custData.businessName || "N/A",
+          business: custData.business || custData.businessName || "N/A",
+          location: custData.location || "Location not provided",
+          phone: custData.phone || "",
+          custid: custData.custid || "",
+          route: custData.route || "",
+          zone: custData.zone || "",
+          attended: false,
+          attendedType: "CLEARED",
+          attendedStatus: "Priority Cleared",
+          status: "CLEARED",
+          clearedAt: Date.now(),
+          completedAt: Date.now(),
+          timestamp: Date.now(),
+          source: "Routes App (Delivery)",
+        },
+        { merge: true }
+      )
+      .catch((e) => console.warn("Archive error:", e));
 
     try {
       cache.del(`customer:${id}`);
