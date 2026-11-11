@@ -25,6 +25,7 @@ import {
   deleteCustomer,
   updateCustomer,
   assignAgent,
+  updateCustomerImage,
 } from "../Controller/CustomerController.js";
 
 // import delivery partner functions from DeliveryPartnerController
@@ -122,6 +123,8 @@ router.get("/ai-suggestions/candidates", getAISuggestionCandidates);
 router.get("/customer-info/:id", specificUser);
 router.delete("/customer/delete", deleteCustomer);
 router.put("/customer/update", updateCustomer);
+router.post("/customer/update-image", upload.single("image"), updateCustomerImage);
+router.put("/customer/update-image", upload.single("image"), updateCustomerImage);
 router.put("/customer/assign-agent", assignAgent);
 router.get("/customer/deliveries/:id", getUserDeliveries);
 router.get("/all-deliveries", getAllCustomerDeliveries);

@@ -1,5 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import axios from "axios";
+import { ADMIN_PATH } from "../constant";
+import {
+  patchCachedUserInfoCustomer,
+  invalidateClientUserInfoCache,
+} from "../utils/customerInfoClientCache";
 import {
   FiArrowLeft,
   FiDownload,
@@ -7,6 +13,10 @@ import {
   FiCalendar,
   FiTruck,
   FiPhone,
+  FiCamera,
+  FiCheck,
+  FiX,
+  FiEye,
 } from "react-icons/fi";
 const GOOGLE_MAP_KEY = import.meta.env.VITE_GOOGLE_MAP_KEY;
 const CHECKED_TYPES = [
@@ -173,11 +183,93 @@ const Customer = () => {
   const [showFullImage, setShowFullImage] = useState(false);
   const [reasonError, setReasonError] = useState("");
 
+  // Customer photo change states
+  const [showChangePicConfirm, setShowChangePicConfirm] = useState(false);
+  const [isUploadingPic, setIsUploadingPic] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+  const fileInputRef = useRef(null);
+
   const formatTrayLabel = (value) => {
     const trays = Number(value);
     if (!Number.isFinite(trays) || trays < 1) return "";
     if (trays >= 10) return "10+ trays";
     return trays === 1 ? "1 tray" : `${trays} trays`;
+  };
+
+  // Handle uploading and setting customer profile image
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setToastMessage({
+        type: "error",
+        text: "Please select a valid image file (JPG, PNG, WEBP).",
+      });
+      setTimeout(() => setToastMessage(null), 4000);
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setToastMessage({
+        type: "error",
+        text: "Image file size should be under 15MB.",
+      });
+      setTimeout(() => setToastMessage(null), 4000);
+      e.target.value = "";
+      return;
+    }
+
+    const previousImageUrl = customer?.imageUrl;
+    const localPreviewUrl = URL.createObjectURL(file);
+
+    // Immediate visual update on screen
+    setCustomer((prev) => (prev ? { ...prev, imageUrl: localPreviewUrl } : prev));
+    setIsUploadingPic(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("id", customer?.id || id);
+      if (customer?.custid) {
+        formData.append("custid", customer.custid);
+      }
+      formData.append("image", file);
+
+      const res = await axios.post(`${ADMIN_PATH}/customer/update-image`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const serverImageUrl = res.data?.imageUrl || localPreviewUrl;
+
+      setCustomer((prev) => (prev ? { ...prev, imageUrl: serverImageUrl } : prev));
+
+      if (customer?.id || id) {
+        patchCachedUserInfoCustomer(customer?.id || id, (prev) => ({
+          ...prev,
+          imageUrl: serverImageUrl,
+        }));
+      }
+      invalidateClientUserInfoCache();
+
+      setToastMessage({
+        type: "success",
+        text: "Profile picture updated successfully!",
+      });
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error("Failed to upload image:", err);
+      // Revert optimistic preview
+      setCustomer((prev) => (prev ? { ...prev, imageUrl: previousImageUrl } : prev));
+      setToastMessage({
+        type: "error",
+        text: err.response?.data?.message || "Failed to upload image. Please try again.",
+      });
+      setTimeout(() => setToastMessage(null), 5000);
+    } finally {
+      setIsUploadingPic(false);
+      e.target.value = "";
+    }
   };
 
   // Fetch basic customer info on page load
@@ -190,10 +282,28 @@ const Customer = () => {
         return;
       }
 
-      setError(
-        "Customer data is unavailable. Please open this page from the customer list.",
-      );
-      setLoadingCustomer(false);
+      try {
+        setLoadingCustomer(true);
+        const res = await axios.get(`${ADMIN_PATH}/customer-info/${id}`);
+        if (isMounted) {
+          if (res.data) {
+            setCustomer(res.data);
+            setError("");
+          } else {
+            setError("Customer not found.");
+          }
+        }
+      } catch (fetchErr) {
+        if (isMounted) {
+          setError(
+            "Customer data is unavailable. Please open this page from the customer list.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingCustomer(false);
+        }
+      }
     };
 
     setError("");
@@ -377,6 +487,15 @@ const Customer = () => {
           <span className="font-medium">Back to Customers</span>
         </button>
 
+        {/* Hidden File Input for uploading profile picture */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
         {/* Customer Card */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
           {/* Customer Header */}
@@ -388,14 +507,39 @@ const Customer = () => {
                 </h1>
                 <p className="text-purple-100">{customer.business}</p>
               </div>
-              <div className="mt-4 sm:mt-0">
-                <img
-                  src={customer.imageUrl}
-                  alt={customer.name}
-                  loading="eager"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-full border-4 border-white shadow-md cursor-pointer hover:scale-105 transition-transform"
-                  onClick={() => setShowFullImage(true)}
-                />
+              <div className="mt-4 sm:mt-0 relative group">
+                <div
+                  onClick={() => setShowChangePicConfirm(true)}
+                  className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-white shadow-md overflow-hidden cursor-pointer hover:scale-105 transition-all bg-white/20 flex items-center justify-center"
+                  title="Click to change profile picture"
+                >
+                  {customer.imageUrl ? (
+                    <img
+                      src={customer.imageUrl}
+                      alt={customer.name}
+                      loading="eager"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white font-bold text-lg sm:text-xl select-none">
+                      {customer.name ? customer.name.slice(0, 2).toUpperCase() : "EB"}
+                    </span>
+                  )}
+                  {/* Hover Camera Overlay */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-medium">
+                    <FiCamera className="text-lg mb-0.5" />
+                    <span>Change</span>
+                  </div>
+                </div>
+                {/* Floating camera badge */}
+                <button
+                  type="button"
+                  onClick={() => setShowChangePicConfirm(true)}
+                  className="absolute bottom-0 right-0 bg-white text-purple-600 p-1.5 rounded-full shadow-md hover:bg-purple-50 transition-colors border border-purple-200"
+                  title="Change picture"
+                >
+                  <FiCamera className="text-xs" />
+                </button>
               </div>
             </div>
           </div>
@@ -675,6 +819,105 @@ const Customer = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Change Picture Confirmation Modal */}
+      {showChangePicConfirm && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => {
+            if (!isUploadingPic) setShowChangePicConfirm(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center transform transition-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Visual Icon */}
+            <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-purple-100 text-purple-600 mb-4 shadow-inner">
+              <FiCamera className="h-7 w-7" />
+            </div>
+
+            <h3 className="text-lg font-bold text-gray-900 mb-1">
+              Change Profile Picture
+            </h3>
+
+            <p className="text-gray-600 text-sm mb-5">
+              Do you want to change the pic?
+            </p>
+
+            {customer?.imageUrl && (
+              <div className="mb-5 flex items-center justify-center gap-3 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                <img
+                  src={customer.imageUrl}
+                  alt={customer.name}
+                  className="w-12 h-12 rounded-full object-cover border-2 border-purple-400"
+                />
+                <div className="text-left">
+                  <p className="text-xs font-semibold text-gray-800 truncate max-w-[170px]">
+                    {customer.business || customer.name}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChangePicConfirm(false);
+                      setShowFullImage(true);
+                    }}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 mt-0.5"
+                  >
+                    <FiEye className="inline text-xs" /> View full image
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowChangePicConfirm(false)}
+                disabled={isUploadingPic}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChangePicConfirm(false);
+                  fileInputRef.current?.click();
+                }}
+                disabled={isUploadingPic}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uploading Spinner Overlay */}
+      {isUploadingPic && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-purple-200 border-t-purple-600 mb-4"></div>
+            <h4 className="text-base font-semibold text-gray-900">Uploading New Picture...</h4>
+            <p className="text-xs text-gray-500 mt-1">Updating profile picture in database...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-white font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 ${
+            toastMessage.type === "error" ? "bg-red-600" : "bg-emerald-600"
+          }`}
+        >
+          {toastMessage.type === "error" ? <FiX className="text-lg" /> : <FiCheck className="text-lg" />}
+          <span>{toastMessage.text}</span>
         </div>
       )}
     </div>
