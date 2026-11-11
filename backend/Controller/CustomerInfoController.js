@@ -10,6 +10,7 @@ import {
   normalizePeakFrequency,
   updateCustomersPeak30Days,
 } from "../utils/peakCalculations.js";
+import { BAD_ROAD_ROUTE, isCustomerStatusReached } from "../utils/badRoadRouteLogic.js";
 
 const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
@@ -190,12 +191,21 @@ const buildCustomerInfoPayload = (
   // Default route to onboarding route if unassigned or missing
   const currentRoute = (customerData.route || "").trim();
   const isUnassignedRoute = !currentRoute || currentRoute === "UNASSIGNED";
-  const route = isUnassignedRoute ? defaultOnboardingRoute : currentRoute;
+  let route = isUnassignedRoute ? defaultOnboardingRoute : currentRoute;
 
   // Build update object — only include fields that need saving
   const updateFields = {};
   if (isUnassignedRoute && defaultOnboardingRoute) {
     updateFields.route = defaultOnboardingRoute;
+  }
+
+  // ⭐ Customers whose status is reached (any reason) -> route set to "R001R- Bad Road Customers"
+  const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
+  if (isCustomerStatusReached(customerData, todayStr)) {
+    if (currentRoute !== BAD_ROAD_ROUTE) {
+      updateFields.route = BAD_ROAD_ROUTE;
+      route = BAD_ROAD_ROUTE;
+    }
   }
   const peakFreqNum = Number(peakFrequency.slice(1)) || 0;
   const savedFreqNum = savedPeakFreq ? Number(savedPeakFreq.slice(1)) || 0 : 0;
@@ -215,7 +225,6 @@ const buildCustomerInfoPayload = (
     updateFields.purchaseIntent = purchaseIntent;
   }
   // Calculate accurate deliveryGap and sync latest delivery date from field updates
-  const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
   const todayDay = getDateDayNumber(todayStr);
 
   let latestDeliveredDate = customerData.lastDeliveryDate || null;
@@ -823,7 +832,16 @@ const specificUser = async (req, res) => {
     const data = userDoc.data() || {};
     const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
     const currentRoute = (data.route || "").trim();
-    const route = (!currentRoute || currentRoute === "UNASSIGNED") ? defaultOnboardingRoute : currentRoute;
+    let route = (!currentRoute || currentRoute === "UNASSIGNED") ? defaultOnboardingRoute : currentRoute;
+
+    const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
+    if (isCustomerStatusReached(data, todayStr)) {
+      if (currentRoute !== BAD_ROAD_ROUTE) {
+        route = BAD_ROAD_ROUTE;
+        userDoc.ref.update({ route: BAD_ROAD_ROUTE }).catch(console.warn);
+      }
+    }
+
     const payload = {
       id: userDoc.id,
       ...data,

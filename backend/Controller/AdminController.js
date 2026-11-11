@@ -16,6 +16,7 @@ import {
   computePeakFrequency30Days,
   normalizePeakFrequency,
 } from "../utils/peakCalculations.js";
+import { BAD_ROAD_ROUTE, isCustomerStatusReached } from "../utils/badRoadRouteLogic.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -1026,13 +1027,22 @@ const getRetentionCustomers = async (req, res) => {
 
         const metrics = getCustomerRetentionMetrics(customer);
 
+        let customerRoute = customer.route || customer.routeName || customer.route_name || customer.Route || "";
+        if (isCustomerStatusReached(customer, todayKey)) {
+          if (customerRoute !== BAD_ROAD_ROUTE) {
+            customerRoute = BAD_ROAD_ROUTE;
+            customer.route = BAD_ROAD_ROUTE;
+            db.collection("customers").doc(customer.id).update({ route: BAD_ROAD_ROUTE }).catch(() => {});
+          }
+        }
+
         rows.push({
           id: customer.id,
           custid: customer.custid || "",
           name: customer.name || "",
           phone: customer.phone || "",
           zone: customer.zone || "UNASSIGNED",
-          route: customer.route || customer.routeName || customer.route_name || customer.Route || "",
+          route: customerRoute,
           Peak_Potential: customer.Peak_Potential || "T1",
           Peak_Frequency: metrics.peakFrequency,
           frequencyGap: metrics.frequencyGap,
@@ -4683,6 +4693,10 @@ const getManualPriorityCustomers = async (req, res) => {
             attendedDate = dKey;
             attendedAgent = entry.agentName || null;
             attendedReason = entry.reason || entry.checkReason || "Store Checked";
+            if ((data.route || "").trim() !== BAD_ROAD_ROUTE) {
+              data.route = BAD_ROAD_ROUTE;
+              doc.ref.update({ route: BAD_ROAD_ROUTE }).catch(() => {});
+            }
             break;
           }
         }

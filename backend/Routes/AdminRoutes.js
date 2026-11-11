@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { authenticateToken } from "../middleware/authMiddleware.js";
+import { syncBadRoadCustomers } from "../utils/badRoadRouteLogic.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -140,6 +141,14 @@ router.put("/routes/update", updateRoute);
 router.get("/routes", getRoutes);
 router.post("/customers/batch-update-routes", batchUpdateCustomerRoutes);
 router.post("/customers/batch-update-logics", batchUpdateCustomerLogics);
+router.post("/customers/sync-bad-road-routes", async (req, res) => {
+  try {
+    const count = await syncBadRoadCustomers();
+    res.json({ success: true, count, message: `Synced ${count} customers to Bad Road route.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 router.post("/business-types/add", addBusinessType);
 router.get("/business-types", getBusinessTypes);
 
