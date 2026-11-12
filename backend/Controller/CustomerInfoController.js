@@ -10,7 +10,13 @@ import {
   normalizePeakFrequency,
   updateCustomersPeak30Days,
 } from "../utils/peakCalculations.js";
-import { BAD_ROAD_ROUTE, isCustomerStatusReached } from "../utils/badRoadRouteLogic.js";
+import {
+  BAD_ROAD_ROUTE,
+  isCustomerStatusReached,
+  extractRouteGroup,
+  isAlreadyInTargetRRoute,
+  resolveTargetRRouteSync,
+} from "../utils/badRoadRouteLogic.js";
 
 const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
@@ -199,12 +205,15 @@ const buildCustomerInfoPayload = (
     updateFields.route = defaultOnboardingRoute;
   }
 
-  // ⭐ Customers whose status is reached (any reason) -> route set to "R001R- Bad Road Customers"
+  // ⭐ Customers whose status is reached (any reason) -> stay in group, route set to R route (R001R, R002R, R003R...)
   const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
   if (isCustomerStatusReached(customerData, todayStr)) {
-    if (currentRoute !== BAD_ROAD_ROUTE) {
-      updateFields.route = BAD_ROAD_ROUTE;
-      route = BAD_ROAD_ROUTE;
+    const group = extractRouteGroup(currentRoute);
+    const targetRCode = `${group}R`;
+    if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+      const targetRRoute = resolveTargetRRouteSync(currentRoute);
+      updateFields.route = targetRRoute;
+      route = targetRRoute;
     }
   }
   const peakFreqNum = Number(peakFrequency.slice(1)) || 0;
@@ -836,9 +845,12 @@ const specificUser = async (req, res) => {
 
     const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
     if (isCustomerStatusReached(data, todayStr)) {
-      if (currentRoute !== BAD_ROAD_ROUTE) {
-        route = BAD_ROAD_ROUTE;
-        userDoc.ref.update({ route: BAD_ROAD_ROUTE }).catch(console.warn);
+      const group = extractRouteGroup(currentRoute);
+      const targetRCode = `${group}R`;
+      if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+        const targetRRoute = resolveTargetRRouteSync(currentRoute);
+        route = targetRRoute;
+        userDoc.ref.update({ route: targetRRoute }).catch(console.warn);
       }
     }
 

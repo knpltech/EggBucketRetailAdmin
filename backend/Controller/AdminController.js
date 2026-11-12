@@ -16,7 +16,13 @@ import {
   computePeakFrequency30Days,
   normalizePeakFrequency,
 } from "../utils/peakCalculations.js";
-import { BAD_ROAD_ROUTE, isCustomerStatusReached } from "../utils/badRoadRouteLogic.js";
+import {
+  BAD_ROAD_ROUTE,
+  isCustomerStatusReached,
+  extractRouteGroup,
+  isAlreadyInTargetRRoute,
+  resolveTargetRRouteSync,
+} from "../utils/badRoadRouteLogic.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -1029,10 +1035,13 @@ const getRetentionCustomers = async (req, res) => {
 
         let customerRoute = customer.route || customer.routeName || customer.route_name || customer.Route || "";
         if (isCustomerStatusReached(customer, todayKey)) {
-          if (customerRoute !== BAD_ROAD_ROUTE) {
-            customerRoute = BAD_ROAD_ROUTE;
-            customer.route = BAD_ROAD_ROUTE;
-            db.collection("customers").doc(customer.id).update({ route: BAD_ROAD_ROUTE }).catch(() => {});
+          const group = extractRouteGroup(customerRoute);
+          const targetRCode = `${group}R`;
+          if (!isAlreadyInTargetRRoute(customerRoute, targetRCode)) {
+            const targetRRoute = resolveTargetRRouteSync(customerRoute);
+            customerRoute = targetRRoute;
+            customer.route = targetRRoute;
+            db.collection("customers").doc(customer.id).update({ route: targetRRoute }).catch(() => {});
           }
         }
 
@@ -4693,9 +4702,13 @@ const getManualPriorityCustomers = async (req, res) => {
             attendedDate = dKey;
             attendedAgent = entry.agentName || null;
             attendedReason = entry.reason || entry.checkReason || "Store Checked";
-            if ((data.route || "").trim() !== BAD_ROAD_ROUTE) {
-              data.route = BAD_ROAD_ROUTE;
-              doc.ref.update({ route: BAD_ROAD_ROUTE }).catch(() => {});
+            const currentRoute = (data.route || "").trim();
+            const group = extractRouteGroup(currentRoute);
+            const targetRCode = `${group}R`;
+            if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+              const targetRRoute = resolveTargetRRouteSync(currentRoute);
+              data.route = targetRRoute;
+              doc.ref.update({ route: targetRRoute }).catch(() => {});
             }
             break;
           }

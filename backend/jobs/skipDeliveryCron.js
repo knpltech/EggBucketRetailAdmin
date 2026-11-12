@@ -6,7 +6,13 @@ import { calculateAndSavePeakPotentials } from "./categoryPeakCron.js";
 import { generateGenuineAnalytics } from "./businessAnalyticsCron.js";
 import { runCallStatusResetJobOnce } from "./callStatusCron.js";
 import { updateCustomersPeak30Days } from "../utils/peakCalculations.js";
-import { BAD_ROAD_ROUTE, isCustomerStatusReached } from "../utils/badRoadRouteLogic.js";
+import {
+  BAD_ROAD_ROUTE,
+  isCustomerStatusReached,
+  extractRouteGroup,
+  isAlreadyInTargetRRoute,
+  resolveTargetRRouteSync,
+} from "../utils/badRoadRouteLogic.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -209,11 +215,14 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
 
     const isCompleted = completedStatuses.includes(todayStatus);
 
-    // Check if customer status is reached (any reason) -> set route to "R001R- Bad Road Customers"
+    // Check if customer status is reached (any reason) -> stay in group, set to R route
     if (isCustomerStatusReached(data, today)) {
       const currentRoute = (data.route || "").trim();
-      if (currentRoute !== BAD_ROAD_ROUTE) {
-        batch.update(doc.ref, { route: BAD_ROAD_ROUTE });
+      const group = extractRouteGroup(currentRoute);
+      const targetRCode = `${group}R`;
+      if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+        const targetRRoute = resolveTargetRRouteSync(currentRoute);
+        batch.update(doc.ref, { route: targetRRoute });
         updated++;
       }
     }

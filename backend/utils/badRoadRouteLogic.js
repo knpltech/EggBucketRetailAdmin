@@ -4,6 +4,18 @@ import cache from "../Controller/cache.js";
 export const BAD_ROAD_ROUTE = "R001R- Bad Road Customers";
 const INDIA_TZ = "Asia/Kolkata";
 
+/**
+ * Known R routes for standard parent route groups.
+ * R001A,B,C,D -> R001R
+ * R002A,B,C,D -> R002R
+ * R003A,B,C,D -> R003R
+ */
+export const KNOWN_R_ROUTES = {
+  R001R: "R001R- Bad Road Customers",
+  R002R: "R002R- SRR Retention by ACR Agent-After Checked Out Reset & Turn ON",
+  R003R: "R003R-SRR checked customers shift after 12PM",
+};
+
 export const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -22,6 +34,106 @@ export const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) 
     // fall through
   }
   return new Date().toISOString().slice(0, 10);
+};
+
+/**
+ * Extracts the 3-digit parent route group from a route string.
+ * Format: R (prefix) + 3 digits (e.g. R001, R002, R003).
+ * Examples:
+ * "R001A" -> "R001"
+ * "R001N-Onboarding Customers" -> "R001"
+ * "R002D-G8+ (Growth-12PM Reset & Transfer to Agent 2))" -> "R002"
+ * "R003B (Regular-12PM Reset & Transfer to Agent 2)" -> "R003"
+ */
+export const extractRouteGroup = (routeName) => {
+  if (!routeName) return "R001";
+  const str = String(routeName).trim();
+  const match = str.match(/^(?:ROUTE\s*|R)[\s\-_]*(\d+)/i);
+  if (match && match[1]) {
+    const num = match[1].padStart(3, "0");
+    return `R${num}`;
+  }
+  return "R001";
+};
+
+/**
+ * Checks whether a customer's current route is already in the target R sub-route.
+ */
+export const isAlreadyInTargetRRoute = (currentRoute, targetRCode) => {
+  if (!currentRoute || !targetRCode) return false;
+  const str = String(currentRoute).trim().toUpperCase();
+  return str.startsWith(targetRCode.toUpperCase());
+};
+
+/**
+ * Synchronous resolver for target R route for a customer.
+ * Keeps customer within their parent group (R001 -> R001R, R002 -> R002R, R003 -> R003R).
+ */
+export const resolveTargetRRouteSync = (currentRoute, routesList = []) => {
+  const group = extractRouteGroup(currentRoute);
+  const targetCode = `${group}R`;
+
+  if (KNOWN_R_ROUTES[targetCode]) {
+    return KNOWN_R_ROUTES[targetCode];
+  }
+
+  if (Array.isArray(routesList) && routesList.length > 0) {
+    const matched = routesList.find((r) => {
+      const rName = (typeof r === "string" ? r : r?.name || "").trim().toUpperCase();
+      return rName.startsWith(targetCode.toUpperCase());
+    });
+    if (matched) {
+      return typeof matched === "string" ? matched : matched.name;
+    }
+  }
+
+  return `${targetCode}- Bad Road Customers`;
+};
+
+/**
+ * Asynchronous resolver for target R route.
+ */
+export const resolveTargetRRoute = async (currentRoute, db = null) => {
+  const group = extractRouteGroup(currentRoute);
+  const targetCode = `${group}R`;
+
+  if (KNOWN_R_ROUTES[targetCode]) {
+    return KNOWN_R_ROUTES[targetCode];
+  }
+
+  try {
+    const firestore = db || getFirestore();
+    const cacheKey = "routes:list";
+    let routes = cache.get(cacheKey);
+
+    if (!routes) {
+      const snap = await firestore.collection("routes").get();
+      routes = snap.docs.map((d) => d.data()?.name).filter(Boolean);
+      cache.set(cacheKey, routes, 1800);
+    }
+
+    const matched = routes.find((r) => {
+      const rName = (typeof r === "string" ? r : r?.name || "").trim().toUpperCase();
+      return rName.startsWith(targetCode.toUpperCase());
+    });
+
+    if (matched) {
+      return typeof matched === "string" ? matched : matched.name;
+    }
+
+    const fallbackName = `${targetCode}- Bad Road Customers`;
+    await firestore.collection("routes").add({
+      name: fallbackName,
+      routeCode: targetCode,
+      priorityId: null,
+      createdAt: Date.now(),
+    });
+    cache.del(cacheKey);
+    return fallbackName;
+  } catch (err) {
+    console.warn("Error in resolveTargetRRoute:", err);
+    return `${targetCode}- Bad Road Customers`;
+  }
 };
 
 /**
@@ -130,7 +242,8 @@ export const ensureBadRoadRouteExists = async (db) => {
 };
 
 /**
- * Scans all customers and sets route to "R001R- Bad Road Customers"
+ * Scans all customers and sets route to their group's R route
+ * (e.g., R001 -> R001R, R002 -> R002R, R003 -> R003R)
  * for any customer whose status is reached (any reason).
  */
 export const syncBadRoadCustomers = async (db = null) => {
@@ -141,23 +254,31 @@ export const syncBadRoadCustomers = async (db = null) => {
     const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
     const snap = await firestore.collection("customers").get();
 
+    // Cache the routes list for dynamic lookups
+    const routesSnap = await firestore.collection("routes").get();
+    const routesList = routesSnap.docs.map((d) => d.data()?.name).filter(Boolean);
+
     const updates = [];
     snap.docs.forEach((doc) => {
       const data = doc.data() || {};
       if (isCustomerStatusReached(data, todayStr)) {
         const currentRoute = (data.route || "").trim();
-        if (currentRoute !== BAD_ROAD_ROUTE) {
-          updates.push({ ref: doc.ref, id: doc.id });
+        const group = extractRouteGroup(currentRoute);
+        const targetRCode = `${group}R`;
+
+        if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+          const targetRoute = resolveTargetRRouteSync(currentRoute, routesList);
+          updates.push({ ref: doc.ref, id: doc.id, targetRoute });
         }
       }
     });
 
     if (updates.length > 0) {
-      console.log(`[badRoadRouteLogic] Syncing ${updates.length} reached customers to route "${BAD_ROAD_ROUTE}"...`);
+      console.log(`[badRoadRouteLogic] Syncing ${updates.length} reached customers to their group R route...`);
       for (let i = 0; i < updates.length; i += 500) {
         const batch = firestore.batch();
-        updates.slice(i, i + 500).forEach(({ ref }) => {
-          batch.update(ref, { route: BAD_ROAD_ROUTE });
+        updates.slice(i, i + 500).forEach(({ ref, targetRoute }) => {
+          batch.update(ref, { route: targetRoute });
         });
         await batch.commit();
       }
@@ -171,7 +292,7 @@ export const syncBadRoadCustomers = async (db = null) => {
       } catch (cacheErr) {
         console.warn("Cache invalidate error in syncBadRoadCustomers:", cacheErr);
       }
-      console.log(`[badRoadRouteLogic] Successfully synced ${updates.length} customers to "${BAD_ROAD_ROUTE}".`);
+      console.log(`[badRoadRouteLogic] Successfully synced ${updates.length} customers to their group R route.`);
     }
 
     return updates.length;
