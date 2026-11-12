@@ -241,6 +241,82 @@ export const ensureBadRoadRouteExists = async (db) => {
   }
 };
 
+let unsubscribeCustomerListener = null;
+
+/**
+ * Real-time Firestore listener that watches the "customers" collection live.
+ * Whenever a delivery agent marks a customer as "reached" (any reason) from the mobile app,
+ * this listener immediately updates their route in Firestore to their parent group's R route
+ * (e.g. R001 -> R001R, R002 -> R002R, R003 -> R003R) in real time!
+ */
+export const startLiveCustomerRouteListener = (db = null) => {
+  if (unsubscribeCustomerListener) {
+    console.log("[badRoadRouteLogic] Live customer route listener is already active.");
+    return unsubscribeCustomerListener;
+  }
+
+  const firestore = db || getFirestore();
+  let isInitialLoad = true;
+
+  console.log("[badRoadRouteLogic] Attaching live real-time Firestore listener for customer route updates...");
+
+  unsubscribeCustomerListener = firestore.collection("customers").onSnapshot(
+    async (snapshot) => {
+      // Ignore initial snapshot batch on server boot (initial sync is handled by syncBadRoadCustomers)
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        console.log(`[badRoadRouteLogic] Live listener ready (${snapshot.size} customers loaded). Now listening for live updates...`);
+        return;
+      }
+
+      const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
+
+      for (const change of snapshot.docChanges()) {
+        if (change.type === "modified" || change.type === "added") {
+          const data = change.doc.data() || {};
+
+          // Check if customer status is reached (for any reason)
+          if (isCustomerStatusReached(data, todayStr)) {
+            const currentRoute = (data.route || "").trim();
+            const group = extractRouteGroup(currentRoute);
+            const targetRCode = `${group}R`;
+
+            // If not already in the target R sub-route, update immediately!
+            if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+              const targetRoute = resolveTargetRRouteSync(currentRoute);
+              console.log(
+                `⚡ [LIVE ROUTE SYNC] Customer ${change.doc.id} (${data.name || data.custid || "N/A"}) marked reached -> Updating route from "${currentRoute}" to "${targetRoute}" live!`
+              );
+
+              try {
+                await change.doc.ref.update({ route: targetRoute });
+
+                // Invalidate customer caches so admin panel sees update immediately
+                const keys = typeof cache.keys === "function" ? cache.keys() : [];
+                const customerInfoKeys = keys.filter((key) => key.startsWith("customerInfo:userInfo"));
+                if (customerInfoKeys.length > 0) cache.del(customerInfoKeys);
+              } catch (updErr) {
+                console.error(`Error updating route live for customer ${change.doc.id}:`, updErr.message);
+              }
+            }
+          }
+        }
+      }
+    },
+    (error) => {
+      console.error("[badRoadRouteLogic] Live customer route listener encountered an error:", error.message);
+      unsubscribeCustomerListener = null;
+      // Automatically attempt reconnection after 5 seconds
+      setTimeout(() => {
+        console.log("[badRoadRouteLogic] Reconnecting live customer route listener...");
+        startLiveCustomerRouteListener(firestore);
+      }, 5000);
+    }
+  );
+
+  return unsubscribeCustomerListener;
+};
+
 /**
  * Scans all customers and sets route to their group's R route
  * (e.g., R001 -> R001R, R002 -> R002R, R003 -> R003R)
