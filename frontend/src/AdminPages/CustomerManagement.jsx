@@ -7,6 +7,7 @@ import { ADMIN_PATH } from "../constant";
 import {
   getCachedUserInfo,
   patchCachedUserInfoCustomer,
+  invalidateClientUserInfoCache,
 } from "../utils/customerInfoClientCache";
 import ExecutionCalendarModal from "../components/ExecutionCalendarModal";
 import {
@@ -112,6 +113,7 @@ export default function CustomerManagement() {
 
   const [assigningZoneId, setAssigningZoneId] = useState(null);
   const [editingZoneId, setEditingZoneId] = useState(null);
+  const [isAutoRetaining, setIsAutoRetaining] = useState(false);
 
   const assignZone = async (id, zoneName) => {
     if (!zoneName || assigningZoneId === id) return;
@@ -168,83 +170,110 @@ export default function CustomerManagement() {
       deliveredCount: getDeliveredCountForCustomer(c),
     }));
 
+  const init = async () => {
+    setLoading(true);
+    try {
+      const userInfoData = await getCachedUserInfo();
+
+      // Fetch all customers
+      const paginationData = userInfoData;
+      const rows = Array.isArray(paginationData.customers)
+        ? paginationData.customers
+        : Array.isArray(paginationData)
+          ? paginationData
+          : [];
+
+      const normalizedRows = normaliseRows(rows);
+      setCustomers(normalizedRows);
+
+      // Fetch category peak potentials for today's weekday
+      try {
+        const peakRes = await axios.get(`${ADMIN_PATH}/category-peak-potentials`);
+        setCategoryPeaks(peakRes.data || {});
+      } catch (err) {
+        console.error("Error fetching category peak potentials:", err);
+      }
+
+      // Fetch zones dynamically
+      try {
+        const zonesRes = await axios.get(`${ADMIN_PATH}/zones`);
+        setZones(zonesRes.data || []);
+      } catch (err) {
+        console.error("Error fetching zones:", err);
+      }
+
+      // Fetch routes dynamically
+      try {
+        const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
+        const routeNames = (routesRes.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
+        setRoutes(routeNames);
+      } catch (err) {
+        console.error("Error fetching routes:", err);
+      }
+
+      // Fetch agents dynamically
+      try {
+        const agentsRes = await axios.get(`${ADMIN_PATH}/get-del-partner`);
+        setAgents(agentsRes.data || []);
+      } catch (err) {
+        console.error("Error fetching agents:", err);
+      }
+
+      // Fetch business types dynamically
+      try {
+        const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
+        const rawBt = btRes.data || [];
+        const sanitizedBt = rawBt
+          .map((t) => {
+            const val = String(t || "").trim();
+            if (!val || val.toLowerCase() === "premium customer") return null;
+            if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
+              return "RESIDENTIAL CUSTOMERS";
+            }
+            return val;
+          })
+          .filter(Boolean);
+        setBusinessTypes(Array.from(new Set(sanitizedBt)));
+      } catch (err) {
+        console.error("Error fetching business types:", err);
+      }
+    } catch (err) {
+      console.error("CustomerManagement init error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ─── Initial load: all customers ──────────────────────────────────────────
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      try {
-        const userInfoData = await getCachedUserInfo();
-
-        // Fetch all customers
-        const paginationData = userInfoData;
-        const rows = Array.isArray(paginationData.customers)
-          ? paginationData.customers
-          : Array.isArray(paginationData)
-            ? paginationData
-            : [];
-
-        const normalizedRows = normaliseRows(rows);
-        setCustomers(normalizedRows);
-
-        // Fetch category peak potentials for today's weekday
-        try {
-          const peakRes = await axios.get(`${ADMIN_PATH}/category-peak-potentials`);
-          setCategoryPeaks(peakRes.data || {});
-        } catch (err) {
-          console.error("Error fetching category peak potentials:", err);
-        }
-
-        // Fetch zones dynamically
-        try {
-          const zonesRes = await axios.get(`${ADMIN_PATH}/zones`);
-          setZones(zonesRes.data || []);
-        } catch (err) {
-          console.error("Error fetching zones:", err);
-        }
-
-        // Fetch routes dynamically
-        try {
-          const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
-          const routeNames = (routesRes.data || []).map(r => typeof r === "string" ? r : r.name).filter(Boolean);
-          setRoutes(routeNames);
-        } catch (err) {
-          console.error("Error fetching routes:", err);
-        }
-
-        // Fetch agents dynamically
-        try {
-          const agentsRes = await axios.get(`${ADMIN_PATH}/get-del-partner`);
-          setAgents(agentsRes.data || []);
-        } catch (err) {
-          console.error("Error fetching agents:", err);
-        }
-
-        // Fetch business types dynamically
-        try {
-          const btRes = await axios.get(`${ADMIN_PATH}/business-types`);
-          const rawBt = btRes.data || [];
-          const sanitizedBt = rawBt
-            .map((t) => {
-              const val = String(t || "").trim();
-              if (!val || val.toLowerCase() === "premium customer") return null;
-              if (val.toLowerCase().includes("residential") || val.toLowerCase().includes("residencial")) {
-                return "RESIDENTIAL CUSTOMERS";
-              }
-              return val;
-            })
-            .filter(Boolean);
-          setBusinessTypes(Array.from(new Set(sanitizedBt)));
-        } catch (err) {
-          console.error("Error fetching business types:", err);
-        }
-      } catch (err) {
-        console.error("CustomerManagement init error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAutoRetention = async () => {
+    if (isAutoRetaining) return;
+    const confirmAction = window.confirm(
+      "Run Auto Retention? This will move today's checked/reached customers to their group R route (e.g. R001R, R002R, R003R)."
+    );
+    if (!confirmAction) return;
+
+    setIsAutoRetaining(true);
+    try {
+      const res = await axios.post(`${ADMIN_PATH}/customers/auto-retention`);
+      const count = res.data?.count ?? 0;
+      invalidateClientUserInfoCache();
+      await init();
+      alert(
+        count > 0
+          ? `Auto Retention Complete: ${count} reached customer(s) moved to their 00XR route.`
+          : "Auto Retention Complete: No reached customers needed moving."
+      );
+    } catch (err) {
+      console.error("Auto Retention error:", err);
+      alert(err.response?.data?.message || "Failed to trigger auto retention");
+    } finally {
+      setIsAutoRetaining(false);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1318,6 +1347,15 @@ export default function CustomerManagement() {
                 Download {activeTab}
               </button>
             )}
+
+            <button
+              onClick={handleAutoRetention}
+              disabled={isAutoRetaining}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+              title="Move today's checked customers to their 00XR route"
+            >
+              {isAutoRetaining ? "Processing..." : "Auto Retention"}
+            </button>
           </div>
 
           {/* ⭐ Total Active: dynamic based on selected tab and manual overrides */}

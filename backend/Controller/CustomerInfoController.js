@@ -10,13 +10,6 @@ import {
   normalizePeakFrequency,
   updateCustomersPeak30Days,
 } from "../utils/peakCalculations.js";
-import {
-  BAD_ROAD_ROUTE,
-  isCustomerStatusReached,
-  extractRouteGroup,
-  isAlreadyInTargetRRoute,
-  resolveTargetRRouteSync,
-} from "../utils/badRoadRouteLogic.js";
 
 const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const MAX_CUSTOMER_PAGE_SIZE = 50;
@@ -205,17 +198,7 @@ const buildCustomerInfoPayload = (
     updateFields.route = defaultOnboardingRoute;
   }
 
-  // ⭐ Customers whose status is reached (any reason) -> stay in group, route set to R route (R001R, R002R, R003R...)
   const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
-  if (isCustomerStatusReached(customerData, todayStr)) {
-    const group = extractRouteGroup(currentRoute);
-    const targetRCode = `${group}R`;
-    if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
-      const targetRRoute = resolveTargetRRouteSync(currentRoute);
-      updateFields.route = targetRRoute;
-      route = targetRRoute;
-    }
-  }
   const peakFreqNum = Number(peakFrequency.slice(1)) || 0;
   const savedFreqNum = savedPeakFreq ? Number(savedPeakFreq.slice(1)) || 0 : 0;
   if (hasAnyDeliveries && peakFreqNum > savedFreqNum) {
@@ -842,17 +825,6 @@ const specificUser = async (req, res) => {
     const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
     const currentRoute = (data.route || "").trim();
     let route = (!currentRoute || currentRoute === "UNASSIGNED") ? defaultOnboardingRoute : currentRoute;
-
-    const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
-    if (isCustomerStatusReached(data, todayStr)) {
-      const group = extractRouteGroup(currentRoute);
-      const targetRCode = `${group}R`;
-      if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
-        const targetRRoute = resolveTargetRRouteSync(currentRoute);
-        route = targetRRoute;
-        userDoc.ref.update({ route: targetRRoute }).catch(console.warn);
-      }
-    }
 
     const payload = {
       id: userDoc.id,

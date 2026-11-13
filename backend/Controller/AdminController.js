@@ -16,13 +16,6 @@ import {
   computePeakFrequency30Days,
   normalizePeakFrequency,
 } from "../utils/peakCalculations.js";
-import {
-  BAD_ROAD_ROUTE,
-  isCustomerStatusReached,
-  extractRouteGroup,
-  isAlreadyInTargetRRoute,
-  resolveTargetRRouteSync,
-} from "../utils/badRoadRouteLogic.js";
 
 const INDIA_TZ = "Asia/Kolkata";
 
@@ -1034,16 +1027,6 @@ const getRetentionCustomers = async (req, res) => {
         const metrics = getCustomerRetentionMetrics(customer);
 
         let customerRoute = customer.route || customer.routeName || customer.route_name || customer.Route || "";
-        if (isCustomerStatusReached(customer, todayKey)) {
-          const group = extractRouteGroup(customerRoute);
-          const targetRCode = `${group}R`;
-          if (!isAlreadyInTargetRRoute(customerRoute, targetRCode)) {
-            const targetRRoute = resolveTargetRRouteSync(customerRoute);
-            customerRoute = targetRRoute;
-            customer.route = targetRRoute;
-            db.collection("customers").doc(customer.id).update({ route: targetRRoute }).catch(() => {});
-          }
-        }
 
         rows.push({
           id: customer.id,
@@ -4702,14 +4685,6 @@ const getManualPriorityCustomers = async (req, res) => {
             attendedDate = dKey;
             attendedAgent = entry.agentName || null;
             attendedReason = entry.reason || entry.checkReason || "Store Checked";
-            const currentRoute = (data.route || "").trim();
-            const group = extractRouteGroup(currentRoute);
-            const targetRCode = `${group}R`;
-            if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
-              const targetRRoute = resolveTargetRRouteSync(currentRoute);
-              data.route = targetRRoute;
-              doc.ref.update({ route: targetRRoute }).catch(() => {});
-            }
             break;
           }
         }

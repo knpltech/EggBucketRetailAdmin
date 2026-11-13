@@ -141,10 +141,18 @@ router.put("/routes/update", updateRoute);
 router.get("/routes", getRoutes);
 router.post("/customers/batch-update-routes", batchUpdateCustomerRoutes);
 router.post("/customers/batch-update-logics", batchUpdateCustomerLogics);
+router.post("/customers/auto-retention", async (req, res) => {
+  try {
+    const count = await syncBadRoadCustomers();
+    res.json({ success: true, count, message: `Auto Retention: Synced ${count} reached customer(s) to their group R route.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 router.post("/customers/sync-bad-road-routes", async (req, res) => {
   try {
     const count = await syncBadRoadCustomers();
-    res.json({ success: true, count, message: `Synced ${count} customers to Bad Road route.` });
+    res.json({ success: true, count, message: `Auto Retention: Synced ${count} reached customer(s) to their group R route.` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

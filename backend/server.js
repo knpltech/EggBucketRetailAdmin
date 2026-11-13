@@ -6,7 +6,6 @@ import adminRouter from "./Routes/AdminRoutes.js";
 import { sendVoiceOtp, verifyVoiceOtp } from "./Controller/AuthController.js";
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
 import { startSkipDeliveryCron } from "./jobs/skipDeliveryCron.js";
-import { syncBadRoadCustomers, startLiveCustomerRouteListener } from "./utils/badRoadRouteLogic.js";
 import "./jobs/businessAnalyticsCron.js";
 
 dotenv.config();
@@ -21,8 +20,6 @@ const env = {
 
 initializeFirebaseAdmin();
 startSkipDeliveryCron();
-syncBadRoadCustomers().catch((err) => console.warn("Initial syncBadRoadCustomers error:", err));
-startLiveCustomerRouteListener();
 
 const app = express();
 // Enable CORS - support multiple origins via FRONTEND_ORIGINS (comma-separated)

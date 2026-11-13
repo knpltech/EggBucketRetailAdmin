@@ -46,6 +46,7 @@ const CustomerInfo = () => {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [pageCursors, setPageCursors] = useState({ 1: "" });
   const [pageLoading, setPageLoading] = useState(false);
+  const [isAutoRetaining, setIsAutoRetaining] = useState(false);
 
   const navigate = useNavigate();
 
@@ -505,6 +506,32 @@ const CustomerInfo = () => {
     }
   };
 
+  const handleAutoRetention = async () => {
+    if (isAutoRetaining) return;
+    const confirmAction = window.confirm(
+      "Run Auto Retention? This will move today's checked/reached customers to their group R route (e.g. R001R, R002R, R003R)."
+    );
+    if (!confirmAction) return;
+
+    setIsAutoRetaining(true);
+    try {
+      const res = await axios.post(`${ADMIN_PATH}/customers/auto-retention`);
+      const count = res.data?.count ?? 0;
+      invalidateClientUserInfoCache();
+      await fetchCustomers({ page: currentPage });
+      alert(
+        count > 0
+          ? `Auto Retention Complete: ${count} reached customer(s) moved to their 00XR route.`
+          : "Auto Retention Complete: No reached customers needed moving."
+      );
+    } catch (err) {
+      console.error("Auto Retention error:", err);
+      alert(err.response?.data?.message || "Failed to trigger auto retention");
+    } finally {
+      setIsAutoRetaining(false);
+    }
+  };
+
   const sortedCustomers = useMemo(() => {
     return [...customers].sort((a, b) => {
       if (sortOption === "createdAt") {
@@ -653,6 +680,15 @@ const CustomerInfo = () => {
             className="bg-green-600 text-white px-4 py-2 rounded font-medium shadow-sm hover:bg-green-700 transition-colors"
           >
             Export Excel
+          </button>
+
+          <button
+            onClick={handleAutoRetention}
+            disabled={isAutoRetaining}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded font-medium shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+            title="Move today's checked customers to their 00XR route"
+          >
+            {isAutoRetaining ? "Processing..." : "Auto Retention"}
           </button>
 
         </div>
