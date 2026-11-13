@@ -43,6 +43,7 @@ export default function CustomerRoutes() {
   const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState(false);
   const [selectedResetAgent, setSelectedResetAgent] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+  const [isAutoRetaining, setIsAutoRetaining] = useState(false);
 
   // Preview screen state (below Assigned Deliverymen)
   const [previewAgentId, setPreviewAgentId] = useState("");
@@ -750,6 +751,44 @@ export default function CustomerRoutes() {
     }
   };
 
+  const handleAutoRetention = async () => {
+    if (isAutoRetaining) return;
+    const confirmAction = window.confirm(
+      "Run Auto Retention? This will move today's checked/reached customers to their group R route (e.g. R001R, R002R, R003R)."
+    );
+    if (!confirmAction) return;
+
+    setIsAutoRetaining(true);
+    try {
+      const res = await axios.post(`${ADMIN_PATH}/customers/auto-retention`);
+      const count = res.data?.count ?? 0;
+      invalidateClientUserInfoCache();
+
+      // Refresh customers and routes in Route Management
+      const userInfoData = await getCachedUserInfo();
+      const rows = Array.isArray(userInfoData.customers)
+        ? userInfoData.customers
+        : Array.isArray(userInfoData)
+          ? userInfoData
+          : [];
+      setCustomers(rows);
+
+      const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
+      setRoutes(routesRes.data || []);
+
+      alert(
+        count > 0
+          ? `Auto Retention Complete: ${count} reached customer(s) moved to their 00XR route.`
+          : "Auto Retention Complete: No reached customers needed moving."
+      );
+    } catch (err) {
+      console.error("Auto Retention error:", err);
+      alert(err.response?.data?.message || "Failed to trigger auto retention");
+    } finally {
+      setIsAutoRetaining(false);
+    }
+  };
+
   const handleSelectRoute = (routeVal) => {
     setAssignSelectedRoute(routeVal);
     setSelectedAgentIds([]); // Clean state: do not auto-select any agent
@@ -1112,6 +1151,15 @@ export default function CustomerRoutes() {
             className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit cursor-pointer flex items-center gap-1.5"
           >
             <span>+ Add Route</span>
+          </button>
+
+          <button
+            onClick={handleAutoRetention}
+            disabled={isAutoRetaining}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            title="Move today's checked/reached customers to their group R route (e.g. R001R, R002R, R003R)"
+          >
+            <span>{isAutoRetaining ? "Processing..." : "Auto Retention"}</span>
           </button>
 
           {/* RESET ROUTES BUTTON & AGENT SELECTOR */}
