@@ -44,6 +44,7 @@ export default function CustomerRoutes() {
   const [selectedResetAgent, setSelectedResetAgent] = useState("");
   const [isResetting, setIsResetting] = useState(false);
   const [isAutoRetaining, setIsAutoRetaining] = useState(false);
+  const [isAutoDetaining, setIsAutoDetaining] = useState(false);
 
   // Preview screen state (below Assigned Deliverymen)
   const [previewAgentId, setPreviewAgentId] = useState("");
@@ -752,9 +753,9 @@ export default function CustomerRoutes() {
   };
 
   const handleAutoRetention = async () => {
-    if (isAutoRetaining) return;
+    if (isAutoRetaining || isAutoDetaining) return;
     const confirmAction = window.confirm(
-      "Run Auto Retention? This will move today's checked/reached customers to their group R route (e.g. R001R, R002R, R003R)."
+      "Run Auto Retain? This will move today's checked (A, B, C, D) customers to their group R route (e.g. R002R, R003R)."
     );
     if (!confirmAction) return;
 
@@ -778,14 +779,52 @@ export default function CustomerRoutes() {
 
       alert(
         count > 0
-          ? `Auto Retention Complete: ${count} reached customer(s) moved to their 00XR route.`
-          : "Auto Retention Complete: No reached customers needed moving."
+          ? `Auto Retain Complete: ${count} reached customer(s) moved to their R route.`
+          : "Auto Retain Complete: No reached customers in (A, B, C, D) needed moving."
       );
     } catch (err) {
       console.error("Auto Retention error:", err);
-      alert(err.response?.data?.message || "Failed to trigger auto retention");
+      alert(err.response?.data?.message || "Failed to trigger auto retain");
     } finally {
       setIsAutoRetaining(false);
+    }
+  };
+
+  const handleAutoDetain = async () => {
+    if (isAutoRetaining || isAutoDetaining) return;
+    const confirmAction = window.confirm(
+      "Run Auto Detain? This will transfer all customers currently in R sub-routes back to their respective R00XA route."
+    );
+    if (!confirmAction) return;
+
+    setIsAutoDetaining(true);
+    try {
+      const res = await axios.post(`${ADMIN_PATH}/customers/auto-detain`);
+      const count = res.data?.count ?? 0;
+      invalidateClientUserInfoCache();
+
+      // Refresh customers and routes in Route Management
+      const userInfoData = await getCachedUserInfo();
+      const rows = Array.isArray(userInfoData.customers)
+        ? userInfoData.customers
+        : Array.isArray(userInfoData)
+          ? userInfoData
+          : [];
+      setCustomers(rows);
+
+      const routesRes = await axios.get(`${ADMIN_PATH}/routes`);
+      setRoutes(routesRes.data || []);
+
+      alert(
+        count > 0
+          ? `Auto Detain Complete: ${count} customer(s) transferred back to their R00XA route.`
+          : "Auto Detain Complete: No customers in R routes to transfer."
+      );
+    } catch (err) {
+      console.error("Auto Detain error:", err);
+      alert(err.response?.data?.message || "Failed to trigger auto detain");
+    } finally {
+      setIsAutoDetaining(false);
     }
   };
 
@@ -1155,11 +1194,20 @@ export default function CustomerRoutes() {
 
           <button
             onClick={handleAutoRetention}
-            disabled={isAutoRetaining}
+            disabled={isAutoRetaining || isAutoDetaining}
             className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-            title="Move today's checked/reached customers to their group R route (e.g. R001R, R002R, R003R)"
+            title="Move today's checked (A,B,C,D) customers to their group R route"
           >
-            <span>{isAutoRetaining ? "Processing..." : "Auto Retention"}</span>
+            <span>{isAutoRetaining ? "Processing..." : "Auto Retain"}</span>
+          </button>
+
+          <button
+            onClick={handleAutoDetain}
+            disabled={isAutoRetaining || isAutoDetaining}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors h-fit cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            title="Transfer customers in R sub-routes back to their respective R00XA route"
+          >
+            <span>{isAutoDetaining ? "Processing..." : "Auto Detain"}</span>
           </button>
 
           {/* RESET ROUTES BUTTON & AGENT SELECTOR */}

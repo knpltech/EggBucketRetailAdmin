@@ -1,20 +1,7 @@
 import { getFirestore } from "firebase-admin/firestore";
 import cache from "../Controller/cache.js";
 
-export const BAD_ROAD_ROUTE = "R001R- Bad Road Customers";
 const INDIA_TZ = "Asia/Kolkata";
-
-/**
- * Known R routes for standard parent route groups.
- * R001A,B,C,D -> R001R
- * R002A,B,C,D -> R002R
- * R003A,B,C,D -> R003R
- */
-export const KNOWN_R_ROUTES = {
-  R001R: "R001R- Bad Road Customers",
-  R002R: "R002R- SRR Retention by ACR Agent-After Checked Out Reset & Turn ON",
-  R003R: "R003R-SRR checked customers shift after 12PM",
-};
 
 export const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) => {
   try {
@@ -37,103 +24,96 @@ export const getDateStringInTimeZone = (date = new Date(), timeZone = INDIA_TZ) 
 };
 
 /**
- * Extracts the 3-digit parent route group from a route string.
- * Format: R (prefix) + 3 digits (e.g. R001, R002, R003).
+ * Extracts group and sub-code from route string.
  * Examples:
- * "R001A" -> "R001"
- * "R001N-Onboarding Customers" -> "R001"
- * "R002D-G8+ (Growth-12PM Reset & Transfer to Agent 2))" -> "R002"
- * "R003B (Regular-12PM Reset & Transfer to Agent 2)" -> "R003"
+ * "R002A-Parap..." -> { group: "R002", subCode: "A" }
+ * "R002B (Regular..." -> { group: "R002", subCode: "B" }
+ * "R002R- SRR..." -> { group: "R002", subCode: "R" }
+ * "R001N-Onboarding..." -> { group: "R001", subCode: "N" }
  */
-export const extractRouteGroup = (routeName) => {
-  if (!routeName) return "R001";
+export const getRouteGroupAndSubCode = (routeName) => {
+  if (!routeName) return { group: "R001", subCode: null };
   const str = String(routeName).trim();
-  const match = str.match(/^(?:ROUTE\s*|R)[\s\-_]*(\d+)/i);
+  const match = str.match(/^(?:ROUTE\s*|R)[\s\-_]*(\d+)\s*([A-Za-z])?/i);
   if (match && match[1]) {
     const num = match[1].padStart(3, "0");
-    return `R${num}`;
+    const group = `R${num}`;
+    const subCode = match[2] ? match[2].toUpperCase() : null;
+    return { group, subCode };
   }
-  return "R001";
+  return { group: "R001", subCode: null };
+};
+
+export const extractRouteGroup = (routeName) => {
+  return getRouteGroupAndSubCode(routeName).group;
 };
 
 /**
- * Checks whether a customer's current route is already in the target R sub-route.
+ * Checks whether a customer's route belongs to sub-routes A, B, C, or D.
  */
-export const isAlreadyInTargetRRoute = (currentRoute, targetRCode) => {
-  if (!currentRoute || !targetRCode) return false;
+export const isRouteInABCD = (routeName) => {
+  const { subCode } = getRouteGroupAndSubCode(routeName);
+  return ["A", "B", "C", "D"].includes(subCode);
+};
+
+/**
+ * Checks whether a customer's route belongs to sub-route R (e.g., R002R, R003R).
+ */
+export const isRouteInR = (routeName) => {
+  const { subCode } = getRouteGroupAndSubCode(routeName);
+  return subCode === "R";
+};
+
+/**
+ * Checks whether a customer's current route is already in the target sub-route prefix.
+ */
+export const isAlreadyInTargetPrefix = (currentRoute, targetPrefix) => {
+  if (!currentRoute || !targetPrefix) return false;
   const str = String(currentRoute).trim().toUpperCase();
-  return str.startsWith(targetRCode.toUpperCase());
+  return str.startsWith(targetPrefix.toUpperCase());
+};
+
+export const isAlreadyInTargetRRoute = (currentRoute, targetRCode) => {
+  return isAlreadyInTargetPrefix(currentRoute, targetRCode);
 };
 
 /**
- * Synchronous resolver for target R route for a customer.
- * Keeps customer within their parent group (R001 -> R001R, R002 -> R002R, R003 -> R003R).
+ * Dynamically resolves target route from the DB routes list.
+ * e.g., currentRoute "R002B...", targetSubCode "R" -> "R002R- SRR Retention by ARC Agent..."
+ * currentRoute "R002R...", targetSubCode "A" -> "R002A-Parap-Choodasandra-Haralur..."
  */
-export const resolveTargetRRouteSync = (currentRoute, routesList = []) => {
-  const group = extractRouteGroup(currentRoute);
-  const targetCode = `${group}R`;
-
-  if (KNOWN_R_ROUTES[targetCode]) {
-    return KNOWN_R_ROUTES[targetCode];
-  }
+export const resolveTargetSubRouteSync = (currentRoute, targetSubCode, routesList = []) => {
+  const { group } = getRouteGroupAndSubCode(currentRoute);
+  const targetPrefix = `${group}${targetSubCode}`.toUpperCase();
 
   if (Array.isArray(routesList) && routesList.length > 0) {
     const matched = routesList.find((r) => {
       const rName = (typeof r === "string" ? r : r?.name || "").trim().toUpperCase();
-      return rName.startsWith(targetCode.toUpperCase());
+      return rName.startsWith(targetPrefix);
     });
     if (matched) {
-      return typeof matched === "string" ? matched : matched.name;
+      const name = typeof matched === "string" ? matched : matched.name;
+      // Strip any UI agent label like " (3 agents)"
+      return name.replace(/\s*\(\d+\s*agents?\)$/i, "").trim();
     }
   }
 
-  return `${targetCode}- Bad Road Customers`;
+  // Fallback defaults if routesList is empty
+  const FALLBACKS = {
+    R002R: "R002R- SRR Retention by ARC Agent-After Checked Out Reset & Turn ON",
+    R003R: "R003R-SRR checked customers shift after 12PM",
+    R002A: "R002A-Parap-Choodasandra-Haralur(Regular-12PM Reset & Transfer to Agent 2)",
+    R003A: "R003A-Bandepalya-Kudlu Gate-Singasandra (Regular-12PM Reset & Transfer to Agent 2)",
+  };
+  return FALLBACKS[targetPrefix] || targetPrefix;
 };
 
-/**
- * Asynchronous resolver for target R route.
- */
-export const resolveTargetRRoute = async (currentRoute, db = null) => {
-  const group = extractRouteGroup(currentRoute);
-  const targetCode = `${group}R`;
+export const resolveTargetRRouteSync = (currentRoute, routesList = []) => {
+  return resolveTargetSubRouteSync(currentRoute, "R", routesList);
+};
 
-  if (KNOWN_R_ROUTES[targetCode]) {
-    return KNOWN_R_ROUTES[targetCode];
-  }
-
-  try {
-    const firestore = db || getFirestore();
-    const cacheKey = "routes:list";
-    let routes = cache.get(cacheKey);
-
-    if (!routes) {
-      const snap = await firestore.collection("routes").get();
-      routes = snap.docs.map((d) => d.data()?.name).filter(Boolean);
-      cache.set(cacheKey, routes, 1800);
-    }
-
-    const matched = routes.find((r) => {
-      const rName = (typeof r === "string" ? r : r?.name || "").trim().toUpperCase();
-      return rName.startsWith(targetCode.toUpperCase());
-    });
-
-    if (matched) {
-      return typeof matched === "string" ? matched : matched.name;
-    }
-
-    const fallbackName = `${targetCode}- Bad Road Customers`;
-    await firestore.collection("routes").add({
-      name: fallbackName,
-      routeCode: targetCode,
-      priorityId: null,
-      createdAt: Date.now(),
-    });
-    cache.del(cacheKey);
-    return fallbackName;
-  } catch (err) {
-    console.warn("Error in resolveTargetRRoute:", err);
-    return `${targetCode}- Bad Road Customers`;
-  }
+export const resolveTargetARouteSync = (currentRoute, routesList = []) => {
+  return resolveTargetSubRouteSync(currentRoute, "A", routesList);
 };
 
 /**
@@ -149,7 +129,6 @@ export const isCustomerStatusReached = (customerData, todayStr = null) => {
   const effectiveToday = todayStr || getDateStringInTimeZone(new Date(), INDIA_TZ);
   const todayEntry = customerData.last8Days[effectiveToday];
 
-  // If there is no entry for today, the customer is "Pending" today -> NOT reached
   if (!todayEntry) {
     return false;
   }
@@ -159,7 +138,7 @@ export const isCustomerStatusReached = (customerData, todayStr = null) => {
     ? todayEntry.trim().toLowerCase()
     : String(todayEntry.status || todayEntry.type || "").trim().toLowerCase();
 
-  // If delivered today -> NOT reached (delivered status takes absolute precedence)
+  // If delivered today -> NOT reached
   if (status === "delivered") {
     return false;
   }
@@ -174,7 +153,6 @@ export const isCustomerStatusReached = (customerData, todayStr = null) => {
     return true;
   }
 
-  // Specific known reasons
   const reasonStatuses = [
     "price_mismatch",
     "price_issue",
@@ -195,38 +173,16 @@ export const isCustomerStatusReached = (customerData, todayStr = null) => {
 };
 
 /**
- * Ensures known R route documents exist in "routes" collection.
- */
-export const ensureBadRoadRouteExists = async (db) => {
-  try {
-    for (const [code, name] of Object.entries(KNOWN_R_ROUTES)) {
-      const snap = await db.collection("routes").where("name", "==", name).limit(1).get();
-      if (snap.empty) {
-        await db.collection("routes").add({
-          name,
-          routeCode: code,
-          priorityId: null,
-          createdAt: Date.now(),
-        });
-      }
-    }
-    cache.del("routes:list");
-    cache.del("routes:priority:list");
-  } catch (err) {
-    console.warn("ensureBadRoadRouteExists error:", err.message);
-  }
-};
-
-/**
- * Scans all customers and sets route to their group's R route
- * (e.g., R001 -> R001R, R002 -> R002R, R003 -> R003R)
- * ONLY for customers whose status TODAY is reached/checked (and not delivered).
- * Triggered on-demand by the "Auto Retention" button.
+ * AUTO RETENTION (Auto Retain):
+ * ONLY moves customers:
+ * 1. Whose route ending is in (A, B, C, D)
+ * 2. AND whose status TODAY is reached/checked (and not delivered)
+ * Moves them to their respective R00XR route (e.g. R002 -> R002R, R003 -> R003R).
+ * NEVER creates new route documents!
  */
 export const syncBadRoadCustomers = async (db = null) => {
   try {
     const firestore = db || getFirestore();
-    await ensureBadRoadRouteExists(firestore);
 
     const todayStr = getDateStringInTimeZone(new Date(), INDIA_TZ);
     const snap = await firestore.collection("customers").get();
@@ -238,13 +194,19 @@ export const syncBadRoadCustomers = async (db = null) => {
     const updates = [];
     snap.docs.forEach((doc) => {
       const data = doc.data() || {};
-      // ONLY customers whose status TODAY is reached/checked (and not delivered)
+      const currentRoute = (data.route || "").trim();
+
+      // ⭐ ONLY customers whose route ending is in (A, B, C, D)
+      if (!isRouteInABCD(currentRoute)) {
+        return;
+      }
+
+      // ⭐ ONLY if status TODAY is reached / checked (not delivered, not pending)
       if (isCustomerStatusReached(data, todayStr)) {
-        const currentRoute = (data.route || "").trim();
-        const group = extractRouteGroup(currentRoute);
+        const { group } = getRouteGroupAndSubCode(currentRoute);
         const targetRCode = `${group}R`;
 
-        if (!isAlreadyInTargetRRoute(currentRoute, targetRCode)) {
+        if (!isAlreadyInTargetPrefix(currentRoute, targetRCode)) {
           const targetRoute = resolveTargetRRouteSync(currentRoute, routesList);
           updates.push({ ref: doc.ref, id: doc.id, targetRoute });
         }
@@ -252,7 +214,7 @@ export const syncBadRoadCustomers = async (db = null) => {
     });
 
     if (updates.length > 0) {
-      console.log(`[badRoadRouteLogic] Auto Retention: Syncing ${updates.length} reached customers to their group R route...`);
+      console.log(`[badRoadRouteLogic] Auto Retention: Moving ${updates.length} reached (A,B,C,D) customers to their group R route...`);
       for (let i = 0; i < updates.length; i += 500) {
         const batch = firestore.batch();
         updates.slice(i, i + 500).forEach(({ ref, targetRoute }) => {
@@ -272,12 +234,75 @@ export const syncBadRoadCustomers = async (db = null) => {
       } catch (cacheErr) {
         console.warn("Cache invalidate error in syncBadRoadCustomers:", cacheErr);
       }
-      console.log(`[badRoadRouteLogic] Auto Retention: Successfully synced ${updates.length} customers to their group R route.`);
+      console.log(`[badRoadRouteLogic] Auto Retention: Successfully moved ${updates.length} customers.`);
     }
 
     return updates.length;
   } catch (err) {
     console.error("Error in syncBadRoadCustomers:", err);
+    throw err;
+  }
+};
+
+/**
+ * AUTO DETAIN:
+ * Transfers customers whose route ends in R (e.g. R002R, R003R)
+ * back to their respective R00XA route (e.g. R002A, R003A).
+ * NEVER creates new route documents!
+ */
+export const autoDetainCustomers = async (db = null) => {
+  try {
+    const firestore = db || getFirestore();
+
+    const snap = await firestore.collection("customers").get();
+
+    // Cache the routes list for dynamic lookups
+    const routesSnap = await firestore.collection("routes").get();
+    const routesList = routesSnap.docs.map((d) => d.data()?.name).filter(Boolean);
+
+    const updates = [];
+    snap.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      const currentRoute = (data.route || "").trim();
+
+      // ⭐ ONLY customers whose route ends in R
+      if (!isRouteInR(currentRoute)) {
+        return;
+      }
+
+      const targetARoute = resolveTargetARouteSync(currentRoute, routesList);
+      if (targetARoute && targetARoute !== currentRoute) {
+        updates.push({ ref: doc.ref, id: doc.id, targetRoute: targetARoute });
+      }
+    });
+
+    if (updates.length > 0) {
+      console.log(`[badRoadRouteLogic] Auto Detain: Transferring ${updates.length} customers in R routes to their respective R00XA route...`);
+      for (let i = 0; i < updates.length; i += 500) {
+        const batch = firestore.batch();
+        updates.slice(i, i + 500).forEach(({ ref, targetRoute }) => {
+          batch.update(ref, { route: targetRoute });
+        });
+        await batch.commit();
+      }
+
+      try {
+        const keys = typeof cache.keys === "function" ? cache.keys() : [];
+        const customerInfoKeys = keys.filter((key) => key.startsWith("customerInfo:userInfo"));
+        if (customerInfoKeys.length > 0) cache.del(customerInfoKeys);
+        const retentionKeys = keys.filter((key) => key.startsWith("customerRetention:"));
+        if (retentionKeys.length > 0) cache.del(retentionKeys);
+        cache.del("routes:list");
+        cache.del("routes:priority:list");
+      } catch (cacheErr) {
+        console.warn("Cache invalidate error in autoDetainCustomers:", cacheErr);
+      }
+      console.log(`[badRoadRouteLogic] Auto Detain: Successfully transferred ${updates.length} customers to their R00XA routes.`);
+    }
+
+    return updates.length;
+  } catch (err) {
+    console.error("Error in autoDetainCustomers:", err);
     throw err;
   }
 };

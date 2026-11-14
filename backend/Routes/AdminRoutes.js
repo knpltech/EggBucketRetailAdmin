@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { authenticateToken } from "../middleware/authMiddleware.js";
-import { syncBadRoadCustomers } from "../utils/badRoadRouteLogic.js";
+import { syncBadRoadCustomers, autoDetainCustomers } from "../utils/badRoadRouteLogic.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -153,6 +153,14 @@ router.post("/customers/sync-bad-road-routes", async (req, res) => {
   try {
     const count = await syncBadRoadCustomers();
     res.json({ success: true, count, message: `Auto Retention: Synced ${count} reached customer(s) to their group R route.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+router.post("/customers/auto-detain", async (req, res) => {
+  try {
+    const count = await autoDetainCustomers();
+    res.json({ success: true, count, message: `Auto Detain: Transferred ${count} customer(s) in R routes back to their R00XA route.` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
