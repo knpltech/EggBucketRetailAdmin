@@ -187,16 +187,22 @@ export default function CustomerRoutes() {
     const onboardingRouteKey =
       Object.keys(routeMap).find(
         (r) =>
-          r === "R001N-Onboarding Customers" ||
           r === "R001N-Onboarding Customers (Everyone)" ||
-          r.includes("R001N") ||
-          r.toLowerCase().includes("onboarding")
+          r === "R001N-Onboarding Customers" ||
+          (r.includes("R001N") && r.toLowerCase().includes("onboarding"))
       ) || "R001N-Onboarding Customers (Everyone)";
     const defaultRouteFallback = routeMap[onboardingRouteKey] ? onboardingRouteKey : null;
 
     // Process customers
     customers.forEach(customer => {
-      const route = customer.route || defaultRouteFallback;
+      const rawRoute = (customer.route || "").trim();
+      const isUnassigned =
+        !rawRoute ||
+        rawRoute.toUpperCase() === "UNASSIGNED" ||
+        rawRoute === "R001N-Onboarding Customers" ||
+        rawRoute.toLowerCase() === "new" ||
+        rawRoute.toLowerCase() === "new customer";
+      const route = isUnassigned ? defaultRouteFallback : rawRoute;
       if (route && routeMap[route]) {
         routeMap[route].totalCustomers += 1;
 

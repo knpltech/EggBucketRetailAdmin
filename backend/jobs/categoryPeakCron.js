@@ -150,9 +150,10 @@ export const calculateAndSavePeakPotentials = async (db, customersSnap) => {
     const peakPotential = computePeakPotentialNumber(last8Days);
     const isPrime = peakPotential >= 10;
 
-    // Check if ONBOARDING (no zone)
+    // Check if ONBOARDING (no zone or in onboarding route)
     const zone = String(data.zone || "").trim().toUpperCase();
-    const isOnboarding = !zone || zone === "UNASSIGNED";
+    const route = String(data.route || "").trim();
+    const isOnboarding = !zone || zone === "UNASSIGNED" || route.toLowerCase().includes("onboarding");
     const isCallingCustomer = zone === "CALLING CUSTOMER";
 
     // Add to ALL

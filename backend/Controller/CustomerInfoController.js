@@ -126,7 +126,7 @@ const resolvePeakFrequency = (customerData = {}) => {
 };
 
 const getDefaultOnboardingRoute = async (db) => {
-  const cacheKey = "default:onboarding:route";
+  const cacheKey = "default:onboarding:route:v2";
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -136,9 +136,9 @@ const getDefaultOnboardingRoute = async (db) => {
     let found = null;
     snap.forEach((doc) => {
       const name = doc.data()?.name || "";
-      if (name === "R001N-Onboarding Customers" || name === "R001N-Onboarding Customers (Everyone)") {
+      if (name === "R001N-Onboarding Customers (Everyone)") {
         found = name;
-      } else if (!found && (name.includes("R001N") || name.toLowerCase().includes("onboarding"))) {
+      } else if (!found && (name === "R001N-Onboarding Customers" || (name.includes("R001N") && name.toLowerCase().includes("onboarding")))) {
         found = name;
       }
     });
@@ -189,12 +189,17 @@ const buildCustomerInfoPayload = (
 
   // Default route to onboarding route if unassigned or missing
   const currentRoute = (customerData.route || "").trim();
-  const isUnassignedRoute = !currentRoute || currentRoute === "UNASSIGNED";
+  const isUnassignedRoute =
+    !currentRoute ||
+    currentRoute.toUpperCase() === "UNASSIGNED" ||
+    currentRoute.toLowerCase() === "new" ||
+    currentRoute.toLowerCase() === "new customer" ||
+    currentRoute === "R001N-Onboarding Customers";
   let route = isUnassignedRoute ? defaultOnboardingRoute : currentRoute;
 
   // Build update object — only include fields that need saving
   const updateFields = {};
-  if (isUnassignedRoute && defaultOnboardingRoute) {
+  if (isUnassignedRoute && defaultOnboardingRoute && currentRoute !== defaultOnboardingRoute) {
     updateFields.route = defaultOnboardingRoute;
   }
 
@@ -824,7 +829,13 @@ const specificUser = async (req, res) => {
     const data = userDoc.data() || {};
     const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
     const currentRoute = (data.route || "").trim();
-    let route = (!currentRoute || currentRoute === "UNASSIGNED") ? defaultOnboardingRoute : currentRoute;
+    const isUnassignedRoute =
+      !currentRoute ||
+      currentRoute.toUpperCase() === "UNASSIGNED" ||
+      currentRoute.toLowerCase() === "new" ||
+      currentRoute.toLowerCase() === "new customer" ||
+      currentRoute === "R001N-Onboarding Customers";
+    let route = isUnassignedRoute ? defaultOnboardingRoute : currentRoute;
 
     const payload = {
       id: userDoc.id,
@@ -1420,4 +1431,5 @@ export {
   invalidateActiveCountCache,
   computePeakPotentialNumber,
   getDefaultOnboardingRoute,
+  invalidateCustomerInfoCache,
 };

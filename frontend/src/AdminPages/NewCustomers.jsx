@@ -560,7 +560,11 @@ export default function NewCustomers() {
       );
 
       if (res.data?.success) {
-        showToast(`Registration marked as ${newStatus}`);
+        showToast(
+          newStatus === "APPROVED"
+            ? "Customer APPROVED & assigned to Onboarding Route (R001N)!"
+            : `Registration marked as ${newStatus}`
+        );
         setCustomers((prev) =>
           prev.map((c) =>
             c.id === customer.id
@@ -667,15 +671,14 @@ export default function NewCustomers() {
     const defaultRoute =
       routesList.find(
         (r) =>
-          r === "R001N-Onboarding Customers" ||
           r === "R001N-Onboarding Customers (Everyone)" ||
-          r.includes("R001N") ||
-          r.toLowerCase().includes("onboarding")
+          r === "R001N-Onboarding Customers" ||
+          (r.includes("R001N") && r.toLowerCase().includes("onboarding"))
       ) || "R001N-Onboarding Customers (Everyone)";
 
     setConvertingCustomer(customer);
     setConvertForm({
-      zone: zonesList[0] || "UNASSIGNED",
+      zone: "UNASSIGNED",
       route: defaultRoute,
       potential: "T1",
       remarks: `Converted from App Registration (${customer.source || "App"})`,
@@ -2757,18 +2760,18 @@ export default function NewCustomers() {
                   Assign Delivery Route
                 </label>
                 <select
-                  value={convertForm.route}
+                  value={convertForm.route || "R001N-Onboarding Customers (Everyone)"}
                   onChange={(e) =>
                     setConvertForm({ ...convertForm, route: e.target.value })
                   }
                   className="w-full h-10 bg-white border border-gray-300 rounded-xl px-3 font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value={convertForm.route || "R001N-Onboarding Customers (Everyone)"}>
-                    {convertForm.route || "R001N-Onboarding Customers (Everyone)"} (Default)
+                  <option value="R001N-Onboarding Customers (Everyone)">
+                    R001N-Onboarding Customers (Everyone) (Default - Onboarding)
                   </option>
                   <option value="UNASSIGNED">UNASSIGNED</option>
                   {routesList
-                    .filter((r) => r !== (convertForm.route || "R001N-Onboarding Customers (Everyone)"))
+                    .filter((r) => r !== "R001N-Onboarding Customers (Everyone)" && r !== "UNASSIGNED")
                     .map((r) => (
                       <option key={r} value={r}>
                         {r}

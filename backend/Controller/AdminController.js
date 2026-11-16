@@ -10,6 +10,7 @@ import { signAuthToken } from "../utils/jwt.js";
 import {
   adjustActiveCount,
   invalidateActiveCountCache,
+  invalidateCustomerInfoCache,
   getDefaultOnboardingRoute,
 } from "./CustomerInfoController.js";
 import {
@@ -1605,11 +1606,15 @@ const getPriorityDashboard = async (req, res) => {
     // Build customer count & potential achieved per route map
     const customerCountByRoute = {};
     const potentialAchievedByRoute = {};
+    const defaultOnboardingRoute = await getDefaultOnboardingRoute(db);
 
     customersSnap.docs.forEach(doc => {
       const c = doc.data();
       const rawRoute = c ? (c.route || c.routeName || "") : "";
-      const routeName = String(rawRoute).trim();
+      let routeName = String(rawRoute).trim();
+      if (!routeName || routeName.toUpperCase() === "UNASSIGNED" || routeName === "R001N-Onboarding Customers" || routeName.toLowerCase() === "new") {
+        routeName = defaultOnboardingRoute;
+      }
       if (routeName) {
         customerCountByRoute[routeName] = (customerCountByRoute[routeName] || 0) + 1;
         customerCountByRoute[routeName.toLowerCase()] = (customerCountByRoute[routeName.toLowerCase()] || 0) + 1;
@@ -4354,14 +4359,64 @@ const updateNewCustomerStatus = async (req, res) => {
     const updatePayload = {
       updatedAt: Date.now(),
     };
-    if (status) {
-      updatePayload.status = status.toString().trim().toUpperCase();
+    const normalizedStatus = status ? status.toString().trim().toUpperCase() : null;
+    if (normalizedStatus) {
+      updatePayload.status = normalizedStatus;
     }
     if (notes !== undefined) {
       updatePayload.notes = notes;
     }
     if (adminActionBy) {
       updatePayload.adminActionBy = adminActionBy;
+    }
+
+    // If status is APPROVED and customer is not yet converted, auto-convert them to active customer
+    // and assign them directly to the Onboarding Route (R001N-Onboarding Customers (Everyone))
+    if (normalizedStatus === "APPROVED") {
+      const snap = await targetDocRef.get();
+      const existingData = snap.data() || {};
+      if (!existingData.convertedCustomerId) {
+        const defaultRoute = await getDefaultOnboardingRoute(db);
+
+        // Generate unique custid using globalcounter
+        let custid = `C${Date.now().toString().slice(-6)}`;
+        try {
+          const counterRef = db.collection("globalcounter").doc("customercounter");
+          const counterDoc = await counterRef.get();
+          const current = counterDoc.exists ? counterDoc.data().counter : 0;
+          custid = `C${current + 1}`;
+          await counterRef.set({ counter: current + 1 }, { merge: true });
+        } catch (cErr) {
+          console.warn("Counter generation error:", cErr.message);
+        }
+
+        const customerDocRef = db.collection("customers").doc();
+        const newCustomerDoc = {
+          name: existingData.name || "",
+          phone: existingData.phone || "",
+          business: existingData.businessName || existingData.business || "",
+          location: existingData.location || "",
+          zone: "UNASSIGNED",
+          route: defaultRoute,
+          potential: "T1",
+          remarks: notes || `Converted from App Registration (${existingData.source || "App"})`,
+          createdAt: Date.now(),
+          createdby: adminActionBy || "App Registration (Approved by Admin)",
+          custid,
+          imageUrl: existingData.imageUrl || "",
+          consent_given: existingData.consent_given ?? true,
+          consent_type: existingData.consent_type || "service_calls",
+          consent_timestamp: existingData.consent_timestamp || null,
+          source: existingData.source || "App registration",
+        };
+
+        await customerDocRef.set(newCustomerDoc);
+        updatePayload.convertedCustomerId = customerDocRef.id;
+        updatePayload.convertedAt = Date.now();
+        await invalidateCustomerInfoCache();
+        await invalidateActiveCountCache();
+        cache.del("routes:priorities");
+      }
     }
 
     await targetDocRef.update(updatePayload);
@@ -4460,6 +4515,7 @@ const convertNewCustomer = async (req, res) => {
     }
 
     const defaultRoute = await getDefaultOnboardingRoute(db);
+    const assignedRoute = (route && route !== "UNASSIGNED" && route !== "R001N-Onboarding Customers") ? route : defaultRoute;
 
     // Add to active customers collection
     const customerDocRef = db.collection("customers").doc();
@@ -4469,7 +4525,7 @@ const convertNewCustomer = async (req, res) => {
       business: newCustData.businessName || newCustData.business || "",
       location: newCustData.location || "",
       zone: zone || "UNASSIGNED",
-      route: (route && route !== "UNASSIGNED") ? route : defaultRoute,
+      route: assignedRoute,
       potential: potential || "T1",
       remarks: remarks || `Converted from App Registration (${newCustData.source || "App"})`,
       createdAt: Date.now(),
@@ -4492,6 +4548,10 @@ const convertNewCustomer = async (req, res) => {
       updatedAt: Date.now(),
       notes: remarks || "Approved and converted to active customer",
     });
+
+    await invalidateCustomerInfoCache();
+    await invalidateActiveCountCache();
+    cache.del("routes:priorities");
 
     return res.status(200).json({
       success: true,
