@@ -2529,6 +2529,7 @@ const getCollectionSummary = async (req, res) => {
       }
 
       customers.push({
+        docId: customerId,
         customerId: custid,
         customerName,
         quantity: quantity || "-",

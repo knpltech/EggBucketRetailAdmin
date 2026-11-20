@@ -648,8 +648,7 @@ const CollectionSummary = () => {
 
       if (selectedAgent !== "all") {
         const matching = entries.filter((item) =>
-          (item.agentName || "").toLowerCase().trim() === selectedAgent.toLowerCase().trim() ||
-          isMatchingOutlet(item.outletName, item.agentName, item.supervisorName)
+          (item.agentName || "").toLowerCase().trim() === selectedAgent.toLowerCase().trim()
         );
         if (matching.length === 0) return 0;
 
@@ -766,8 +765,7 @@ const CollectionSummary = () => {
 
     const itemFilter = (item) => {
       if (selectedAgent !== "all") {
-        const matchesAgent = (item.agentName || "").toLowerCase().trim() === selectedAgent.toLowerCase().trim();
-        if (matchesAgent) return true;
+        return (item.agentName || "").toLowerCase().trim() === selectedAgent.toLowerCase().trim();
       }
       return isMatchingOutlet(item.outletName, item.agentName, item.supervisorName);
     };
@@ -995,9 +993,18 @@ const CollectionSummary = () => {
       temp = temp.filter((c) => c.paymentMethod === "UPI");
     }
 
-    // Apply delivery agent filter
+    // Apply delivery agent filter (trimmed & case-insensitive)
     if (selectedAgent !== "all") {
-      temp = temp.filter((c) => c.deliveryAgent === selectedAgent);
+      const targetAgent = selectedAgent.toLowerCase().trim();
+      temp = temp.filter((c) => {
+        const ag = (c.deliveryAgent || "").toLowerCase().trim();
+        if (ag === targetAgent) return true;
+        if (ag.includes(",")) {
+          const parts = ag.split(",").map((p) => p.trim());
+          return parts.includes(targetAgent);
+        }
+        return false;
+      });
     }
 
     // Apply sorting by creation time (newest first)
@@ -1014,7 +1021,22 @@ const CollectionSummary = () => {
       });
     }
 
-    return temp;
+    // Deduplicate: ensure each customer appears only once in the collection list
+    const seenCustKeys = new Set();
+    const deduplicated = [];
+    for (const c of temp) {
+      const docKey = c.docId ? `doc_${c.docId}` : null;
+      const contentKey = `content_${c.customerId}_${c.customerName}_${c.rawDeliveryTime || c.deliveryTime}`;
+
+      if (docKey && seenCustKeys.has(docKey)) continue;
+      if (seenCustKeys.has(contentKey)) continue;
+
+      if (docKey) seenCustKeys.add(docKey);
+      seenCustKeys.add(contentKey);
+      deduplicated.push(c);
+    }
+
+    return deduplicated;
   }, [data, selectedDate, activeTab, selectedAgent, sortBy]);
 
   // Calculate filtered totals
@@ -1112,7 +1134,13 @@ const CollectionSummary = () => {
         deliveryAgent = typeof entryObj.deliveryMan === "object" ? entryObj.deliveryMan.name : entryObj.deliveryMan;
       }
 
-      if (selectedAgent !== "all" && deliveryAgent !== selectedAgent) return;
+      if (selectedAgent !== "all") {
+        const ag = (deliveryAgent || "").toLowerCase().trim();
+        const target = selectedAgent.toLowerCase().trim();
+        if (ag !== target && (!ag.includes(",") || !ag.split(",").map((p) => p.trim()).includes(target))) {
+          return;
+        }
+      }
 
       // payment method filter
       const baseAmount = entryObj.totalAmount ?? entryObj.amount ?? 0;
@@ -1203,8 +1231,20 @@ const CollectionSummary = () => {
         axios.get(`${ADMIN_PATH}/category-peak-potentials`).catch(() => ({ data: {} }))
       ]);
       if (Array.isArray(res.data)) {
+        // Deduplicate customers by doc ID to prevent duplicate records
+        const uniqueCustomers = [];
+        const seenDocIds = new Set();
+        res.data.forEach((cust) => {
+          const docId = cust.id || cust._id;
+          if (docId && !seenDocIds.has(docId)) {
+            seenDocIds.add(docId);
+            uniqueCustomers.push(cust);
+          } else if (!docId) {
+            uniqueCustomers.push(cust);
+          }
+        });
         setData({
-          customers: res.data,
+          customers: uniqueCustomers,
           success: true,
         });
       } else {
@@ -1384,7 +1424,8 @@ const CollectionSummary = () => {
 
       // Minus Amount = Amount - (Today's Price × Quantity)
       const minusAmount = amount - price * quantity;
-      newMinusAmounts[item.customerId] = minusAmount;
+      const itemKey = item.docId || item.customerId;
+      newMinusAmounts[itemKey] = minusAmount;
     });
 
     setMinusAmounts(newMinusAmounts);
@@ -2195,11 +2236,13 @@ const CollectionSummary = () => {
                 </td>
               </tr>
             )}
-            {filtered.map((item) => {
+            {filtered.map((item, index) => {
               const rowLocked = isAgentLocked(item.deliveryAgent) || isCurrentAgentLocked;
+              const rowKey = item.docId ? `row-${item.docId}` : `row-${item.customerId || "cust"}-${index}`;
+              const minusKey = item.docId || item.customerId;
               return (
                 <tr
-                  key={item.customerId}
+                  key={rowKey}
                   className="border-t hover:bg-gray-50 transition"
                 >
                   <td className="p-3 font-medium text-gray-900">
@@ -2409,15 +2452,15 @@ const CollectionSummary = () => {
                   </td>
 
                   <td className="p-3 text-right font-semibold">
-                    {minusAmounts[item.customerId] !== undefined ? (
+                    {minusAmounts[minusKey] !== undefined ? (
                       <span
                         className={
-                          minusAmounts[item.customerId] < 0
+                          minusAmounts[minusKey] < 0
                             ? "text-red-600"
                             : "text-gray-900"
                         }
                       >
-                        ₹{minusAmounts[item.customerId].toLocaleString("en-IN")}
+                        ₹{minusAmounts[minusKey].toLocaleString("en-IN")}
                       </span>
                     ) : (
                       <span className="text-gray-400">-</span>
