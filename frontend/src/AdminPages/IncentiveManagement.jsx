@@ -24,7 +24,6 @@ import {
   Package,
   Zap,
   Info,
-  Link2,
 } from "lucide-react";
 
 // Timezone and date helpers (Asia/Kolkata)
@@ -119,12 +118,6 @@ const DEFAULT_CONFIG = {
 };
 
 export default function IncentiveManagement() {
-  // Active App Tab in Control Panel: 'routes' | 'sales'
-  const [activeConfigTab, setActiveConfigTab] = useState("routes");
-
-  // Sync Checkbox State: when true, changes apply to BOTH Routes and Sales App
-  const [syncBothApps, setSyncBothApps] = useState(false);
-
   // Settings State
   const [settings, setSettings] = useState(DEFAULT_CONFIG);
   const [initialSettings, setInitialSettings] = useState(DEFAULT_CONFIG);
@@ -219,31 +212,7 @@ export default function IncentiveManagement() {
     fetchProgress(fromDate, toDate, roleFilter);
   }, [fetchSettings, fetchProgress]);
 
-  // Toggle Sync Both Apps
-  const handleToggleSyncBoth = (checked) => {
-    setSyncBothApps(checked);
-    if (checked) {
-      // Sync the currently visible tab's values to the other app immediately!
-      setSettings((prev) => {
-        const copy = JSON.parse(JSON.stringify(prev));
-        const sourceKey = activeConfigTab;
-        const otherKey = sourceKey === "routes" ? "sales" : "routes";
-        const sourceConfig = copy[sourceKey] || DEFAULT_CONFIG[sourceKey];
-        copy[otherKey] = {
-          ...copy[otherKey],
-          goalTrays: sourceConfig.goalTrays,
-          goalReward: sourceConfig.goalReward,
-          slabs: JSON.parse(JSON.stringify(sourceConfig.slabs || [])),
-        };
-        return copy;
-      });
-      showToast("Linked! Any changes made will now apply to both Routes and Sales App.");
-    } else {
-      showToast("Unlinked. You can now configure Routes and Sales App independently.");
-    }
-  };
-
-  // Handle slab field edit by milestone tier (1..4)
+  // Handle slab field edit for Routes App by milestone tier (1..4)
   const handleSlabChange = (tier, field, value) => {
     // If user cleared the input (empty string), preserve "" so input stays clear and doesn't snap to 0
     let cleanVal = value;
@@ -257,74 +226,73 @@ export default function IncentiveManagement() {
 
     setSettings((prev) => {
       const copy = JSON.parse(JSON.stringify(prev));
-      // If syncBothApps is active, apply edits to BOTH 'routes' and 'sales'
-      const targetApps = syncBothApps ? ["routes", "sales"] : [activeConfigTab];
+      if (!copy.routes) copy.routes = {};
+      if (!Array.isArray(copy.routes.slabs) || copy.routes.slabs.length === 0) {
+        copy.routes.slabs = JSON.parse(JSON.stringify(DEFAULT_CONFIG.routes?.slabs || []));
+      }
 
-      targetApps.forEach((appKey) => {
-        if (!copy[appKey]) copy[appKey] = {};
-        if (!Array.isArray(copy[appKey].slabs) || copy[appKey].slabs.length === 0) {
-          copy[appKey].slabs = JSON.parse(JSON.stringify(DEFAULT_CONFIG[appKey]?.slabs || []));
+      // Locate slab by exact tier so index never shifts
+      let slabItem = copy.routes.slabs.find((s) => Number(s.tier) === tier);
+      if (!slabItem) {
+        const fallbackIdx = tier - 1;
+        if (copy.routes.slabs[fallbackIdx]) {
+          slabItem = copy.routes.slabs[fallbackIdx];
+          slabItem.tier = tier;
+        } else {
+          slabItem = { tier, trayTarget: 0, incentive: 0 };
+          copy.routes.slabs.push(slabItem);
         }
+      }
 
-        // Locate slab by exact tier so index never shifts
-        let slabItem = copy[appKey].slabs.find((s) => Number(s.tier) === tier);
-        if (!slabItem) {
-          const fallbackIdx = tier - 1;
-          if (copy[appKey].slabs[fallbackIdx]) {
-            slabItem = copy[appKey].slabs[fallbackIdx];
-            slabItem.tier = tier;
-          } else {
-            slabItem = { tier, trayTarget: 0, incentive: 0 };
-            copy[appKey].slabs.push(slabItem);
-          }
-        }
+      slabItem[field] = cleanVal;
 
-        slabItem[field] = cleanVal;
+      // If tier 4 (Weekly Goal), keep goalTrays & goalReward synchronized
+      if (tier === 4) {
+        const numVal = cleanVal === "" ? "" : (Number(cleanVal) || 0);
+        if (field === "trayTarget") copy.routes.goalTrays = numVal;
+        if (field === "incentive") copy.routes.goalReward = numVal;
+      }
 
-        // If tier 4 (Weekly Goal), keep goalTrays & goalReward synchronized
-        if (tier === 4) {
-          const numVal = cleanVal === "" ? "" : (Number(cleanVal) || 0);
-          if (field === "trayTarget") copy[appKey].goalTrays = numVal;
-          if (field === "incentive") copy[appKey].goalReward = numVal;
-        }
-      });
       return copy;
     });
   };
 
-  // Save Settings to Backend
+  // Save Routes Settings to Backend
   const handleSaveSettings = async () => {
     try {
       setSavingSettings(true);
-      const payload = JSON.parse(JSON.stringify(settings));
-
-      ["routes", "sales"].forEach((appKey) => {
-        if (!payload[appKey]) {
-          payload[appKey] = JSON.parse(JSON.stringify(DEFAULT_CONFIG[appKey]));
-        }
-        const rawSlabs = payload[appKey].slabs || DEFAULT_CONFIG[appKey]?.slabs || [];
-        payload[appKey].slabs = [1, 2, 3, 4].map((tierNum) => {
-          const s = rawSlabs.find((item) => Number(item.tier) === tierNum) || {};
-          return {
-            tier: tierNum,
-            trayTarget: s.trayTarget === "" || s.trayTarget === undefined ? 0 : Math.max(0, Number(s.trayTarget) || 0),
-            incentive: s.incentive === "" || s.incentive === undefined ? 0 : Math.max(0, Number(s.incentive) || 0),
-          };
-        });
-
-        const tier4 = payload[appKey].slabs.find((s) => s.tier === 4);
-        payload[appKey].goalTrays = tier4 ? tier4.trayTarget : (Number(payload[appKey].goalTrays) || 1000);
-        payload[appKey].goalReward = tier4 ? tier4.incentive : (Number(payload[appKey].goalReward) || 2000);
+      const routesConfig = settings.routes || DEFAULT_CONFIG.routes;
+      const rawSlabs = routesConfig.slabs || DEFAULT_CONFIG.routes?.slabs || [];
+      const formattedSlabs = [1, 2, 3, 4].map((tierNum) => {
+        const s = rawSlabs.find((item) => Number(item.tier) === tierNum) || {};
+        return {
+          tier: tierNum,
+          trayTarget: s.trayTarget === "" || s.trayTarget === undefined ? 0 : Math.max(0, Number(s.trayTarget) || 0),
+          incentive: s.incentive === "" || s.incentive === undefined ? 0 : Math.max(0, Number(s.incentive) || 0),
+        };
       });
+
+      const tier4 = formattedSlabs.find((s) => s.tier === 4);
+      const goalTrays = tier4 ? tier4.trayTarget : (Number(routesConfig.goalTrays) || 1000);
+      const goalReward = tier4 ? tier4.incentive : (Number(routesConfig.goalReward) || 2000);
+
+      const payload = {
+        routes: {
+          ...routesConfig,
+          slabs: formattedSlabs,
+          goalTrays,
+          goalReward,
+        },
+      };
 
       const res = await axios.post(`${ADMIN_PATH}/incentive-settings`, payload, {
         headers: getAuthHeader(),
       });
 
       if (res.data?.success) {
-        showToast("Incentive targets saved & synced with mobile apps!");
-        setSettings(payload);
-        setInitialSettings(JSON.parse(JSON.stringify(payload)));
+        showToast("Routes incentive targets saved & synced with Routes App!");
+        setSettings((prev) => ({ ...prev, routes: payload.routes }));
+        setInitialSettings((prev) => ({ ...prev, routes: payload.routes }));
         // Re-fetch progress to re-evaluate milestones with new target slabs
         fetchProgress(fromDate, toDate, roleFilter);
       } else {
@@ -341,8 +309,11 @@ export default function IncentiveManagement() {
   // Reset to Defaults
   const handleResetDefaults = () => {
     if (window.confirm("Reset milestone targets to default values?")) {
-      setSettings(JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
-      showToast("Reset to default configuration. Click 'Save' to apply.");
+      setSettings((prev) => ({
+        ...prev,
+        routes: JSON.parse(JSON.stringify(DEFAULT_CONFIG.routes)),
+      }));
+      showToast("Reset Routes configuration to default. Click 'Save' to apply.");
     }
   };
 
@@ -365,19 +336,19 @@ export default function IncentiveManagement() {
     });
   }, [progressData, roleFilter, searchQuery]);
 
-  // Current active configuration
-  const activeConfig = settings[activeConfigTab] || DEFAULT_CONFIG[activeConfigTab];
+  // Routes App active configuration
+  const activeConfig = settings.routes || DEFAULT_CONFIG.routes;
 
-  // Milestone slabs for the active tab, kept strictly in stable Tier order (1, 2, 3, 4)
+  // Milestone slabs for Routes App, kept strictly in stable Tier order (1, 2, 3, 4)
   const configSlabs = useMemo(() => {
-    const rawSlabs = activeConfig?.slabs || DEFAULT_CONFIG[activeConfigTab]?.slabs || [];
+    const rawSlabs = activeConfig?.slabs || DEFAULT_CONFIG.routes?.slabs || [];
     return [1, 2, 3, 4].map((tierNum) => {
       const existing = rawSlabs.find((s) => Number(s.tier) === tierNum);
       if (existing) return existing;
-      const fallback = DEFAULT_CONFIG[activeConfigTab]?.slabs?.find((s) => s.tier === tierNum);
+      const fallback = DEFAULT_CONFIG.routes?.slabs?.find((s) => s.tier === tierNum);
       return fallback || { tier: tierNum, trayTarget: 0, incentive: 0 };
     });
-  }, [activeConfig?.slabs, activeConfigTab]);
+  }, [activeConfig?.slabs]);
 
   // Calculation slabs sorted by target for preview simulation only
   const calculationSlabs = useMemo(() => {
@@ -482,7 +453,7 @@ export default function IncentiveManagement() {
               </span>
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Configure 4-tier milestone incentive numbers for Routes & Sales Apps, and track delivery progress.
+              Configure 4-tier milestone incentive numbers for Routes App, and track delivery progress.
             </p>
           </div>
         </div>
@@ -491,9 +462,7 @@ export default function IncentiveManagement() {
         <div className="flex items-center gap-2 self-start md:self-auto bg-gray-50 px-3.5 py-2 rounded-xl border border-gray-200 text-xs text-gray-600">
           <Smartphone className="w-4 h-4 text-amber-600" />
           <span>App Targets:</span>
-          <span className="font-semibold text-gray-900">
-            {activeConfigTab === "routes" ? "Routes App (Delivery)" : "Sales App"}
-          </span>
+          <span className="font-semibold text-gray-900">Routes App (Delivery)</span>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
           <span className="text-emerald-700 font-medium">Ready</span>
         </div>
@@ -501,76 +470,26 @@ export default function IncentiveManagement() {
 
       {/* SECTION 1: 4-INCENTIVE NUMBERS CONTROL PANEL */}
       <div className="bg-white rounded-2xl shadow-xs border border-gray-200/80 overflow-hidden">
-        {/* Header with App Toggle Tabs */}
+        {/* Header */}
         <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-gray-50/70 to-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <Target className="w-5 h-5 text-amber-600" />
               <h2 className="text-lg font-bold text-gray-900">
-                4-Tier Incentive Numbers Control Panel
+                4-Tier Incentive Numbers Control Panel (Routes App)
               </h2>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Changes applied here will update the "Weekly Incentive Target" card in the mobile apps immediately.
+              Changes applied here will update the "Weekly Incentive Target" card in the Routes App immediately.
             </p>
           </div>
 
-          {/* App Switcher & Sync Checkbox */}
-          <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
-            {/* Checkbox: Left of Routes App */}
-            <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50/90 hover:bg-amber-100/70 border border-amber-200/90 rounded-xl cursor-pointer transition select-none text-xs font-bold text-amber-950 shadow-2xs">
-              <input
-                type="checkbox"
-                checked={syncBothApps}
-                onChange={(e) => handleToggleSyncBoth(e.target.checked)}
-                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer"
-              />
-              <span className="flex items-center gap-1.5">
-                <span>Apply to both Routes & Sales</span>
-                {syncBothApps && (
-                  <span className="text-[10px] font-extrabold px-1.5 py-0.5 bg-amber-600 text-white rounded-md tracking-wider flex items-center gap-1">
-                    <Link2 className="w-2.5 h-2.5" />
-                    LINKED
-                  </span>
-                )}
-              </span>
-            </label>
-
-            {/* App Switcher Tabs: Routes vs Sales */}
-            <div className="inline-flex p-1 bg-gray-100 rounded-xl border border-gray-200 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setActiveConfigTab("routes")}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                  activeConfigTab === "routes"
-                    ? "bg-orange-500 text-white shadow-sm ring-1 ring-orange-600/30"
-                    : "text-gray-600 hover:text-orange-600 hover:bg-orange-50/60"
-                }`}
-              >
-                <Truck
-                  className={`w-4 h-4 ${
-                    activeConfigTab === "routes" ? "text-white" : "text-amber-600"
-                  }`}
-                />
-                <span>Routes App (Delivery)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveConfigTab("sales")}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                  activeConfigTab === "sales"
-                    ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/30"
-                    : "text-gray-600 hover:text-blue-600 hover:bg-blue-50/60"
-                }`}
-              >
-                <UserCheck
-                  className={`w-4 h-4 ${
-                    activeConfigTab === "sales" ? "text-white" : "text-blue-600"
-                  }`}
-                />
-                <span>Sales App</span>
-              </button>
-            </div>
+          {/* Routes App Badge */}
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-800 rounded-xl border border-orange-200 text-xs font-bold shadow-2xs">
+              <Truck className="w-4 h-4 text-orange-600" />
+              <span>Routes App (Delivery)</span>
+            </span>
           </div>
         </div>
 
@@ -578,22 +497,13 @@ export default function IncentiveManagement() {
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: 4 Milestone Inputs Form (7 cols) */}
           <div className="lg:col-span-7 space-y-5">
-            {syncBothApps ? (
-              <div className="bg-amber-500/10 rounded-xl p-3.5 border border-amber-300 flex items-start gap-3">
-                <Link2 className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-950">
-                  <span className="font-bold">Sync Mode Active:</span> Any values you change below will automatically apply to <strong>both Routes App (Delivery)</strong> and <strong>Sales App</strong>.
-                </div>
+            <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-200/60 flex items-start gap-3">
+              <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900">
+                <span className="font-bold">Dynamic Routes App Settings:</span> Specify the 4 milestone targets in trays
+                and the cash incentive (₹) awarded when that milestone is unlocked by the delivery agent during the week.
               </div>
-            ) : (
-              <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-200/60 flex items-start gap-3">
-                <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-900">
-                  <span className="font-bold">Dynamic App Settings:</span> Specify the 4 milestone targets in trays
-                  and the cash incentive (₹) awarded when that milestone is unlocked by the agent during the week.
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* 4 Milestone Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -695,16 +605,12 @@ export default function IncentiveManagement() {
                 {savingSettings ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Saving to Apps...</span>
+                    <span>Saving to Routes App...</span>
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    <span>
-                      {syncBothApps
-                        ? "Save Settings for Both Apps"
-                        : `Save ${activeConfigTab === "routes" ? "Routes" : "Sales"} Incentive Settings`}
-                    </span>
+                    <span>Save Routes Incentive Settings</span>
                   </>
                 )}
               </button>
@@ -721,8 +627,7 @@ export default function IncentiveManagement() {
                 </span>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                {activeConfigTab === "routes" ? "Routes App" : "Sales App"}
-                {syncBothApps && " (Synced)"}
+                Routes App (Delivery)
               </span>
             </div>
 
@@ -731,14 +636,14 @@ export default function IncentiveManagement() {
               {/* Profile Header Preview */}
               <div className="flex items-center gap-3 pb-3 mb-3 border-b border-gray-100">
                 <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  {activeConfigTab === "routes" ? "T" : "S"}
+                  T
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-gray-900 leading-tight">
-                    {activeConfigTab === "routes" ? "Tapas Singha" : "Rahul Sharma"}
+                    Tapas Singha
                   </h4>
                   <p className="text-[11px] text-gray-500">
-                    {activeConfigTab === "routes" ? "Delivery Executive" : "Sales Executive"}
+                    Delivery Executive
                   </p>
                 </div>
               </div>
@@ -867,7 +772,7 @@ export default function IncentiveManagement() {
                 {summary.totalDeliveredTrays.toLocaleString()}
               </span>
               <span className="text-[11px] text-gray-400 mt-0.5 block">
-                Across all active routes & sales
+                Across all active delivery routes
               </span>
             </div>
             <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
@@ -969,17 +874,6 @@ export default function IncentiveManagement() {
                 }`}
               >
                 Routes (Delivery)
-              </button>
-              <button
-                type="button"
-                onClick={() => setRoleFilter("sales")}
-                className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
-                  roleFilter === "sales"
-                    ? "bg-white text-gray-900 shadow-2xs"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                Sales
               </button>
             </div>
           </div>
@@ -1086,8 +980,8 @@ export default function IncentiveManagement() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Sales & Delivery Agent</th>
-                  <th className="py-3.5 px-4">Role / App</th>
+                  <th className="py-3.5 px-4">Delivery Agent</th>
+                  <th className="py-3.5 px-4">App</th>
                   <th className="py-3.5 px-4 text-right">Quantity Delivered</th>
                   <th className="py-3.5 px-4 text-right">Set Target</th>
                   <th className="py-3.5 px-4 min-w-[180px]">Progress (%)</th>

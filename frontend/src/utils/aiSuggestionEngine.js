@@ -511,8 +511,6 @@ export const LOGIC_1_PURCHASE_CADENCE = [
 export const LOGIC_2_CUSTOMER_STATE = [
   "Active",
   "At Risk",
-  "Inactive",
-  "On Call",
 ];
 
 export const LOGIC_3_PURCHASE_INTENT = [
