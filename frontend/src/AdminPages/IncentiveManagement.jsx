@@ -1042,13 +1042,9 @@ export default function IncentiveManagement() {
                                 {agent.name || "Unknown Agent"}
                               </div>
                               <div className="text-[11px] text-gray-400 flex items-center gap-1.5 mt-0.5">
-                                <span>Outlet: {agent.outlet || "Main"}</span>
-                                {agent.phone && (
-                                  <>
-                                    <span>•</span>
-                                    <span>{agent.phone}</span>
-                                  </>
-                                )}
+                                {isDelivery && <span>Outlet: {agent.outlet || "Main"}</span>}
+                                {isDelivery && agent.phone && <span>•</span>}
+                                {agent.phone && <span>{agent.phone}</span>}
                               </div>
                             </div>
                           </div>

@@ -64,7 +64,7 @@ const PersonnelList = () => {
     setFormData({
       name: partner.name,
       phone: partner.phone,
-      outlet: partner.outlet || '',
+      outlet: type === 'delivery' ? partner.outlet || '' : '',
     });
   };
 
@@ -94,18 +94,20 @@ const PersonnelList = () => {
         uid: editingPartner.uid,
         name,
         phone,
-        outlet,
       };
+      if (editType === 'delivery') {
+        payload.outlet = outlet;
+      }
 
       await axios.put(`${ADMIN_PATH}/${endpoint}`, payload);
-      const updatedFormData = { ...formData, name, phone, outlet };
       if (editType === 'delivery') {
+        const updatedFormData = { ...formData, name, phone, outlet };
         setDeliveryPartners((prev) =>
           prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...updatedFormData } : p))
         );
       } else {
         setSalesPartners((prev) =>
-          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, ...updatedFormData } : p))
+          prev.map((p) => (p.uid === editingPartner.uid ? { ...p, name, phone } : p))
         );
       }
       setEditingPartner(null);
@@ -278,10 +280,6 @@ const PersonnelList = () => {
                 <span>{partner.sales_id}</span>
               </div>
               <div className="flex items-center">
-                <span className="w-20 text-gray-500">Outlet:</span>
-                <span>{partner.outlet || '-'}</span>
-              </div>
-              <div className="flex items-center">
                 <span className="w-20 text-gray-500">Password:</span>
                 <span>{partner.password}</span>
               </div>
@@ -387,14 +385,16 @@ const PersonnelList = () => {
                 className="text-sm border border-purple-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder="Phone Number"
               />
-              <input
-                type="text"
-                name="outlet"
-                value={formData.outlet}
-                onChange={handleInputChange}
-                className="text-sm border border-purple-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                placeholder="Outlet Name"
-              />
+              {editType === 'delivery' && (
+                <input
+                  type="text"
+                  name="outlet"
+                  value={formData.outlet}
+                  onChange={handleInputChange}
+                  className="text-sm border border-purple-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  placeholder="Outlet Name"
+                />
+              )}
               <div className="flex justify-between mt-6">
                 <button
                   onClick={handleUpdate}

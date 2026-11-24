@@ -3981,7 +3981,7 @@ const getIncentiveProgress = async (req, res) => {
         name: d.name || "",
         phone: d.phone || "",
         sales_id: d.sales_id || "",
-        outlet: d.outlet || "",
+        outlet: "",
         active: d.active !== false,
         role: "sales",
         roleLabel: "Sales Executive",
