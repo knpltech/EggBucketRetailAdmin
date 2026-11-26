@@ -73,7 +73,20 @@ export const getTodayEffectiveStatus = (
     overrideDate === todayDate &&
     (override?.status === "ON" || override?.status === "OFF")
   ) {
+    const overrideType = String(override?.type || "").trim().toUpperCase();
+    if (overrideType === "MANUAL") {
+      return override.status;
+    }
+    // If SYSTEM override is OFF, but an order has come, active order takes precedence
+    if (customer?.manual_priority === true || customer?.manual_priority === "true") {
+      return "ON";
+    }
     return override.status;
+  }
+
+  // ⭐ Active order priority: If manual_priority is true, delivery is ON
+  if (customer?.manual_priority === true || customer?.manual_priority === "true") {
+    return "ON";
   }
 
   // Fallback: Weekly schedule

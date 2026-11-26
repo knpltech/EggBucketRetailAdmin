@@ -221,14 +221,19 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
       continue; // ← Skip this customer - don't modify todayOverride
     }
 
-    // ✅ Determine if delivery should be ON based on weeklySchedule
-    const shouldDeliver = weeklySchedule[weekday] === true;
+    // ✅ Check if manual_priority is active (an order has arrived!)
+    const hasManualPriority =
+      data?.manual_priority === true || data?.manual_priority === "true";
+
+    // ✅ Determine if delivery should be ON based on priority order or weeklySchedule
+    const shouldDeliver = hasManualPriority || weeklySchedule[weekday] === true;
 
     if (debugThisDoc) {
       console.log("[skipDeliveryCron][weekly] Computed status", {
         today,
         weekday,
         weeklySchedule,
+        hasManualPriority,
         shouldDeliver,
         existingStatus: existingOverride?.status,
       });
@@ -244,7 +249,8 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
     if (
       existingOverrideDate === today &&
       existingStatus === status &&
-      existingOverrideType === "SYSTEM"
+      existingOverrideType === "SYSTEM" &&
+      data?.status === shouldDeliver
     ) {
       if (debugThisDoc) {
         console.log(
@@ -259,9 +265,10 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
     }
 
     if (debugThisDoc) {
-      console.log("[skipDeliveryCron][weekly] Updating todayOverride", {
+      console.log("[skipDeliveryCron][weekly] Updating todayOverride & status", {
         today,
         status,
+        shouldDeliver,
       });
     }
 
@@ -271,6 +278,7 @@ export const runSkipDeliveryJobOnce = async (isMidnightCron = false) => {
         status,
         type: "SYSTEM",
       },
+      status: shouldDeliver,
     });
 
     batchCount += 1;

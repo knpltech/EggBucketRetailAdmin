@@ -425,6 +425,58 @@ export default function NewCustomers() {
     }
   };
 
+  // State for toggling delivery status of priority order customer
+  const [togglingDeliveryId, setTogglingDeliveryId] = useState(null);
+
+  const isPriorityCustomerOn = (c) => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (c.todayOverride?.date === today) {
+      if (c.todayOverride.type === "MANUAL") {
+        return c.todayOverride.status === "ON";
+      }
+      return c.todayOverride.status === "ON";
+    }
+    if (c.manual_priority) return true;
+    if (typeof c.status === "boolean") return c.status;
+    return true;
+  };
+
+  const handleToggleCustomerDelivery = async (customer) => {
+    if (!customer?.id || togglingDeliveryId === customer.id) return;
+    const currentOn = isPriorityCustomerOn(customer);
+    const nextStatus = currentOn ? "OFF" : "ON";
+    const today = new Date().toISOString().slice(0, 10);
+    const nextOverride = { date: today, status: nextStatus, type: "MANUAL" };
+
+    setTogglingDeliveryId(customer.id);
+    // Optimistic update
+    setManualPriorityCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customer.id
+          ? { ...c, todayOverride: nextOverride, status: nextStatus === "ON" }
+          : c
+      )
+    );
+
+    try {
+      await axios.post(
+        `${ADMIN_PATH}/customer/toggle-delivery`,
+        {
+          id: customer.id,
+          status: nextStatus,
+        },
+        { headers: getAuthHeader() }
+      );
+      showToast(`Delivery turned ${nextStatus} for ${customer.name || "customer"}`);
+    } catch (err) {
+      console.error("Failed to toggle customer delivery:", err);
+      showToast(err.response?.data?.message || "Failed to toggle delivery", "error");
+      fetchManualPriorityCustomers();
+    } finally {
+      setTogglingDeliveryId(null);
+    }
+  };
+
   // Front-end removal of sales customer registration row (no changes to database)
   const handleRemoveSalesRow = (id, name) => {
     setDismissedSalesIds((prev) => {
@@ -694,7 +746,7 @@ export default function NewCustomers() {
 
   // Filtered customers calculation
   const filteredCustomers = useMemo(() => {
-    return customers.filter((item) => {
+    const list = customers.filter((item) => {
       // 0. Exclude front-end dismissed rows (no changes to database)
       if (dismissedSalesIds.has(item.id)) {
         return false;
@@ -740,7 +792,42 @@ export default function NewCustomers() {
 
       return true;
     });
-  }, [customers, statusFilter, consentFilter, fromDate, toDate, searchQuery]);
+
+    // Deduplicate: ensure one day has only one record of a unique customer
+    const seenMap = new Set();
+    const deduplicated = [];
+    for (const item of list) {
+      const cleanPhone = item.phone ? String(item.phone).replace(/\D/g, "").slice(-10) : "";
+      const cleanName = (item.name || "").trim().toLowerCase();
+      const customerKey = cleanPhone.length >= 7 ? `phone:${cleanPhone}` : (cleanName ? `name:${cleanName}` : `id:${item.id}`);
+
+      let dayKey = "unknown";
+      if (item.createdAt) {
+        try {
+          const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).formatToParts(new Date(item.createdAt));
+          const y = parts.find((p) => p.type === "year")?.value;
+          const m = parts.find((p) => p.type === "month")?.value;
+          const d = parts.find((p) => p.type === "day")?.value;
+          if (y && m && d) dayKey = `${y}-${m}-${d}`;
+        } catch {
+          dayKey = new Date(item.createdAt).toISOString().slice(0, 10);
+        }
+      }
+
+      const dedupeKey = `${customerKey}_${dayKey}`;
+      if (!seenMap.has(dedupeKey)) {
+        seenMap.add(dedupeKey);
+        deduplicated.push(item);
+      }
+    }
+
+    return deduplicated;
+  }, [customers, dismissedSalesIds, statusFilter, consentFilter, fromDate, toDate, searchQuery]);
 
   // Export to Excel
   const exportToExcel = () => {
@@ -1710,6 +1797,28 @@ export default function NewCustomers() {
                               </span>
                               <div className="text-[11px] text-gray-400 font-medium">
                                 Awaiting route agent
+                              </div>
+                              <div className="pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleCustomerDelivery(c)}
+                                  disabled={togglingDeliveryId === c.id}
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition shadow-2xs cursor-pointer active:scale-95 ${
+                                    isPriorityCustomerOn(c)
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                                      : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                                  }`}
+                                  title="Toggle today's delivery status (updates database status)"
+                                >
+                                  <span
+                                    className={`w-2 h-2 rounded-full ${
+                                      isPriorityCustomerOn(c)
+                                        ? "bg-emerald-500 animate-pulse"
+                                        : "bg-gray-400"
+                                    }`}
+                                  />
+                                  <span>{isPriorityCustomerOn(c) ? "Delivery: ON" : "Delivery: OFF"}</span>
+                                </button>
                               </div>
                             </div>
                           )}

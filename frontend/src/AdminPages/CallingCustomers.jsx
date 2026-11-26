@@ -805,7 +805,7 @@ export default function CallingCustomers() {
     setCustomers((prev) =>
       prev.map((row) =>
         row.id === customer.id
-          ? { ...row, todayOverride: optimisticOverride }
+          ? { ...row, todayOverride: optimisticOverride, status: nextStatus === "ON" }
           : row,
       ),
     );
@@ -821,10 +821,11 @@ export default function CallingCustomers() {
         patchCachedUserInfoCustomer(customer.id, (row) => ({
           ...row,
           todayOverride: saved,
+          status: nextStatus === "ON",
         }));
         setCustomers((prev) =>
           prev.map((row) =>
-            row.id === customer.id ? { ...row, todayOverride: saved } : row,
+            row.id === customer.id ? { ...row, todayOverride: saved, status: nextStatus === "ON" } : row,
           ),
         );
       }
@@ -834,7 +835,7 @@ export default function CallingCustomers() {
       setCustomers((prev) =>
         prev.map((row) =>
           row.id === customer.id
-            ? { ...row, todayOverride: previousOverride }
+            ? { ...row, todayOverride: previousOverride, status: customer.status }
             : row,
         ),
       );

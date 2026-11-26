@@ -2361,7 +2361,20 @@ const toggleTodayDelivery = async (req, res) => {
     }
 
     const db = getFirestore();
-    const customerRef = db.collection("customers").doc(id);
+    let customerRef = db.collection("customers").doc(id);
+    let docSnap = await customerRef.get();
+    if (!docSnap.exists) {
+      const altRef = db.collection("customer").doc(id);
+      const altSnap = await altRef.get();
+      if (altSnap.exists) {
+        customerRef = altRef;
+        docSnap = altSnap;
+      }
+    }
+
+    if (!docSnap || !docSnap.exists) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
 
     const todayOverride = {
       date: getTodayDateString(),
@@ -2369,7 +2382,14 @@ const toggleTodayDelivery = async (req, res) => {
       type: "MANUAL",
     };
 
-    await customerRef.update({ todayOverride });
+    const isDeliveryOn = normalizedStatus === "ON";
+    const updateData = {
+      todayOverride,
+      status: isDeliveryOn,
+      updatedAt: Date.now(),
+    };
+
+    await customerRef.update(updateData);
 
     // Keep cached customer lists fresh without re-reading all customers.
     try {
@@ -2383,7 +2403,7 @@ const toggleTodayDelivery = async (req, res) => {
         const patchRows = (rows) =>
           Array.isArray(rows)
             ? rows.map((row) =>
-              row.id === id ? { ...row, todayOverride } : row,
+              row.id === id ? { ...row, todayOverride, status: isDeliveryOn } : row,
             )
             : rows;
 
@@ -2431,6 +2451,7 @@ const toggleTodayDelivery = async (req, res) => {
     return res.status(200).json({
       message: "Today delivery status updated",
       todayOverride,
+      status: isDeliveryOn,
     });
   } catch (err) {
     if (err?.code === 5 || err?.details?.includes("NOT_FOUND")) {
@@ -4287,18 +4308,52 @@ const getNewCustomers = async (req, res) => {
     // Sort by createdAt descending (newest first)
     customers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
+    // Deduplicate: ensure one day has only one record of a unique customer
+    const seenCustomerDayMap = new Map();
+    const deduplicatedCustomers = [];
+
+    for (const cust of customers) {
+      const cleanPhone = cust.phone ? String(cust.phone).replace(/\D/g, "").slice(-10) : "";
+      const cleanName = (cust.name || "").trim().toLowerCase();
+      const customerKey = cleanPhone.length >= 7 ? `phone:${cleanPhone}` : (cleanName ? `name:${cleanName}` : `id:${cust.id}`);
+
+      let dayKey = "unknown";
+      if (cust.createdAt) {
+        try {
+          const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).formatToParts(new Date(cust.createdAt));
+          const y = parts.find((p) => p.type === "year")?.value;
+          const m = parts.find((p) => p.type === "month")?.value;
+          const d = parts.find((p) => p.type === "day")?.value;
+          if (y && m && d) dayKey = `${y}-${m}-${d}`;
+        } catch {
+          dayKey = new Date(cust.createdAt).toISOString().slice(0, 10);
+        }
+      }
+
+      const dedupeKey = `${customerKey}_${dayKey}`;
+      if (!seenCustomerDayMap.has(dedupeKey)) {
+        seenCustomerDayMap.set(dedupeKey, cust);
+        deduplicatedCustomers.push(cust);
+      }
+    }
+
     // Summary counters
     const summary = {
-      total: customers.length,
-      pending: customers.filter((c) => c.status === "PENDING").length,
-      approved: customers.filter((c) => c.status === "APPROVED").length,
-      rejected: customers.filter((c) => c.status === "REJECTED").length,
-      contacted: customers.filter((c) => c.status === "CONTACTED").length,
-      consentGiven: customers.filter((c) => c.consent_given).length,
+      total: deduplicatedCustomers.length,
+      pending: deduplicatedCustomers.filter((c) => c.status === "PENDING").length,
+      approved: deduplicatedCustomers.filter((c) => c.status === "APPROVED").length,
+      rejected: deduplicatedCustomers.filter((c) => c.status === "REJECTED").length,
+      contacted: deduplicatedCustomers.filter((c) => c.status === "CONTACTED").length,
+      consentGiven: deduplicatedCustomers.filter((c) => c.consent_given).length,
     };
 
     // Filter if requested
-    let filteredList = customers;
+    let filteredList = deduplicatedCustomers;
     if (status && status !== "ALL") {
       filteredList = filteredList.filter(
         (c) => c.status.toUpperCase() === status.toUpperCase()
@@ -4409,6 +4464,12 @@ const updateNewCustomerStatus = async (req, res) => {
           consent_type: existingData.consent_type || "service_calls",
           consent_timestamp: existingData.consent_timestamp || null,
           source: existingData.source || "App registration",
+          status: true,
+          todayOverride: {
+            date: getTodayDateString(),
+            status: "ON",
+            type: "MANUAL",
+          },
         };
 
         await customerDocRef.set(newCustomerDoc);
@@ -4537,6 +4598,12 @@ const convertNewCustomer = async (req, res) => {
       consent_type: newCustData.consent_type || "service_calls",
       consent_timestamp: newCustData.consent_timestamp || null,
       source: newCustData.source || "App registration",
+      status: true,
+      todayOverride: {
+        date: getTodayDateString(),
+        status: "ON",
+        type: "MANUAL",
+      },
     };
 
     await customerDocRef.set(newCustomerDoc);
@@ -4858,6 +4925,30 @@ const getManualPriorityCustomers = async (req, res) => {
             );
         }
 
+        // When order has arrived (manual_priority == true) and awaiting delivery:
+        // Automatically ensure status: true and todayOverride is ON
+        if (!isHistory && attendedType === "PENDING") {
+          const needsHealing =
+            data.status !== true ||
+            data.todayOverride?.date !== todayDateKey ||
+            data.todayOverride?.status !== "ON";
+          if (needsHealing) {
+            doc.ref
+              .update({
+                status: true,
+                todayOverride: {
+                  date: todayDateKey,
+                  status: "ON",
+                  type: "MANUAL",
+                },
+                updatedAt: Date.now(),
+              })
+              .catch((err) =>
+                console.warn("Priority auto-healing error:", err.message)
+              );
+          }
+        }
+
         return {
           id: doc.id,
           name,
@@ -4875,6 +4966,11 @@ const getManualPriorityCustomers = async (req, res) => {
           route: data.route || "",
           zone: data.zone || "",
           manual_priority: attendedType === "DELIVERED" ? false : true,
+          status: (!isHistory && attendedType === "PENDING") ? true : (data.status ?? true),
+          todayOverride:
+            !isHistory && attendedType === "PENDING" && (data.todayOverride?.date !== todayDateKey || data.todayOverride?.status !== "ON")
+              ? { date: todayDateKey, status: "ON", type: "MANUAL" }
+              : data.todayOverride || null,
           attended,
           attendedType,
           attendedStatus,

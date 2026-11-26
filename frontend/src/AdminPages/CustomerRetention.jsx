@@ -622,7 +622,7 @@ const CustomerRetention = () => {
     setCustomers((prev) =>
       prev.map((row) =>
         row.id === customer.id
-          ? { ...row, todayOverride: optimisticOverride }
+          ? { ...row, todayOverride: optimisticOverride, status: nextStatus === "ON" }
           : row
       )
     );
@@ -631,7 +631,7 @@ const CustomerRetention = () => {
     Object.keys(cacheRef.current).forEach((k) => {
       if (cacheRef.current[k]?.customers) {
         cacheRef.current[k].customers = cacheRef.current[k].customers.map((c) =>
-          c.id === customer.id ? { ...c, todayOverride: optimisticOverride } : c
+          c.id === customer.id ? { ...c, todayOverride: optimisticOverride, status: nextStatus === "ON" } : c
         );
       }
     });
@@ -646,13 +646,13 @@ const CustomerRetention = () => {
       if (saved?.date && saved?.status) {
         setCustomers((prev) =>
           prev.map((row) =>
-            row.id === customer.id ? { ...row, todayOverride: saved } : row
+            row.id === customer.id ? { ...row, todayOverride: saved, status: nextStatus === "ON" } : row
           )
         );
         Object.keys(cacheRef.current).forEach((k) => {
           if (cacheRef.current[k]?.customers) {
             cacheRef.current[k].customers = cacheRef.current[k].customers.map((c) =>
-              c.id === customer.id ? { ...c, todayOverride: saved } : c
+              c.id === customer.id ? { ...c, todayOverride: saved, status: nextStatus === "ON" } : c
             );
           }
         });
